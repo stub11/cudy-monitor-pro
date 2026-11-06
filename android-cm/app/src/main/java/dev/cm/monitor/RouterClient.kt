@@ -3,6 +3,9 @@ package dev.cm.monitor
 import android.content.Context
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.transport.verification.HostKeyVerifier
+import org.bouncycastle.jce.provider.BouncyCastleProvider
+import java.security.KeyPairGenerator
+import java.security.Security
 import java.security.MessageDigest
 import java.security.PublicKey
 import java.util.Base64
@@ -12,6 +15,22 @@ class UntrustedHostKey(val fingerprint: String) : Exception("Требуется 
 class ChangedHostKey : Exception("Ключ роутера изменился. Подключение заблокировано.")
 
 class RouterClient(private val context: Context) {
+    companion object {
+        // Android's built-in provider named BC can lack X25519.
+        // SSHJ resolves BC by name; install the bundled full provider first.
+        @Synchronized
+        private fun prepareSshCrypto() {
+            val current = Security.getProvider("BC")
+            if (current != null &&
+                runCatching { KeyPairGenerator.getInstance("X25519", current) }.isSuccess
+            ) return
+
+            Security.removeProvider("BC")
+            val position = Security.insertProviderAt(BouncyCastleProvider(), 1)
+            check(position > 0) { "Не удалось включить криптопровайдер SSH" }
+            KeyPairGenerator.getInstance("X25519", "BC")
+        }
+    }
     private val store = context.getSharedPreferences("ssh_pins", Context.MODE_PRIVATE)
     // Intentionally constant: never concatenate user-supplied strings into shell commands.
     private val readOnlyCommand = """
@@ -45,6 +64,7 @@ class RouterClient(private val context: Context) {
         var untrustedFingerprint: String? = null
         var changedKey = false
         try {
+          prepareSshCrypto()
           SSHClient().use { ssh ->
             ssh.addHostKeyVerifier(object : HostKeyVerifier {
                 override fun findExistingAlgorithms(hostname: String, port: Int): List<String> = emptyList()
