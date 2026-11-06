@@ -384,6 +384,52 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
  *,*:before,*:after{transition-duration:.01ms!important;animation-duration:.01ms!important}
 }
 
+
+/* Aurora v1.1.1 — legibility and responsive density pass.
+   Keep all styles local to the single-file dashboard. */
+@media (min-width:1101px){
+ .shell aside{width:232px}
+ main{padding-inline:clamp(20px,2vw,44px)}
+ .card h2{font-size:16px}
+ .kpi .label,.kpi .muted{font-size:12px}
+ .kpi .value{font-size:clamp(22px,1.6vw,30px)}
+ .dashboard-top>.card{min-height:0}
+ .dashboard-top .history-card .bars{min-height:0}
+ .dashboard-top .traffic-card .networkgraph{min-height:0}
+ .dashboard-bottom>.card{min-height:0}
+ .axis-labels,.axis-temperature,.axis-time{font-size:12px}
+ .memory-pill{font-size:12px}
+}
+@media (min-width:1441px){
+ .dashboard-top{grid-template-columns:minmax(0,1.65fr) minmax(185px,.62fr) minmax(245px,.9fr)}
+ .dashboard-top .traffic-card .networkgraph{height:160px}
+}
+@media (max-width:650px), (pointer:coarse) and (max-width:1100px){
+ .quick-nav{display:none!important} /* main navigation is available in the menu */
+ .aurora-header{margin-bottom:12px}
+ .aurora-header>div:last-child{min-height:0}
+ .card-head{align-items:flex-start}
+ .chart-tools{max-width:100%}
+ .chart-tools select{max-width:100%}
+ .axis-chart{min-width:0}
+ .axis-main{min-width:0}
+ #netbrief .row{gap:8px;flex-wrap:wrap}
+ #netbrief .row span{white-space:normal;overflow-wrap:anywhere}
+ .memory-pill{max-width:100%;overflow-wrap:anywhere}
+}
+@media (max-width:410px){
+ .service-chip{font-size:10px}
+ .kpi-grid{gap:8px}
+ .kpi{min-height:114px}
+ .kpi .value{font-size:18px}
+ .ring{width:57px;height:57px;flex-basis:57px}
+ .ring-inner{width:43px;height:43px}
+ .axis-labels{flex-basis:67px;font-size:10px}
+ .axis-temperature{flex-basis:34px;font-size:10px}
+ .card{padding:13px 12px}
+ .card h2{font-size:16px}
+}
+
 </style></head><body><div class="shell"><div class="mobile-header"><span>Cudy Monitor Pro</span><button id="menutoggle" type="button" aria-label="Меню" aria-expanded="false">☰</button></div><div id="menubackdrop" class="mobile-backdrop"></div><aside><div class="logo">Cudy Monitor Pro<small>WBR3000UAX · KN-3811 EA</small></div><nav><button class="active" data-page="overview"><span class="nav-symbol" aria-hidden="true">⌂</span><span>Обзор</span></button><button data-page="processes"><span class="nav-symbol" aria-hidden="true">▥</span><span>Процессы</span></button><button data-page="services"><span class="nav-symbol" aria-hidden="true">◈</span><span>Сервисы</span></button><button data-page="network"><span class="nav-symbol" aria-hidden="true">⌁</span><span>Сеть</span></button><button data-page="storage"><span class="nav-symbol" aria-hidden="true">▣</span><span>Хранилище</span></button><button data-page="logs"><span class="nav-symbol" aria-hidden="true">≡</span><span>Журналы</span></button><button data-page="settings"><span class="nav-symbol" aria-hidden="true">⚙</span><span>Настройки</span></button><button data-page="updates"><span class="nav-symbol" aria-hidden="true">↻</span><span>Обновления</span></button></nav><div class="aside-status"><span class="status">● KeeneticOS</span><small>Entware · ARM64</small><small>Монитор <b id="sidebarversion">—</b></small></div></aside><main><header class="aurora-header"><div><h1 id="viewtitle">Обзор системы</h1><div id="viewsubtitle" class="muted">Cudy WBR3000UAX · KeeneticOS · Entware · Rust ARM64</div><div id="healthsummary">Подключение к домашнему роутеру…</div><div id="servicebadges" class="service-badges" role="group" aria-label="Состояние установленных служб"></div></div><div><span id="online" class="bad">● Подключение</span> · <span id="lastseen">ожидание</span></div></header>
 <section id="overview" class="page"><div class="grid kpi-grid">
 <div class="card kpi"><div class="ring cpu-ring" id="cpuring"><div class="ring-inner"><strong id="cpuringvalue">—</strong></div></div><div class="kpi-info"><div class="label">ПРОЦЕССОР</div><div class="value" id="cpu">—</div><div class="muted">Нагрузка CPU</div><div class="stat-progress" id="cpubar"><i></i></div></div></div>
@@ -421,9 +467,14 @@ async function fetchNetworkHistory(){
 function renderNetworkChart(){
  const p=netPoints.filter(v=>Array.isArray(v)&&v.length===3&&v.every(Number.isFinite));
  if(p.length<2){el('networkgraph').textContent='Накапливаем измерения…';el('netpagegraph').textContent='Накапливаем измерения…';return;}
- const peak=Math.max(128,...p.map(x=>Math.max(x[1],x[2])));
- const order=Math.pow(10,Math.floor(Math.log10(peak)));
- const max=Math.ceil(peak/order)*order;
+ // Nice axis bounds (1 / 2 / 2.5 / 5 / 10) keep genuine peaks visible.
+ // A small floor avoids a misleading zero-sized plot on an idle network.
+ const peak=Math.max(1,...p.map(x=>Math.max(x[1],x[2])));
+ const target=Math.max(1250,peak*1.06);
+ const order=Math.pow(10,Math.floor(Math.log10(target)));
+ const ratio=target/order;
+ const nice=ratio<=1?1:ratio<=2?2:ratio<=2.5?2.5:ratio<=5?5:10;
+ const max=nice*order;
  const first=p[0][0],duration=Math.max(1,p[p.length-1][0]-first);
  const fmt=bytes=>{const bits=bytes*8;return bits>=1000000?(bits/1000000).toFixed(1)+' Мбит/с':bits>=1000?(bits/1000).toFixed(bits>=10000?0:1)+' Кбит/с':Math.round(bits)+' бит/с'};
  const axis=[1,.75,.5,.25,0].map(f=>'<span>'+fmt(max*f)+'</span>').join('');
