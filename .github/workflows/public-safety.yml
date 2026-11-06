@@ -35,7 +35,7 @@ jobs:
           from pathlib import Path
           installer=Path("cudy-monitor/scripts/install.sh").read_text()
           assert '    sh -n "$TMP/$script"' not in installer, "BusyBox syntax regression"
-          assert 'sha256sum "$TMP/monitor"' in installer, "Release integrity check removed"
+          assert '"$SHASUM" "$TMP/monitor"' in installer, "Release integrity check removed"
           assert 'stub11/cudy-monitor-pro' in installer, "Unexpected repository"
           assert 'mkdir -p /opt/tmp' in installer, "Missing Entware temp dir"
           for expected in ('backup binary "$BIN"', 'backup init "$INIT"',

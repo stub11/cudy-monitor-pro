@@ -5,8 +5,12 @@ set -eu
 ROOT=/opt
 REPO=https://github.com/stub11/cudy-monitor-pro
 BASE=https://raw.githubusercontent.com/stub11/cudy-monitor-pro
-command -v /opt/bin/curl >/dev/null 2>&1 || command -v curl >/dev/null 2>&1 || { echo "Requires curl" >&2; exit 1; }
-command -v sha256sum >/dev/null 2>&1 || { echo "Requires sha256sum" >&2; exit 1; }
+CURL=/opt/bin/curl
+SHASUM=/opt/bin/sha256sum
+[ -x "$CURL" ] || CURL=curl
+[ -x "$SHASUM" ] || SHASUM=sha256sum
+command -v "$CURL" >/dev/null 2>&1 || { echo "Requires curl" >&2; exit 1; }
+command -v "$SHASUM" >/dev/null 2>&1 || { echo "Requires sha256sum" >&2; exit 1; }
 [ "$(uname -m)" = "aarch64" ] || { echo "Expected aarch64 router" >&2; exit 1; }
 [ -d "$ROOT/etc/init.d" ] && [ -d "$ROOT/bin" ] || { echo "Entware not mounted" >&2; exit 1; }
 case "$(readlink -f /opt 2>/dev/null || echo /opt)" in
@@ -15,15 +19,15 @@ esac
 mkdir -p /opt/tmp
 TMP=$(mktemp -d /opt/tmp/cudy-monitor.XXXXXX) || exit 1
 trap 'rm -rf "$TMP"' EXIT
-curl --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 20 "$REPO/releases/latest/download/latest.txt" -o "$TMP/latest"
+"$CURL" --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 20 "$REPO/releases/latest/download/latest.txt" -o "$TMP/latest"
 VER=$(sed -n '1p' "$TMP/latest")
 SUM=$(sed -n '2p' "$TMP/latest")
 printf '%s\n' "$VER" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || exit 1
 printf '%s\n' "$SUM" | grep -Eq '^[a-f0-9]{64}$' || exit 1
-curl --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 120 "$REPO/releases/download/cudy-monitor-v$VER/cudy-monitor-pro-aarch64" -o "$TMP/monitor"
-[ "$(sha256sum "$TMP/monitor" | awk '{print $1}')" = "$SUM" ] || { echo "Checksum mismatch" >&2; exit 1; }
+"$CURL" --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 120 "$REPO/releases/download/cudy-monitor-v$VER/cudy-monitor-pro-aarch64" -o "$TMP/monitor"
+[ "$("$SHASUM" "$TMP/monitor" | awk '{print $1}')" = "$SUM" ] || { echo "Checksum mismatch" >&2; exit 1; }
 for script in update.sh S99cudy-monitor; do
-    curl --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 20 "$BASE/cudy-monitor-v$VER/cudy-monitor/scripts/$script" -o "$TMP/$script"
+    "$CURL" --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 20 "$BASE/cudy-monitor-v$VER/cudy-monitor/scripts/$script" -o "$TMP/$script"
     # Some BusyBox ash builds reject "sh -n", so do not require it on the router.
     [ "$(sed -n '1p' "$TMP/$script")" = '#!/bin/sh' ] || {
         echo "Unexpected $script header" >&2; exit 1;
@@ -95,7 +99,7 @@ chmod 755 /opt/etc/init.d/S99cudy-monitor
 /opt/etc/init.d/S99cudy-monitor restart
 sleep 2
 HEALTH_BIND=$(cat /opt/etc/cudy-monitor/bind)
-curl -fsS --max-time 4 "http://$HEALTH_BIND/health" >/dev/null || {
+"$CURL" -fsS --max-time 4 "http://$HEALTH_BIND/health" >/dev/null || {
     echo "Health check failed" >&2
     exit 1
 }
