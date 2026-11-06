@@ -18,9 +18,9 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           required = [
-              "README.md", "LICENSE", "SECURITY.md", "CONTRIBUTING.md",
-              "MIGRATION.md", "CHANGELOG.md",
-              "docs/README.en.md", "docs/INSTALL.ru.md", "docs/TESTING.ru.md",
+              "README.md", "LICENSE", "SECURITY.md",
+              "CHANGELOG.md",
+              "docs/README.en.md", "docs/INSTALL.ru.md",
               "docs/TROUBLESHOOTING.ru.md", "docs/PRIVACY.ru.md",
               ".github/ISSUE_TEMPLATE/bug_report.md",
               ".github/ISSUE_TEMPLATE/feature_request.md",

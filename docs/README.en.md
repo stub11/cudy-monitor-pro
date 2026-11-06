@@ -33,6 +33,6 @@ By default the server listens on **127.0.0.1:8237**, not on your LAN IP. To make
 
 **Security:** no built-in authentication. Do not expose port 8237 to the Internet, guest networks or tunnels without independent access protection. Service controls are opt-in and off by default.
 
-For install/uninstall details see [Russian install guide](INSTALL.ru.md). For safe testing reports see [testing guide](TESTING.ru.md). Never publish unredacted IP/MAC addresses, SSIDs, device names, router backups, keys, tokens or logs.
+For install/uninstall details see [Russian install guide](INSTALL.ru.md). Never publish unredacted IP/MAC addresses, SSIDs, device names, router backups, keys, tokens or logs.
 
 MIT-licensed, independent community project. Not affiliated with Cudy or Keenetic.

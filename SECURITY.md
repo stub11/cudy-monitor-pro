@@ -23,6 +23,6 @@ Regular functional bugs without confidential material can use the public bug-rep
 
 ## Privacy
 
-See [privacy notes](docs/PRIVACY.ru.md) and [safe testing guide](docs/TESTING.ru.md). Logs, screenshots, API dumps and device details should be redacted before public sharing.
+See [privacy notes](docs/PRIVACY.ru.md). Logs, screenshots, API dumps and device details should be redacted before public sharing.
 
 This is an independent project, not official Cudy or Keenetic support.
