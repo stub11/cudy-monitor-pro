@@ -1,0 +1,34 @@
+﻿name: Rust regression checks (pull requests)
+on:
+  pull_request:
+    paths:
+      - 'cudy-monitor/**'
+      - '.github/workflows/cudy-monitor-pr.yml'
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: cudy-monitor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust unit tests
+        run: cargo test --all-targets
+      - name: Shell syntax checks
+        run: |
+          sh -n scripts/update.sh
+          sh -n scripts/install.sh
+          sh -n scripts/S99cudy-monitor
+      - name: Front-end syntax validation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          html=Path('web/index.html').read_text()
+          js=html.split('<script>',1)[1].split('</script>',1)[0]
+          Path('/tmp/cudy-monitor-pr-ui.js').write_text(js)
+          PY
+          node --check /tmp/cudy-monitor-pr-ui.js
+
