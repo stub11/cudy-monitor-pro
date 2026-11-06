@@ -1,6 +1,8 @@
 # Cudy Monitor Pro — Release notes
 
-## Unreleased — public testing distribution
+## Unreleased
+- First Aurora UI refresh: responsive status cards, navigation and dashboard.
+- Service status chips populated exclusively from local API; no new network dependencies. — public testing distribution
 - GitHub bug and feature request templates, PR template, contribution and security policies, MIT license.
 - Fixed fresh installer for BusyBox variants where sh -n is unsupported.
 - Added automated public-content privacy guard and installer compatibility CI checks.

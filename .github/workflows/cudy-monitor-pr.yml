@@ -31,4 +31,18 @@ jobs:
           Path('/tmp/cudy-monitor-pr-ui.js').write_text(js)
           PY
           node --check /tmp/cudy-monitor-pr-ui.js
+      - name: Aurora UI structure and accessibility regression
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          ui = Path("web/index.html").read_text()
+          assert "AURORA DASHBOARD v2" in ui
+          assert "servicebadges" in ui
+          assert "replaceChildren(...(d.services||[])" in ui
+          assert ui.count('class="nav-symbol" aria-hidden="true"') == 8
+          assert "@media(max-width:650px)" in ui
+          assert "prefers-reduced-motion:reduce" in ui
+          assert "https://fonts." not in ui
+          print("Aurora UI checks passed")
+          PY
 
