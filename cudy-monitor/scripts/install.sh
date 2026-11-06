@@ -5,8 +5,12 @@ set -eu
 ROOT=/opt
 REPO=https://github.com/stub11/cudy-monitor-pro
 BASE=https://raw.githubusercontent.com/stub11/cudy-monitor-pro
-command -v curl >/dev/null 2>&1 || { echo "Requires curl" >&2; exit 1; }
-command -v sha256sum >/dev/null 2>&1 || { echo "Requires sha256sum" >&2; exit 1; }
+CURL=/opt/bin/curl
+SHASUM=/opt/bin/sha256sum
+[ -x "$CURL" ] || CURL=curl
+[ -x "$SHASUM" ] || SHASUM=sha256sum
+command -v "$CURL" >/dev/null 2>&1 || { echo "Requires curl" >&2; exit 1; }
+command -v "$SHASUM" >/dev/null 2>&1 || { echo "Requires sha256sum" >&2; exit 1; }
 [ "$(uname -m)" = "aarch64" ] || { echo "Expected aarch64 router" >&2; exit 1; }
 [ -d "$ROOT/etc/init.d" ] && [ -d "$ROOT/bin" ] || { echo "Entware not mounted" >&2; exit 1; }
 case "$(readlink -f /opt 2>/dev/null || echo /opt)" in
@@ -15,15 +19,15 @@ esac
 mkdir -p /opt/tmp
 TMP=$(mktemp -d /opt/tmp/cudy-monitor.XXXXXX) || exit 1
 trap 'rm -rf "$TMP"' EXIT
-curl --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 20 "$REPO/releases/latest/download/latest.txt" -o "$TMP/latest"
+"$CURL" --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 20 "$REPO/releases/latest/download/latest.txt" -o "$TMP/latest"
 VER=$(sed -n '1p' "$TMP/latest")
 SUM=$(sed -n '2p' "$TMP/latest")
 printf '%s\n' "$VER" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || exit 1
 printf '%s\n' "$SUM" | grep -Eq '^[a-f0-9]{64}$' || exit 1
-curl --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 120 "$REPO/releases/download/cudy-monitor-v$VER/cudy-monitor-pro-aarch64" -o "$TMP/monitor"
-[ "$(sha256sum "$TMP/monitor" | awk '{print $1}')" = "$SUM" ] || { echo "Checksum mismatch" >&2; exit 1; }
+"$CURL" --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 120 "$REPO/releases/download/cudy-monitor-v$VER/cudy-monitor-pro-aarch64" -o "$TMP/monitor"
+[ "$("$SHASUM" "$TMP/monitor" | awk '{print $1}')" = "$SUM" ] || { echo "Checksum mismatch" >&2; exit 1; }
 for script in update.sh S99cudy-monitor; do
-    curl --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 20 "$BASE/cudy-monitor-v$VER/cudy-monitor/scripts/$script" -o "$TMP/$script"
+    "$CURL" --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 20 "$BASE/cudy-monitor-v$VER/cudy-monitor/scripts/$script" -o "$TMP/$script"
     # Some BusyBox ash builds reject "sh -n", so do not require it on the router.
     [ "$(sed -n '1p' "$TMP/$script")" = '#!/bin/sh' ] || {
         echo "Unexpected $script header" >&2; exit 1;
@@ -39,27 +43,69 @@ for script in update.sh S99cudy-monitor; do
         } ;;
     esac
 done
-mkdir -p /opt/etc/cudy-monitor /opt/share/cudy-monitor /opt/var/run
+mkdir -p /opt/etc/cudy-monitor /opt/share/cudy-monitor /opt/var/run "$TMP/backup"
+BIN=/opt/bin/cudy-monitor-pro
+INIT=/opt/etc/init.d/S99cudy-monitor
+UPD=/opt/share/cudy-monitor/update.sh
+META=/opt/share/cudy-monitor/VERSION
+BIND=/opt/etc/cudy-monitor/bind
+PREV="$BIN.previous"
+WAS_RUNNING=0
+if [ -x "$INIT" ] && "$INIT" status >/dev/null 2>&1; then WAS_RUNNING=1; fi
+backup() { [ ! -f "$2" ] || cp -p "$2" "$TMP/backup/$1"; }
+restore() {
+    if [ -f "$TMP/backup/$1" ]; then
+        cp -p "$TMP/backup/$1" "$2" || echo "WARNING: restore failed: $1" >&2
+    else
+        rm -f "$2" || true
+    fi
+}
+backup binary "$BIN"
+backup init "$INIT"
+backup updater "$UPD"
+backup version "$META"
+backup bind "$BIND"
+backup previous "$PREV"
+COMMITTED=0
+finish() {
+    result=$?
+    trap - EXIT
+    if [ "$COMMITTED" -eq 0 ]; then
+        echo "ERROR: reverting incomplete Cudy Monitor installation" >&2
+        [ ! -x "$INIT" ] || "$INIT" stop >/dev/null 2>&1 || true
+        restore binary "$BIN"
+        restore init "$INIT"
+        restore updater "$UPD"
+        restore version "$META"
+        restore bind "$BIND"
+        restore previous "$PREV"
+        if [ "$WAS_RUNNING" -eq 1 ] && [ -x "$INIT" ]; then
+            "$INIT" start || echo "WARNING: prior monitor did not restart" >&2
+        fi
+    fi
+    rm -rf "$TMP"
+    exit "$result"
+}
+trap finish EXIT
 chmod 700 /opt/etc/cudy-monitor
 # Version 0.4.4+ runs without a login token; preserve any legacy token file but do not use it.
 [ -f /opt/etc/cudy-monitor/bind ] || printf '127.0.0.1:8237\n' > /opt/etc/cudy-monitor/bind
 chmod 600 /opt/etc/cudy-monitor/bind
-[ -e /opt/bin/cudy-monitor-pro ] && cp /opt/bin/cudy-monitor-pro /opt/bin/cudy-monitor-pro.previous || true
 cp "$TMP/monitor" /opt/bin/cudy-monitor-pro
 chmod 755 /opt/bin/cudy-monitor-pro
 cp "$TMP/update.sh" /opt/share/cudy-monitor/update.sh
 cp "$TMP/S99cudy-monitor" /opt/etc/init.d/S99cudy-monitor
 chmod 755 /opt/etc/init.d/S99cudy-monitor
-printf '%s\n' "$VER" > /opt/share/cudy-monitor/VERSION
 /opt/etc/init.d/S99cudy-monitor restart
 sleep 2
 HEALTH_BIND=$(cat /opt/etc/cudy-monitor/bind)
-curl -fsS --max-time 4 "http://$HEALTH_BIND/health" >/dev/null || {
-    echo "Health check failed; restoring prior binary if available" >&2
-    if [ -f /opt/bin/cudy-monitor-pro.previous ]; then
-        cp /opt/bin/cudy-monitor-pro.previous /opt/bin/cudy-monitor-pro
-        /opt/etc/init.d/S99cudy-monitor restart || true
-    fi
+"$CURL" -fsS --max-time 4 "http://$HEALTH_BIND/health" >/dev/null || {
+    echo "Health check failed" >&2
     exit 1
 }
+printf '%s\n' "$VER" > "$META"
+if [ -f "$TMP/backup/binary" ]; then
+    cp -p "$TMP/backup/binary" "$PREV"
+fi
+COMMITTED=1
 echo "Cudy Monitor Pro $VER installed at http://$HEALTH_BIND/ (LAN bind requires trusted private network)."
