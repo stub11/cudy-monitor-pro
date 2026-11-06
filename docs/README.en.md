@@ -2,6 +2,8 @@
 
 [← Main README (Russian)](../README.md) · [Releases](https://github.com/stub11/cudy-monitor-pro/releases) · [Issues](https://github.com/stub11/cudy-monitor-pro/issues/new/choose)
 
+> **⚠️ USE AND TEST AT YOUR OWN RISK.** This software is provided **AS IS**, without warranties. Installation, updates or testing may cause network outages, configuration changes or data loss. Make backups first. The author and contributors disclaim liability for damages arising from use of the software to the maximum extent permitted by applicable law.
+
 Cudy Monitor Pro is a lightweight, self-hosted Rust dashboard for **aarch64 / ARM64 Linux routers with a compatible KeeneticOS environment and Entware mounted at `/opt`**. No CDN, vendor login, or required telemetry.
 
 **Beta / community testing:** primarily tested on Cudy WBR3000UAX. Other router hardware and firmware are unverified; the hardware model label is currently hardcoded. MIPS, ARMv7, and generic OpenWrt support are not claimed.
