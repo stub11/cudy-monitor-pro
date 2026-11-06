@@ -1,4 +1,10 @@
-﻿# Cudy Monitor Pro — Release notes
+# Cudy Monitor Pro — Release notes
+
+## Unreleased — public testing distribution
+- Public Russian README and install/test/FAQ/privacy guides, plus English overview.
+- GitHub bug and feature request templates, PR template, contribution and security policies, MIT license.
+- Fixed fresh installer for BusyBox variants where sh -n is unsupported.
+- Added automated public-content privacy guard and installer compatibility CI checks.
 
 ## 1.0.4 — OTA and HTTP reliability
 - Correct update availability: only versions strictly newer than the installed release are offered.
