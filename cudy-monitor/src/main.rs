@@ -199,15 +199,58 @@ fn authorized(req:&str,token:&str)->bool{
     constant_time_match(candidate.as_bytes(),token.as_bytes())
 }
 fn addr_for_host(c:&TcpStream)->String { c.local_addr().map(|a|a.to_string()).unwrap_or_default() }
+// Collect HTTP headers across TCP reads: a single read is not guaranteed to
+// contain the entire request line and headers. Never process partial headers.
+fn read_headers(c:&mut TcpStream)->std::io::Result<Option<String>> {
+    const MAX_HEADERS:usize=8192;
+    let mut buf=Vec::with_capacity(1024);
+    let mut chunk=[0u8;1024];
+    loop {
+        let n=c.read(&mut chunk)?;
+        if n==0 {
+            return Ok(None);
+        }
+        buf.extend_from_slice(&chunk[..n]);
+        if let Some(end)=buf.windows(4).position(|w|w==b"\r\n\r\n") {
+            if end+4>MAX_HEADERS { return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,"request headers too large")); }
+            // Do not interpret a partial/invalid header as an authenticated request.
+            let request=&buf[..end+4];
+            if request.contains(&0) { return Ok(None); }
+            return Ok(String::from_utf8(request.to_vec()).ok());
+        }
+        if buf.len()>=MAX_HEADERS { return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,"request headers too large")); }
+    }
+}
+fn semver_tuple(value:&str)->Option<(u64,u64,u64)> {
+    let mut parts=value.split('.');
+    let parse=|p:Option<&str>|->Option<u64> {
+        let v=p?;
+        if v.is_empty() || !v.bytes().all(|c|c.is_ascii_digit()) { return None; }
+        v.parse::<u64>().ok()
+    };
+    let version=(parse(parts.next())?,parse(parts.next())?,parse(parts.next())?);
+    if parts.next().is_some() { return None; }
+    Some(version)
+}
+fn update_available(latest:&str,current:&str)->Option<bool> {
+    Some(semver_tuple(latest)? > semver_tuple(current)?)
+}
 fn handle(mut c:TcpStream,s:Arc<Mutex<State>>,token:String){
     // LAN clients can view without a token; remote/WAN clients are always denied.
     let peer_ok=c.peer_addr().map(|p|p.ip().is_loopback() || match p.ip(){std::net::IpAddr::V4(v)=>v.is_private(),std::net::IpAddr::V6(_)=>false}).unwrap_or(false);
     if !peer_ok {respond(&mut c,"403 Forbidden","text/plain",b"LAN only");return;}
     let _=c.set_read_timeout(Some(Duration::from_secs(3)));
     let _=c.set_write_timeout(Some(Duration::from_secs(5)));
-    let mut b=[0u8;8192];
-    let n=match c.read(&mut b){Ok(n)=>n,Err(_)=>return};
-    let request=String::from_utf8_lossy(&b[..n]);
+    let request=match read_headers(&mut c) {
+        Ok(Some(request))=>request,
+        Ok(None)=>{respond(&mut c,"400 Bad Request","text/plain",b"Malformed request");return;},
+        Err(e) if e.kind()==std::io::ErrorKind::InvalidData=>{
+            respond(&mut c,"431 Request Header Fields Too Large","text/plain",b"Headers too large");return;
+        }
+        Err(_)=>return,
+    };
     let line=request.lines().next().unwrap_or("");
     if line.starts_with("GET / HTTP/") || line.starts_with("GET /index.html HTTP/") {
         respond(&mut c,"200 OK","text/html; charset=utf-8",PAGE.as_bytes());return;
@@ -243,11 +286,14 @@ fn handle(mut c:TcpStream,s:Arc<Mutex<State>>,token:String){
         match update_command("--check"){
             Ok(data)=>{
                 let parts:Vec<_>=data.split_whitespace().collect();
-                if parts.len()!=2{
+                let available=if parts.len()==2 {
+                    update_available(parts[0],parts[1])
+                } else {None};
+                let Some(available)=available else {
                     respond(&mut c,"502 Bad Gateway","application/json",b"{\"error\":\"invalid update metadata\"}");return;
-                }
+                };
                 let body=format!("{{\"latest\":{},\"current\":{},\"available\":{}}}",
-                    quoted(parts[0]),quoted(parts[1]),parts[0]!=parts[1]);
+                    quoted(parts[0]),quoted(parts[1]),available);
                 respond(&mut c,"200 OK","application/json",body.as_bytes());
             }
             Err(e)=>{
@@ -451,4 +497,45 @@ mod tests {
     #[test] fn cpu_math(){assert_eq!(cpu_percent(0,0),0.0);assert_eq!(cpu_percent(100,20),80.0);assert_eq!(cpu_percent(10,100),0.0);}
     #[test] fn json_quote(){assert_eq!(quoted("a\"b"),"\"a\\\"b\"");assert_eq!(quoted("test\n"),"\"test\\n\"");}
     #[test] fn token_match(){assert!(constant_time_match(b"abc",b"abc"));assert!(!constant_time_match(b"abc",b"abd"));assert!(!constant_time_match(b"abc",b"abc0"));}
+    #[test] fn semver_update_detection(){
+        assert_eq!(update_available("1.0.3","1.0.2"),Some(true));
+        assert_eq!(update_available("1.0.3","1.0.3"),Some(false));
+        assert_eq!(update_available("1.0.2","1.0.3"),Some(false));
+        assert_eq!(update_available("1.10.0","1.9.9"),Some(true));
+        assert_eq!(update_available("2.0.0","1.99.99"),Some(true));
+        assert_eq!(update_available("1.0.0","2.0.0"),Some(false));
+        for invalid in ["unknown","1.0","1.0.3-beta","1..2","1.2.3.4","","1.2.x"] {
+            assert_eq!(update_available(invalid,"1.0.0"),None);
+            assert_eq!(update_available("1.0.3",invalid),None);
+        }
+    }
+    #[test] fn split_http_headers(){
+        use std::net::TcpListener;
+        let listener=TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr=listener.local_addr().unwrap();
+        let sender=std::thread::spawn(move||{
+            let mut c=TcpStream::connect(addr).unwrap();
+            c.write_all(b"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\n").unwrap();
+            std::thread::sleep(Duration::from_millis(25));
+            c.write_all(b"Origin: http://127.0.0.1\r\n\r\n").unwrap();
+        });
+        let (mut stream,_)=listener.accept().unwrap();
+        stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        let headers=read_headers(&mut stream).unwrap().unwrap();
+        assert!(headers.contains("Host: 127.0.0.1"));
+        assert!(headers.ends_with("\r\n\r\n"));
+        sender.join().unwrap();
+    }
+    #[test] fn reject_too_large_or_incomplete_headers(){
+        use std::net::TcpListener;
+        let listener=TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr=listener.local_addr().unwrap();
+        let sender=std::thread::spawn(move||{
+            let mut c=TcpStream::connect(addr).unwrap();
+            c.write_all(&vec![b'x';9000]).unwrap();
+        });
+        let (mut stream,_)=listener.accept().unwrap();
+        assert_eq!(read_headers(&mut stream).unwrap_err().kind(),std::io::ErrorKind::InvalidData);
+        sender.join().unwrap();
+    }
 }
