@@ -38,5 +38,13 @@ jobs:
           assert 'sha256sum "$TMP/monitor"' in installer, "Release integrity check removed"
           assert 'stub11/cudy-monitor-pro' in installer, "Unexpected repository"
           assert 'mkdir -p /opt/tmp' in installer, "Missing Entware temp dir"
+          for expected in ('backup binary "$BIN"', 'backup init "$INIT"',
+                           'backup updater "$UPD"', 'backup version "$META"',
+                           'backup bind "$BIND"', 'restore binary "$BIN"',
+                           'restore init "$INIT"', 'restore updater "$UPD"',
+                           'restore version "$META"', 'restore bind "$BIND"',
+                           'COMMITTED=1'):
+              assert expected in installer, f"Missing install step: {expected}"
+          assert installer.index('COMMITTED=1') > installer.index('Health check failed'), "Commit before health check"
           print("Installer compatibility and integrity checks OK")
           PY
