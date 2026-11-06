@@ -8,7 +8,7 @@ CPU and per-core load, RAM, temperature sensors, USB storage usage, processes, i
 Requires an ARM64 router with Entware mounted at /opt. Review scripts/install.sh before running; an automatic install changes local /opt service files. The default binding is 127.0.0.1:8237, intentionally not remotely accessible. Change /opt/etc/cudy-monitor/bind to your router's trusted LAN IPv4 address plus :8237, then restart the service. Never expose this panel to the WAN, guests, or untrusted clients.
 
 ## Releases
-Official builds: https://github.com/stub11/cudy-monitor-pro/releases. New installations use those builds for SHA-256-checked OTA. Existing installations initially pointing to the legacy d2k-hopper release must migrate their updater helper separately; do not make the old repository private before checking that migration.
+Official builds: https://github.com/stub11/cudy-monitor-pro/releases. New installations use those builds for SHA-256-checked OTA. Existing installations initially pointing to the legacy repository need a one-time updater-helper migration to this public release source before future in-app OTA checks can work. The installed dashboard continues running without access to the former repository.
 
 ## Important security limits
 The web UI does not require a login. Service controls are disabled by default. Enable only on trusted, isolated networks. A same-origin check is not authentication. DoQ stop is a temporary pause with a best-effort 90-second restart, not a guarantee of network recovery.
