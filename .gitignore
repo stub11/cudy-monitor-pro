@@ -3,3 +3,19 @@ target/
 *.log
 *.key
 .env
+
+# Local/private data and generated artifacts
+.env.*
+*.pem
+*.p12
+*.pfx
+*.ppk
+*.bak
+*.backup
+*.session
+*.tar.gz
+*.zip
+*diagnostics-private*
+*router-backup*
+.DS_Store
+Thumbs.db

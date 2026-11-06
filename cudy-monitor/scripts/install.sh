@@ -12,6 +12,7 @@ command -v sha256sum >/dev/null 2>&1 || { echo "Requires sha256sum" >&2; exit 1;
 case "$(readlink -f /opt 2>/dev/null || echo /opt)" in
     *tmpfs*) echo "Unsafe temporary Entware path" >&2; exit 1 ;;
 esac
+mkdir -p /opt/tmp
 TMP=$(mktemp -d /opt/tmp/cudy-monitor.XXXXXX) || exit 1
 trap 'rm -rf "$TMP"' EXIT
 curl --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 20 "$REPO/releases/latest/download/latest.txt" -o "$TMP/latest"
@@ -23,7 +24,20 @@ curl --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 120 "$REPO/
 [ "$(sha256sum "$TMP/monitor" | awk '{print $1}')" = "$SUM" ] || { echo "Checksum mismatch" >&2; exit 1; }
 for script in update.sh S99cudy-monitor; do
     curl --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 20 "$BASE/cudy-monitor-v$VER/cudy-monitor/scripts/$script" -o "$TMP/$script"
-    sh -n "$TMP/$script"
+    # Some BusyBox ash builds reject "sh -n", so do not require it on the router.
+    [ "$(sed -n '1p' "$TMP/$script")" = '#!/bin/sh' ] || {
+        echo "Unexpected $script header" >&2; exit 1;
+    }
+    case "$script" in
+      update.sh)
+        grep -q 'stub11/cudy-monitor-pro/releases' "$TMP/$script" || {
+            echo "Unexpected OTA source" >&2; exit 1;
+        } ;;
+      S99cudy-monitor)
+        grep -q '/opt/bin/cudy-monitor-pro' "$TMP/$script" || {
+            echo "Unexpected service launcher" >&2; exit 1;
+        } ;;
+    esac
 done
 mkdir -p /opt/etc/cudy-monitor /opt/share/cudy-monitor /opt/var/run
 chmod 700 /opt/etc/cudy-monitor

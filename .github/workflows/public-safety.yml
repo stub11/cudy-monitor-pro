@@ -1,0 +1,42 @@
+name: Public content safety
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  privacy-and-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check public files for accidental personal data and known token patterns
+        run: python3 scripts/public_release_guard.py
+      - name: Check documentation links exist
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          required = [
+              "README.md", "LICENSE", "SECURITY.md", "CONTRIBUTING.md",
+              "MIGRATION.md", "CHANGELOG.md",
+              "docs/README.en.md", "docs/INSTALL.ru.md", "docs/TESTING.ru.md",
+              "docs/TROUBLESHOOTING.ru.md", "docs/PRIVACY.ru.md",
+              ".github/ISSUE_TEMPLATE/bug_report.md",
+              ".github/ISSUE_TEMPLATE/feature_request.md",
+          ]
+          for name in required:
+              assert Path(name).is_file(), name
+          print("Public docs verified")
+          PY
+      - name: Confirm BusyBox install compatibility
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          installer=Path("cudy-monitor/scripts/install.sh").read_text()
+          assert '    sh -n "$TMP/$script"' not in installer, "BusyBox syntax regression"
+          assert 'sha256sum "$TMP/monitor"' in installer, "Release integrity check removed"
+          assert 'stub11/cudy-monitor-pro' in installer, "Unexpected repository"
+          assert 'mkdir -p /opt/tmp' in installer, "Missing Entware temp dir"
+          print("Installer compatibility and integrity checks OK")
+          PY

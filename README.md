@@ -1,20 +1,91 @@
 # Cudy Monitor Pro
-A lightweight standalone Rust dashboard for ARM64 (aarch64) routers running compatible KeeneticOS and Entware. The interface is built into the binary and does not require external CDN resources.
 
-## Monitoring
-CPU and per-core load, RAM, temperature sensors, USB storage usage, processes, interface traffic, and the local status of supported D2K/DoQ services. Up to three hours of resource history and five minutes of network history are kept only in RAM.
+**Лёгкая веб-панель мониторинга ARM64-роутеров с Entware.** Написана на Rust; интерфейс встроен в один исполняемый файл. Без облачного аккаунта, внешнего CDN и обязательной телеметрии.
 
-## Setup
-Requires an ARM64 router with Entware mounted at /opt. Review scripts/install.sh before running; an automatic install changes local /opt service files. The default binding is 127.0.0.1:8237, intentionally not remotely accessible. Change /opt/etc/cudy-monitor/bind to your router's trusted LAN IPv4 address plus :8237, then restart the service. Never expose this panel to the WAN, guests, or untrusted clients.
+[![Latest release](https://img.shields.io/github/v/release/stub11/cudy-monitor-pro?label=release)](https://github.com/stub11/cudy-monitor-pro/releases/latest)
+[![ARM64 build](https://github.com/stub11/cudy-monitor-pro/actions/workflows/cudy-monitor-arm64.yml/badge.svg)](https://github.com/stub11/cudy-monitor-pro/actions/workflows/cudy-monitor-arm64.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-## Releases
-Official builds: https://github.com/stub11/cudy-monitor-pro/releases. New installations use those builds for SHA-256-checked OTA. Existing installations initially pointing to the legacy repository need a one-time updater-helper migration to this public release source before future in-app OTA checks can work. The installed dashboard continues running without access to the former repository.
+**Русский** · [English](docs/README.en.md) · [Релизы](https://github.com/stub11/cudy-monitor-pro/releases) · [Сообщить об ошибке](https://github.com/stub11/cudy-monitor-pro/issues/new/choose)
 
-## Important security limits
-The web UI does not require a login. Service controls are disabled by default. Enable only on trusted, isolated networks. A same-origin check is not authentication. DoQ stop is a temporary pause with a best-effort 90-second restart, not a guarantee of network recovery.
+> **Статус: публичное тестирование.** Проверялся на Cudy WBR3000UAX (ARM64) с совместимой KeeneticOS и Entware. На других моделях работа не гарантируется. Приложение показывает аппаратную модель в интерфейсе как Cudy WBR3000UAX — это пока не универсальное определение оборудования.
 
-## Source
-Application: cudy-monitor/src/main.rs; interface: cudy-monitor/web/index.html; launcher: cudy-monitor/scripts/S99cudy-monitor; OTA: cudy-monitor/scripts/update.sh. CI: .github/workflows/cudy-monitor-arm64.yml.
+## Возможности
 
-## Testing
-CI builds static ARM64 binaries, checks HTTP endpoints and browser layouts. Hardware testing remains necessary for each new router model, especially restoration after restart and service controls.
+- CPU: общая загрузка, ядра, частота (если данные доступны).
+- RAM и процессы: использование памяти, нагрузка по процессам.
+- Температура, USB-накопитель, Entware и время работы.
+- Сетевые интерфейсы и графики скорости.
+- История в оперативной памяти: до **3 часов** для показателей ресурсов и до **5 минут** для сети; после перезапуска не сохраняется.
+- Статусы установленных D2K, DoQ, KeenKit; отсутствие этих пакетов не препятствует запуску самого монитора.
+- Проверка GitHub Releases и обновление с проверкой SHA-256 и попыткой отката при неудаче.
+
+Монитор **не устанавливает** D2K, DoQ или KeenKit и **не меняет прошивку**.
+
+## Совместимость
+
+| Требование | Статус |
+|---|---|
+| Процессор **aarch64 / ARM64**, Linux | Обязательно |
+| Совместимая KeeneticOS с доступом к shell | Протестированная среда |
+| Entware, подключённый по пути `/opt` | Обязательно |
+| `curl`, `sha256sum`, `/bin/sh` | Обязательно |
+| Свободное место на `/opt` | Для бинарника, резервной копии и обновлений |
+| Доступ в интернет до GitHub Releases | Для установки и OTA |
+| Браузер в доверенной локальной сети | Для просмотра интерфейса |
+
+**Не проверено:** MIPS/MIPSEL, ARMv7, OpenWrt без совместимых Entware/init-скриптов, произвольные модели Keenetic/Cudy. Установка на этих устройствах не обещается.
+
+## Быстрая установка
+
+Подключитесь к роутеру по SSH. Если консоль показывает `(config)>`, войдите в Linux shell:
+
+```sh
+exec sh
+```
+
+Команды ниже выполняются **в Linux shell роутера**, не на ПК. Сначала скачайте и просмотрите установщик:
+
+```sh
+mkdir -p /opt/tmp
+/opt/bin/curl --proto '=https' --tlsv1.2 -fsSL \
+  https://raw.githubusercontent.com/stub11/cudy-monitor-pro/main/cudy-monitor/scripts/install.sh \
+  -o /opt/tmp/cudy-monitor-install.sh
+sed -n '1,180p' /opt/tmp/cudy-monitor-install.sh
+```
+
+Если содержимое устраивает, запустите:
+
+```sh
+/bin/sh /opt/tmp/cudy-monitor-install.sh
+```
+
+Установщик проверяет ARM64, наличие Entware, скачивает бинарник официального релиза и сравнивает SHA-256 с `latest.txt`. Он записывает файлы в `/opt` и перезапускает **только Cudy Monitor Pro**. Перед установкой рекомендуется создать резервную копию конфигурации роутера и Entware.
+
+По умолчанию монитор слушает **только `127.0.0.1:8237`** и не открывает сетевой интерфейс для соседних устройств. Чтобы открыть панель **только в доверенной LAN**, прочитайте [инструкцию доступа](docs/INSTALL.ru.md#доступ-из-локальной-сети).
+
+## Обновление и удаление
+
+- **Обновление:** вкладка «Обновления» в панели; используются GitHub Releases, SHA-256, резервный бинарник и проверка `/health`. [Подробности](docs/INSTALL.ru.md#обновления).
+- **Старые установки, чей OTA-источник стал приватным:** [однократная миграция](MIGRATION.md).
+- **Удаление:** остановить службу и удалить только её файлы; конфигурацию оставить для возможного восстановления. [Инструкция](docs/INSTALL.ru.md#удаление).
+
+## Безопасность и конфиденциальность
+
+**Встроенного входа по паролю нет.** Панель предназначена для доверенной домашней сети. Не открывайте порт `8237` в WAN, гостевую сеть или общедоступный туннель. Управление системными службами **отключено по умолчанию**; не включайте его при публичном тестировании.
+
+Монитор не отправляет диагностические сведения автору; браузер общается с локальной панелью. Для проверки обновлений выполняется запрос к GitHub Releases. Графики и журналы хранятся в памяти процесса, а не в облачном аккаунте. [Подробнее](docs/PRIVACY.ru.md) · [Политика безопасности](SECURITY.md).
+
+**Не публикуйте** в Issues свои IP-адреса, MAC, SSID, имена устройств, скриншоты с сетевыми данными, SSH-ключи, токены, конфигурации или необработанные журналы. [Как подготовить безопасный отчёт](docs/TESTING.ru.md).
+
+## Помочь проекту
+
+Будем рады тестам на других совместимых ARM64-устройствах — особенно запуску после перезагрузки, показаниям датчиков, сетевым графикам и отображению на телефоне. Установка и тестирование добровольны и выполняются на свой риск.
+
+[Инструкция тестировщику](docs/TESTING.ru.md) · [Частые проблемы](docs/TROUBLESHOOTING.ru.md) · [Как внести вклад](CONTRIBUTING.md) · [Изменения](CHANGELOG.md)
+
+## Исходники и лицензия
+
+`cudy-monitor/src/main.rs` — Rust-сервер, `cudy-monitor/web/index.html` — UI, `cudy-monitor/scripts/` — установщик, OTA и служба, `.github/workflows/` — CI.
+
+Код распространяется по [лицензии MIT](LICENSE). Проект независимый, не является официальным продуктом Cudy или Keenetic.
