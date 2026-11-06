@@ -2,7 +2,7 @@ name: Build Cudy Monitor ARM64
 on:
   push:
     branches:
-      - feature/cudy-monitor-pro-rust
+      - main
     paths:
       - 'cudy-monitor/**'
       - '.github/workflows/cudy-monitor-arm64.yml'
