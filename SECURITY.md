@@ -1,5 +1,7 @@
 # Security policy
 
+> **Disclaimer:** Use and test Cudy Monitor Pro at your own risk. The software is supplied **AS IS** without warranties. The author and contributors are not liable for resulting damage to the extent permitted by applicable law. Back up router and Entware configurations before installation.
+
 Cudy Monitor Pro is intended for a **trusted local network**. It does **not** include a password-protected login. Binding to a private IPv4 address and checking the HTTP Origin header **do not provide authentication**.
 
 ## Supported releases
