@@ -1,7 +1,6 @@
 # Cudy Monitor Pro — Release notes
 
 ## Unreleased — public testing distribution
-- Public Russian README and install/test/FAQ/privacy guides, plus English overview.
 - GitHub bug and feature request templates, PR template, contribution and security policies, MIT license.
 - Fixed fresh installer for BusyBox variants where sh -n is unsupported.
 - Added automated public-content privacy guard and installer compatibility CI checks.
@@ -13,5 +12,3 @@
 - Reject malformed or oversized header blocks (8 KiB limit).
 - Add regression tests and a dedicated pull-request CI job for Rust, shell and UI syntax.
 - No changes to service management defaults, D2K, DoQ, router configuration, or external networking.
-
-This release is source-side only until explicitly installed on a router. To migrate an old installation's OTA source from the former private repository, follow MIGRATION.md.
