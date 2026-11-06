@@ -1,0 +1,210 @@
+name: Build Cudy Monitor ARM64
+on:
+  push:
+    branches:
+      - feature/cudy-monitor-pro-rust
+    paths:
+      - 'cudy-monitor/**'
+      - '.github/workflows/cudy-monitor-arm64.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: cudy-monitor-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: cudy-monitor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify version and updater script
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh -n scripts/update.sh
+          sh -n scripts/S99cudy-monitor
+          sh -n scripts/install.sh
+          # BusyBox compatibility regression: do not use GNU-only od options.
+          ! grep -q 'od -An' scripts/install.sh
+          test "$(head -c 32 /dev/urandom | sha256sum | cut -d ' ' -f1 | wc -c)" -eq 65
+          # Phone-only deployment is intentionally excluded from public distribution.
+
+
+
+          cargo build
+          test "$(target/debug/cudy-monitor-pro --version)" = "cudy-monitor-pro $(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)"
+      - name: Unit tests (native x86_64)
+        run: cargo test --all-targets
+      - name: HTTP/API smoke tests (native)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build
+          CUDY_MONITOR_BIND=127.0.0.1:18237 target/debug/cudy-monitor-pro &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for _ in {1..30}; do
+            if curl --silent --fail http://127.0.0.1:18237/health >/dev/null; then break; fi
+            sleep 0.2
+          done
+          curl --fail --silent http://127.0.0.1:18237/ | grep -q "Cudy Monitor Pro"
+          curl --fail --silent http://127.0.0.1:18237/api/status | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["version"] and isinstance(x["version"],str)'
+          curl --fail --silent http://127.0.0.1:18237/api/history | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["max_points"]==1080 and x["interval_sec"]==10 and isinstance(x["points"],list)'
+          curl --fail --silent 'http://127.0.0.1:18237/api/network-history?iface=br0' | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["interface"]=="br0" and x["max_points"]==150'
+          test "$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:18237/api/network-history?iface=untrusted')" = 400
+          curl --fail --silent http://127.0.0.1:18237/api/logs | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["source"]=="monitor" and len(x["events"])<=80'
+          curl --fail --silent http://127.0.0.1:18237/api/service/action-status | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["action"] is None'
+          curl --fail --silent http://127.0.0.1:18237/api/status | python3 -c 'import json,sys; x=json.load(sys.stdin); assert isinstance(x["cores"],list) and "connections" in x and "cpu_mhz" in x and all("cpu" in p for p in x["processes"])'
+          for _ in $(seq 1 25); do curl --fail --silent http://127.0.0.1:18237/health >/dev/null; done
+          # Updater must be unavailable unless its verified Entware helper is installed.
+          test "$(curl --silent -o /dev/null -w '%{http_code}' http://127.0.0.1:18237/api/update/check)" = 503
+          test "$(curl --silent -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:18237/api/update/apply)" = 403
+          test "$(curl --silent -o /dev/null -w '%{http_code}' -X POST -H "X-Monitor-Action: apply" -H "Origin: http://evil.example" http://127.0.0.1:18237/api/update/apply)" = 403
+          test "$(curl --silent -o /dev/null -w '%{http_code}' -X POST -H "X-Monitor-Action: apply" -H "Origin: http://127.0.0.1:18237" http://127.0.0.1:18237/api/update/apply)" = 503
+          curl -fsS http://127.0.0.1:18237/api/status | python3 -c 'import sys,json;assert json.load(sys.stdin)["service_actions_enabled"] is False'
+          # Administrative service actions remain disabled by default, even with a valid Origin.
+          test "$(curl --silent -o /dev/null -w '%{http_code}' -X POST -H 'X-Monitor-Action: restart' -H 'Origin: http://127.0.0.1:18237' http://127.0.0.1:18237/api/service/d2k/restart)" = 403
+          test "$(curl --silent -o /dev/null -w '%{http_code}' -X POST -H 'X-Monitor-Action: restart' -H 'Origin: http://127.0.0.1:18237' http://127.0.0.1:18237/api/service/doq/restart)" = 403
+          test "$(curl --silent -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:18237/api/service/unknown/restart)" = 403
+      - name: Service-control opt-in authorization and path restrictions
+        shell: bash
+        run: |
+          set -euo pipefail
+          CUDY_MONITOR_BIND=127.0.0.1:18239 CUDY_MONITOR_SERVICE_ACTIONS=1 target/debug/cudy-monitor-pro &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for _ in {1..30}; do
+            if curl --silent --fail http://127.0.0.1:18239/health >/dev/null; then break; fi
+            sleep 0.2
+          done
+          endpoint='http://127.0.0.1:18239/api/service/d2k/restart'
+          # An enabled installation still rejects missing or foreign Origin.
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$endpoint")" = 403
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Origin: http://evil.invalid' -H 'X-Monitor-Action: restart' "$endpoint")" = 403
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Origin: http://127.0.0.1:18239' -H 'X-Monitor-Action: restart' 'http://127.0.0.1:18239/api/service/unknown/restart')" = 404
+          # Explicit start/stop/restart require a valid same-origin action header.
+          for service in d2k doq; do
+            for operation in start stop restart; do
+              path="http://127.0.0.1:18239/api/service/$service/$operation"
+              test "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$path")" = 403
+              test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Origin: http://evil.invalid' -H "X-Monitor-Action: $operation" "$path")" = 403
+              test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Origin: http://127.0.0.1:18239' -H 'X-Monitor-Action: wrong' "$path")" = 403
+              test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Origin: http://127.0.0.1:18239' -H "X-Monitor-Action: $operation" "$path")" = 503
+            done
+          done
+          curl -fsS http://127.0.0.1:18239/api/status | python3 -c 'import sys,json;assert json.load(sys.stdin)["service_actions_enabled"] is True'
+          # CI hosts do not carry a privileged router service script.
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Origin: http://127.0.0.1:18239' -H 'X-Monitor-Action: restart' "$endpoint")" = 503
+      - name: Frontend JavaScript syntax and accessibility smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          html=Path('web/index.html').read_text()
+          assert '<html lang="ru">' in html
+          assert 'id="auth"' not in html and 'id="login"' not in html
+          assert 'id="monitorrss"' in html
+          for control in ('cpubar','membar','diskbar','storagebar','viewtitle','viewsubtitle','healthsummary','processfilter','processcount','lastseen'):
+              assert 'id="'+control+'"' in html, control
+          assert 'data-go="network"' in html
+          assert 'function renderProcesses()' in html
+          assert 'function openPage(id)' in html
+          assert 'if(pollBusy)return' in html
+          assert 'lastPollAttempt' in html
+          assert "api/service/action-status" in html
+          assert "result.state==='verified'" in html
+          assert 'overflow-x:auto' in html
+          # The plots can stretch on mobile, but their unit labels must remain HTML text.
+          assert 'axis-labels' in html
+          assert 'axis-chart' in html
+          assert 'preserveAspectRatio="none"' in html
+          assert '<text x=' not in html and '<text y=' not in html
+          assert 'function drawHistory()' in html and 'function renderNetworkChart()' in html
+          from html.parser import HTMLParser
+          class IDs(HTMLParser):
+              def __init__(self): super().__init__(); self.ids=[]
+              def handle_starttag(self,tag,attrs): self.ids.extend(v for k,v in attrs if k=="id")
+          p=IDs(); p.feed(html)
+          assert len(p.ids)==len(set(p.ids)), 'Duplicate element IDs'
+          for control in ('cpuring','memring','tempring','diskring','networkgraph','netpagegraph','coreusage','memorybreakdown','topprocbrief','logrows','pollseconds','defaultmetric'):
+              assert control in p.ids, control
+          assert '<meta name="viewport"' in html
+          assert 'https://cdn.' not in html
+          assert "id=\"auth\"" not in html
+          js=html.split('<script>',1)[1].split('</script>',1)[0]
+          Path('/tmp/cudy-monitor-ui.js').write_text(js)
+          PY
+          node --check /tmp/cudy-monitor-ui.js
+      - name: Chromium desktop/mobile screenshot and overflow QA
+        shell: bash
+        run: |
+          set -euo pipefail
+          BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          test -n "$BROWSER"
+          mkdir -p /tmp/cudy-ui
+          python3 - <<'PY'
+          from pathlib import Path
+          html=Path('web/index.html').read_text()
+          html=html.replace('<script>','<script>'+Path('tests/mock-browser.js').read_text()+'</script><script>',1)
+          inject='''<script>setTimeout(()=>{const m=window.innerWidth<=650;const vis=getComputedStyle(document.querySelector(".mobile-header")).display!=="none";const overflow=document.documentElement.scrollWidth>window.innerWidth+3;document.body.dataset.qa=String(!overflow&&m===vis&&document.querySelector("#cpu").textContent.includes("%")&&document.querySelector("#coreusage").textContent.includes("Ядро")&&document.querySelector("#networkgraph .axis-labels")!==null&&document.querySelector("#graph .axis-labels")!==null)},300);</script>'''
+          Path('/tmp/cudy-ui/index.html').write_text(html.replace('</body>',inject+'</body>'))
+          PY
+          python3 -m http.server 18238 --bind 127.0.0.1 --directory /tmp/cudy-ui >/dev/null 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          sleep 1
+          for dim in 390,844 500,850 1440,900; do
+            w="${dim%,*}"; h="${dim#*,}"
+            "$BROWSER" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars --window-size="$w,$h" --virtual-time-budget=1600 --dump-dom "http://127.0.0.1:18238/" > "/tmp/cudy-$w-dom.html" 2>/dev/null
+            grep -q 'data-qa="true"' "/tmp/cudy-$w-dom.html"
+            "$BROWSER" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage --window-size="$w,$h" --virtual-time-budget=1500 --screenshot="/tmp/cudy-$w.png" "http://127.0.0.1:18238/" >/dev/null 2>&1
+            test "$(wc -c < "/tmp/cudy-$w.png")" -gt 10000
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-design-audit
+          path: |
+            /tmp/cudy-390.png
+            /tmp/cudy-500.png
+            /tmp/cudy-1440.png
+          if-no-files-found: error
+          retention-days: 7
+      - uses: taiki-e/install-action@cross
+      - name: Build static aarch64 MUSL binary
+        run: cross build --release --target aarch64-unknown-linux-musl
+      - name: Check output architecture
+        run: file target/aarch64-unknown-linux-musl/release/cudy-monitor-pro
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: cudy-monitor-pro-aarch64-musl
+          path: cudy-monitor/target/aarch64-unknown-linux-musl/release/cudy-monitor-pro
+          if-no-files-found: error
+          retention-days: 7
+      - name: Publish verified GitHub Release for panel OTA
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)"
+          test -n "$VERSION"
+          TAG="cudy-monitor-v$VERSION"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG exists; not replacing previously published version"
+            exit 0
+          fi
+          BIN=target/aarch64-unknown-linux-musl/release/cudy-monitor-pro
+          cp "$BIN" /tmp/cudy-monitor-pro-aarch64
+          HASH="$(sha256sum "$BIN" | cut -d ' ' -f 1)"
+          printf '%s\n%s\n' "$VERSION" "$HASH" > /tmp/latest.txt
+          gh release create "$TAG" /tmp/cudy-monitor-pro-aarch64 /tmp/latest.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Cudy Monitor Pro $VERSION" \
+            --notes "Standalone Rust ARM64 monitor with verified in-panel OTA and rollback. Router hardware testing is still required." \
+            --latest

@@ -1,0 +1,466 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cudy Monitor Pro</title><style>
+:root{color-scheme:dark;--bg:#0b1120;--card:#17233a;--stroke:#2b3e5b;--text:#eff6ff;--muted:#a1b3cc;--blue:#5c9aff;--green:#19d4a2}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,Arial}.shell{display:flex;min-height:100vh}aside{width:220px;background:#111b2d;border-right:1px solid var(--stroke);padding:25px 14px}.logo{font-size:20px;font-weight:800;margin:0 8px 34px}.logo small{display:block;font-size:12px;font-weight:400;color:var(--muted);margin-top:8px}nav button{display:block;width:100%;border:0;background:transparent;color:#bdcce4;text-align:left;padding:13px;border-radius:9px;margin:3px 0;cursor:pointer}nav button.active{background:#2d5ad9;color:white}main{width:100%;padding:28px;max-width:1600px;margin:auto}header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:22px}h1{font-size:26px;margin:0 0 4px}h2{font-size:16px;margin:0 0 16px}.muted{color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.card{padding:19px;background:linear-gradient(140deg,#1c2a42,var(--card));border:1px solid var(--stroke);border-radius:15px;min-width:0}.value{font-size:29px;font-weight:750;margin:9px 0}.label{font-size:12px;color:var(--muted)}.cols{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-top:14px}.bars{height:180px;border-bottom:1px solid #52617a}.bars svg{width:100%;height:100%;display:block}.chart-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:-5px 0 12px}.chart-tools select{background:#111b2d;color:#eff6ff;border:1px solid #52617a;border-radius:7px;padding:7px}.chart-tools small{color:#a1b3cc}.net-toggle{display:flex;align-items:center;gap:9px;margin-bottom:12px;color:var(--muted)}.net-toggle input{width:17px;height:17px;accent-color:var(--blue)}#netcount{margin:8px 0}.row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--stroke)}.row:last-child{border:0}.status{color:var(--green)}.bad{color:#ffb566}.hidden{display:none}button,input{font:inherit}#lock{background:#223652;color:white;border:1px solid #3c5270;border-radius:8px;padding:10px;cursor:pointer}.tabs{margin-top:14px}.page{margin-top:14px}.table{width:100%;border-collapse:collapse}.table td,.table th{text-align:left;border-bottom:1px solid var(--stroke);padding:11px 8px}.table th{color:var(--muted)}#auth{position:fixed;inset:0;background:#080d18ee;display:grid;place-items:center;padding:16px}#auth.hidden{display:none}#auth .card{width:min(400px,100%)}#auth input{background:#0d1728;color:white;border:1px solid #526381;border-radius:7px;padding:12px;width:100%;margin:14px 0}#auth button{background:#4775e5;border:0;padding:10px 18px;color:white;border-radius:8px}.footer{margin-top:20px;color:#8baedc}button:disabled{opacity:.38!important;cursor:not-allowed!important;filter:grayscale(.4)}@media(max-width:1000px){.grid{grid-template-columns:repeat(2,1fr)}.cols{grid-template-columns:1fr}}@media(max-width:650px){.shell{display:block}aside{width:100%;padding:9px;overflow:auto}.logo{display:none}nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}nav button{width:100%;white-space:normal;text-align:center;font-size:12px;padding:10px 4px;min-width:0}main{padding:15px}.card{padding:12px}.value{font-size:23px}header{flex-wrap:wrap}}
+
+/* Polished dashboard layout; no external fonts, graphics or JS dependencies. */
+:root{--card:#17263f;--stroke:#314766;--blue:#659bff}
+body{background:radial-gradient(ellipse 850px 420px at 65% -160px,#1b3460 0%,transparent 70%),var(--bg);font-size:14px}
+aside{position:sticky;top:0;height:100vh;background:#111b2e;flex-shrink:0}
+main{padding:30px;max-width:1380px}
+.logo{letter-spacing:-.3px}.logo small{line-height:1.4}
+nav button{transition:background-color .15s ease,color .15s ease}nav button:hover{background:#223553}
+nav button:focus-visible,button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid #9bc6ff;outline-offset:3px}
+.card{border-color:var(--stroke);box-shadow:0 10px 28px #060d191c;background:linear-gradient(150deg,#20324e 0%,#17243b 100%)}
+.card h2{letter-spacing:-.25px;font-size:17px}.value{letter-spacing:-1px}
+.stat-progress{height:5px;border-radius:99px;background:#0d182b;margin-top:14px;overflow:hidden}
+.stat-progress>i{display:block;height:100%;width:0;background:linear-gradient(90deg,#447df6,#70b5ff);border-radius:99px;transition:width .5s}
+.stat-progress.warn>i{background:linear-gradient(90deg,#e7a34d,#fa7056)}
+#viewtitle{font-size:27px;letter-spacing:-.5px}#viewsubtitle{font-size:13px;line-height:1.5}
+#healthsummary{font-size:12px;color:#a8bddd;margin-top:9px}
+#uptimevalue{font-variant-numeric:tabular-nums}
+.toolbar{display:flex;gap:9px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:15px}
+.filter-input{padding:11px 13px;border-radius:9px;border:1px solid var(--stroke);background:#101c31;color:#edf4ff;max-width:100%;width:260px}
+.filter-input::placeholder{color:#859bb8}
+.table-scroll{overflow-x:auto}
+.table{font-variant-numeric:tabular-nums}
+.table tbody tr:hover{background:#ffffff07}
+.row{gap:10px;min-width:0}.row span{overflow-wrap:anywhere;text-align:right}
+.quick-nav{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0 4px}
+.quick-nav button{background:#233857;color:#cfe2ff;border:1px solid #3c5678;border-radius:9px;padding:8px 12px;cursor:pointer}
+.quick-nav button:hover{background:#31548a}
+#graph{position:relative}#graph svg{overflow:visible}
+#graphempty{font-size:12px}
+#netbrief .row{gap:8px}#netbrief .row span{white-space:nowrap;font-variant-numeric:tabular-nums;font-size:12px}
+#storageinfo{line-height:1.65}
+@media(max-width:1000px){aside{width:196px}main{padding:23px}}
+@media(max-width:650px){aside{position:static;height:auto;width:100%;padding:12px}main{padding:16px}nav button{min-height:46px;font-size:12px}#viewtitle{font-size:25px}.grid{gap:11px}.cols{gap:11px}.card{padding:15px}.value{font-size:25px}.quick-nav{gap:6px}.table td,.table th{padding:11px 6px}#netbrief .row span{font-size:11px}}
+
+/* Real phone-first layout, including Android Chrome's desktop-site viewport. */
+@media(max-width:650px), (pointer:coarse) and (max-width:1100px){
+ .shell{display:block}
+ aside{position:relative;width:100%;height:auto;padding:8px 12px;border-right:0;border-bottom:1px solid var(--stroke);background:#111b2d}
+ .logo{display:none}
+ nav{display:flex;align-items:stretch;gap:7px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scrollbar-width:none;padding:2px 0 7px}
+ nav::-webkit-scrollbar{display:none}
+ nav button{display:flex;align-items:center;justify-content:center;flex:0 0 auto;white-space:nowrap;min-width:unset;width:auto;padding:11px 15px;min-height:42px;font-size:13px;line-height:1.2;text-align:center;margin:0;scroll-snap-align:start;border-radius:10px;background:#19263d}
+ nav button.active{background:#3168da;box-shadow:0 2px 12px #193f8350}
+ main{padding:17px 15px 26px;max-width:780px}
+ header{align-items:start;gap:6px;margin-bottom:16px}
+ #viewtitle{font-size:24px;line-height:1.17}
+ #viewsubtitle{font-size:12px;line-height:1.4}
+ #healthsummary{margin-top:6px;font-size:12px}
+ .grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ .cols{grid-template-columns:1fr;margin-top:11px;gap:11px}
+ .card{padding:14px;border-radius:13px}
+ .value{font-size:25px;margin:8px 0}
+ .label{font-size:11px}
+ .stat-progress{margin-top:11px}
+ .quick-nav{margin:12px 0 0;gap:7px}
+ .quick-nav button{font-size:12px;padding:8px 11px}
+ .row{padding:11px 0}
+ .footer{font-size:12px}
+ #netbrief .row span{font-size:11px}
+}
+@media(max-width:365px){nav button{padding:10px 12px;font-size:12px}.card{padding:12px}.value{font-size:22px}main{padding-left:11px;padding-right:11px}}
+@media(min-width:1101px){.grid{gap:16px}.cols{gap:16px}.card{border-radius:16px}main{padding:36px 42px}}
+
+/* Reference-inspired desktop dashboard and true mobile layout. */
+:root{--bg:#0a101c;--card:#172237;--stroke:#273852;--text:#f3f7ff;--muted:#a1b0c9;--blue:#367cff;--green:#00d58d}
+body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#0c1424}
+.shell{max-width:100%;min-height:100vh}
+aside{width:236px;background:linear-gradient(170deg,#101b2d,#0c1524);box-shadow:8px 0 32px #0000001c;padding:22px 12px}
+.logo{position:relative;margin:0 3px 28px;padding:4px 4px 4px 48px;font-size:17px;min-height:46px;line-height:1.15}
+.logo:before{content:"▥";position:absolute;left:0;top:0;width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#144d99,#2567e5);display:grid;place-items:center;color:#5ff4ed;font-size:27px;box-shadow:0 0 20px #174c9544}
+.logo small{font-size:11px}
+nav button{font-size:14px;font-weight:520;border-radius:10px;padding:13px 14px;margin:4px 0}
+nav button.active{background:linear-gradient(110deg,#2186fa,#4443e6);box-shadow:0 4px 15px #1555ff44}
+main{max-width:1580px;padding:24px 22px;margin:0 auto}
+header{margin-bottom:18px;padding:0 5px}
+#viewtitle{font-size:26px}
+#online{background:#143c2d;border:1px solid #205f48;border-radius:20px;padding:7px 11px;font-size:12px}
+.card{background:linear-gradient(150deg,#1b2941,#172237);box-shadow:0 5px 16px #050c1a1a;border:1px solid #283a55;border-radius:14px}
+.card h2{font-size:15px}
+.kpi-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:11px}
+.kpi{display:flex;align-items:center;gap:12px;padding:14px;min-height:114px}
+.kpi-info{min-width:0;flex:1;overflow-wrap:anywhere}
+.kpi .label{font-size:10px;letter-spacing:.35px}
+.kpi .value{font-size:21px;white-space:nowrap;margin:5px 0}
+.kpi .muted{font-size:11px;line-height:1.35}
+.kpi .stat-progress{height:4px;margin-top:7px}
+.kpi #monitorrss{margin-top:4px!important}
+.ring{--pct:0;--ring-color:#55a0ff;position:relative;flex:0 0 72px;width:72px;height:72px;border-radius:50%;background:conic-gradient(var(--ring-color) calc(var(--pct)*1%),#37475f 0);display:grid;place-items:center;transform:rotate(-90deg);box-shadow:inset 0 0 0 2px #52658025}
+.ring:before{content:"";position:absolute;inset:-3px;border:1px solid #4c607a66;border-radius:50%}
+.ring-inner{width:54px;height:54px;background:#101b2d;border-radius:50%;display:grid;place-items:center;transform:rotate(90deg)}
+.ring strong{font-size:14px;letter-spacing:-.4px}
+.temp-ring{--ring-color:#ffa72a}
+.ram-ring{--ring-color:#00db91}
+.disk-ring{--ring-color:#19c4ef}
+.uptime-icon{flex:0 0 56px;color:#8898ff;font-size:54px;line-height:1}
+.dashboard-top{grid-template-columns:minmax(0,2fr) minmax(260px,1fr);gap:11px}
+.dashboard-bottom{grid-template-columns:1.6fr 1fr;gap:11px}
+.card-head{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.card-head h2{margin:0 0 14px}
+.mini-label{font-size:10px;color:#9eb3d1;white-space:nowrap}
+.history-card,.traffic-card{min-height:305px}
+.history-card .bars{height:202px}
+.networkgraph{height:115px;margin:5px 0 10px;border-bottom:1px solid #3a5576}
+.networkgraph svg{display:block;width:100%;height:100%}
+.traffic-metrics{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:12px;margin-bottom:10px}
+.traffic-metrics b{font-weight:750;color:#eff9ff}
+.traffic-metrics .down{color:#35bfff}.traffic-metrics .up{color:#00d797}
+#connectioncount{font-size:12px;margin-bottom:9px}
+#netbrief .row:nth-child(n+3){display:none}
+#memorybreakdown{height:15px;display:flex;overflow:hidden;border-radius:8px;margin:13px 0;background:#6c7790}
+#memorybreakdown span{height:100%}
+#topprocbrief{display:flex;flex-wrap:wrap;gap:8px}
+.memory-pill{font-size:11px;padding:6px 9px;border-radius:8px;background:#253750;border:1px solid #364b65;white-space:nowrap}
+.memory-pill i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px}
+.subsection{margin:18px 0 8px!important}
+.quick-nav{display:none}
+@media(max-width:1350px){.kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.kpi{min-height:102px}}
+@media(max-width:950px){.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-top,.dashboard-bottom{grid-template-columns:1fr}}
+@media(max-width:650px), (pointer:coarse) and (max-width:1100px){
+ aside{width:100%;border-bottom:1px solid #253a56}
+ main{padding:14px 13px 28px}
+ .kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+ .kpi{display:flex;flex-direction:column;text-align:center;justify-content:center;min-height:135px;padding:10px;gap:5px}
+ .ring{width:67px;height:67px;flex-basis:67px}
+ .ring-inner{width:50px;height:50px}
+ .kpi .value{font-size:18px;margin:2px 0}
+ .kpi .muted,.kpi #monitorrss{font-size:10px}
+ .kpi .label{font-size:10px}
+ .kpi .stat-progress{display:none}
+ .uptime-card{grid-column:span 2;flex-direction:row;min-height:77px;text-align:left}
+ .uptime-card .value{font-size:19px}
+ .uptime-icon{font-size:41px;flex-basis:48px}
+ .dashboard-top,.dashboard-bottom{grid-template-columns:1fr;gap:10px}
+ .history-card,.traffic-card{min-height:0}
+ .history-card .bars{height:145px}
+ .networkgraph{height:110px}
+ #netbrief .row:nth-child(n+3){display:none}
+ .quick-nav{display:flex}
+ .card-head{align-items:start}
+}
+.chart-legend{display:flex;gap:14px;justify-content:flex-end;position:absolute;top:0;right:0;font-size:11px;z-index:1}.history-card .bars{position:relative;padding-top:18px}.setting-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--stroke)}.setting-row select,.utility-button{border:1px solid var(--stroke);background:#213653;color:#eef7ff;border-radius:9px;padding:9px 12px;cursor:pointer}.setting-row select{max-width:65%}#logrows .row span:last-child{text-align:left;flex:1}.toolbar h2{margin-bottom:4px}.core-row{margin-bottom:12px}.core-row>div:first-child{display:flex;justify-content:space-between;color:#c7d5ee;font-size:12px;margin-bottom:6px}.core-track{height:7px;border-radius:99px;background:#34445e;overflow:hidden}.core-track i{display:block;background:linear-gradient(90deg,#725fff,#bd65ff);height:100%;border-radius:99px}.core-card{min-width:0}.dashboard-top{grid-template-columns:minmax(0,1.8fr) minmax(185px,.8fr) minmax(220px,.9fr)}@media(max-width:1200px){.dashboard-top{grid-template-columns:1.4fr 1fr}.traffic-card{grid-column:span 2}}@media(max-width:950px){.dashboard-top{grid-template-columns:1fr}.traffic-card{grid-column:auto}}@media(max-width:650px), (pointer:coarse) and (max-width:1100px){.dashboard-top{grid-template-columns:1fr}.traffic-card{grid-column:auto}}.process-sort{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:13px}.process-sort button{border:1px solid #344968;background:#23344e;color:#c4d4ee;padding:8px 13px;border-radius:9px;cursor:pointer}.process-sort button.sort-active{background:#285fe1;color:white;border-color:#4e83ed}.table th,.table td{white-space:nowrap}.net-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 14px}.net-tabs button{background:#253956;color:#cddaf2;border:1px solid #334d6e;border-radius:9px;padding:10px 14px;cursor:pointer}.net-tabs button.nettab-active{background:linear-gradient(110deg,#187ff3,#5344e4);color:#fff}#netpagegraph{height:180px}.mobile-header,.mobile-backdrop{display:none}
+.aside-status{margin:24px 4px 4px;background:#1b2b44;border:1px solid #2e4160;border-radius:12px;padding:13px;font-size:12px}
+.aside-status small{display:block;font-size:11px;color:#abbfdb;margin-top:7px}
+@media(max-width:650px), (pointer:coarse) and (max-width:1100px){
+ .shell{display:block}
+ .mobile-header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;background:#101c30;border-bottom:1px solid #2b405d;font-weight:750;font-size:17px}
+ .mobile-header span{color:#eff8ff}
+ .mobile-header button{background:#233a59;color:white;border:1px solid #3e587b;border-radius:11px;padding:8px 14px;font-size:20px;cursor:pointer}
+ .shell aside{position:fixed;top:0;left:0;bottom:0;z-index:71;width:min(285px,85vw);height:100dvh;padding:23px 13px;background:#101c30;overflow:auto;transform:translateX(-106%);transition:transform .2s ease;border-right:1px solid #314b70}
+ .shell.menu-open aside{transform:translateX(0)}
+ .shell.menu-open .mobile-backdrop{display:block;position:fixed;inset:0;background:#0009;z-index:70}
+ .shell aside .logo{display:block}
+ .shell aside nav{display:block;padding:0;overflow:visible}
+ .shell aside nav button{display:block;width:100%;margin:5px 0;text-align:left;font-size:14px;padding:13px 14px;background:transparent}
+ .shell aside nav button.active{background:linear-gradient(110deg,#2186fa,#4443e6)}
+ .shell aside .aside-status{display:block}
+}
+.service-row{flex-wrap:wrap}.service-restart{border:1px solid #36567c;border-radius:9px;color:#dce9ff;background:#243a59;padding:8px 11px;cursor:pointer;font-size:12px}.service-restart:disabled{opacity:.45;cursor:wait}#serviceactionstatus{margin:10px 0;font-size:12px}.service-buttons{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.service-locked{font-size:12px}.service-row{gap:10px}.service-row>b{min-width:70px}@media(max-width:650px){.service-row{display:grid;grid-template-columns:1fr auto;align-items:center}.service-buttons,.service-locked{grid-column:1/-1;justify-content:flex-start}.service-buttons button{font-size:13px}}@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+/* Chart labels must never be SVG text: preserveAspectRatio=none distorts glyphs. */
+.axis-chart{display:flex;align-items:stretch;gap:8px;width:100%;min-width:0;margin:12px 0 3px}
+.axis-labels{flex:0 0 84px;display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end;height:132px;padding:0 0 0 2px;box-sizing:border-box;color:#b7c7e0;font:12px/1.1 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap;font-variant-numeric:tabular-nums}
+.axis-temperature{flex-basis:43px;align-items:flex-start;color:#ffc27d}
+.axis-empty{flex-basis:0;display:none}
+.axis-main{min-width:0;flex:1}
+.axis-plot{width:100%;height:132px;overflow:hidden}
+.axis-plot svg{width:100%;height:100%;display:block}
+.axis-time{display:flex;justify-content:space-between;gap:2px;color:#b7c7e0;font:11px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;padding-top:6px;white-space:nowrap}
+.networkgraph,#netpagegraph{height:auto!important;min-height:160px;border-bottom:0!important}
+#netpagegraph .axis-plot{height:174px}
+#netpagegraph .axis-labels{height:174px}
+#graph{height:auto!important;min-height:175px}
+#graph .axis-chart{padding-top:18px}
+#graph .axis-plot,#graph .axis-labels{height:145px}
+@media(max-width:650px){
+ .axis-chart{gap:5px}
+ .axis-labels{flex-basis:68px;font-size:11px}
+ .axis-temperature{flex-basis:33px;font-size:10px}
+ .axis-plot{height:125px}
+ .networkgraph .axis-labels,.networkgraph .axis-plot{height:125px}
+ #netpagegraph .axis-labels,#netpagegraph .axis-plot{height:155px}
+ #graph .axis-plot,#graph .axis-labels{height:132px}
+ .axis-time{font-size:10px}
+}
+
+/* Compact, touch-friendly mobile panel: preserve readable metrics and plot axes. */
+@media(max-width:650px){
+ .mobile-header{padding:9px 13px;min-height:54px;box-sizing:border-box;font-size:16px}
+ .mobile-header button{font-size:19px;padding:7px 12px;min-width:43px;min-height:43px}
+ main{padding:12px 12px 24px}
+ header{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px;padding:0 2px}
+ header>div:first-child{width:100%}
+ header>div:last-child{width:100%;display:flex;flex-wrap:wrap;align-items:center;gap:7px}
+ #viewtitle{font-size:23px;line-height:1.15}
+ #viewsubtitle{font-size:11px;line-height:1.35;margin-top:4px}
+ #healthsummary{font-size:11px;line-height:1.35;margin-top:5px}
+ #online{padding:5px 9px;font-size:11px}
+ .kpi-grid{gap:9px}
+ .kpi{min-height:124px;padding:10px 8px;gap:4px}
+ .kpi .value{font-size:17px}
+ .kpi .muted{font-size:10px}
+ .kpi .ring{width:62px;height:62px;flex-basis:62px}
+ .kpi .ring-inner{width:46px;height:46px}
+ .kpi .ring strong{font-size:13px}
+ .uptime-card{min-height:65px}
+ .quick-nav{display:flex;overflow-x:auto;flex-wrap:nowrap;gap:7px;scrollbar-width:none;overscroll-behavior-x:contain;padding:4px 1px}
+ .quick-nav::-webkit-scrollbar{display:none}
+ .quick-nav button{flex:0 0 auto;padding:9px 10px;font-size:12px;min-height:40px;white-space:nowrap}
+ .net-tabs{flex-wrap:nowrap;overflow-x:auto;gap:7px;scrollbar-width:none;overscroll-behavior-x:contain;padding:3px 0 9px}
+ .net-tabs::-webkit-scrollbar{display:none}
+ .net-tabs button{flex:0 0 auto;white-space:nowrap;font-size:12px;padding:10px 12px;min-height:42px}
+ .card{padding:13px 12px}
+ .card h2{font-size:15px;line-height:1.3}
+ .card-head{gap:6px;flex-wrap:wrap}
+ .mini-label{font-size:10px}
+ .chart-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+ .chart-tools select{max-width:100%;min-width:0}
+ #historyinfo{flex:0 0 100%;font-size:11px}
+ .chart-legend{flex-wrap:wrap;gap:8px!important;position:static!important;justify-content:flex-start!important;margin-bottom:8px}
+ .networkgraph .axis-chart,#netpagegraph .axis-chart{margin-top:8px}
+}
+@media(max-width:365px){
+ .axis-labels{flex-basis:65px;font-size:10px}
+ .axis-temperature{flex-basis:29px;font-size:10px}
+ .axis-chart{gap:4px}
+ .kpi .label{font-size:9px}
+ .net-tabs button{font-size:11px}
+}
+</style></head><body><div class="shell"><div class="mobile-header"><span>▥ Cudy Monitor Pro</span><button id="menutoggle" type="button" aria-label="Меню" aria-expanded="false">☰</button></div><div id="menubackdrop" class="mobile-backdrop"></div><aside><div class="logo">▣ Cudy Monitor Pro<small>WBR3000UAX · KN-3811 EA</small></div><nav><button class="active" data-page="overview">◫ Обзор</button><button data-page="processes">▤ Процессы</button><button data-page="services">◉ Сервисы</button><button data-page="network">⌁ Сеть</button><button data-page="storage">▣ Хранилище</button><button data-page="logs">☷ Журналы</button><button data-page="settings">⚙ Настройки</button><button data-page="updates">⇪ Обновления</button></nav><div class="aside-status"><span class="status">● KeeneticOS</span><small>Entware · ARM64</small><small>Монитор <b id="sidebarversion">—</b></small></div></aside><main><header><div><h1 id="viewtitle">Обзор системы</h1><div id="viewsubtitle" class="muted">Cudy WBR3000UAX · KeeneticOS · Entware · Rust ARM64</div><div id="healthsummary">Подключение к домашнему роутеру…</div></div><div><span id="online" class="bad">● Подключение</span> · <span id="lastseen">ожидание</span></div></header>
+<section id="overview" class="page"><div class="grid kpi-grid">
+<div class="card kpi"><div class="ring cpu-ring" id="cpuring"><div class="ring-inner"><strong id="cpuringvalue">—</strong></div></div><div class="kpi-info"><div class="label">ПРОЦЕССОР</div><div class="value" id="cpu">—</div><div class="muted">Нагрузка CPU</div><div class="stat-progress" id="cpubar"><i></i></div></div></div>
+<div class="card kpi"><div class="ring temp-ring" id="tempring"><div class="ring-inner"><strong id="tempringvalue">—</strong></div></div><div class="kpi-info"><div class="label">ТЕМПЕРАТУРА</div><div class="value" id="temp">—</div><div class="muted">Процессор</div><div class="label" id="tempnote">Датчик ядра</div></div></div>
+<div class="card kpi"><div class="ring ram-ring" id="memring"><div class="ring-inner"><strong id="memringvalue">—</strong></div></div><div class="kpi-info"><div class="label">ПАМЯТЬ</div><div class="value" id="mem">—</div><div class="muted" id="mem2">—</div><div class="stat-progress" id="membar"><i></i></div></div></div>
+<div class="card kpi"><div class="ring disk-ring" id="diskring"><div class="ring-inner"><strong id="diskringvalue">—</strong></div></div><div class="kpi-info"><div class="label">ФЛЕШ / ENTWARE</div><div class="value" id="disk">—</div><div class="muted" id="disk2">—</div><div class="stat-progress" id="diskbar"><i></i></div><div class="label" id="monitorrss">Монитор: —</div></div></div>
+<div class="card kpi uptime-card"><div class="uptime-icon">◷</div><div class="kpi-info"><div class="label">АПТАЙМ</div><div class="value" id="uptimecard">—</div><div class="muted" id="uptimenote">Время работы роутера</div></div></div>
+</div><div class="quick-nav"><button type="button" data-go="network">Сетевой трафик</button><button type="button" data-go="services">Состояние служб</button><button type="button" data-go="updates">Обновления панели</button></div><div class="cols dashboard-top"><div class="card history-card"><div class="card-head"><h2>История ресурсов · до 3 часов</h2><span class="mini-label">RAM, без записи на USB</span></div><div class="chart-tools"><label for="historymetric">Показатель:</label><select id="historymetric"><option value="0">Все показатели</option><option value="1">CPU, %</option><option value="2">RAM, %</option><option value="3">Температура, °C</option></select><small id="historyinfo">Накопление истории…</small></div><div class="bars" id="graph" role="img" aria-label="График выбранного показателя за последние три часа"></div></div><div class="card core-card"><div class="card-head"><h2>Ядра процессора</h2><span class="mini-label">По данным /proc/stat</span></div><div id="coreusage">Накапливаем измерения…</div><div class="muted" id="corehint">Загрузка каждого ядра</div></div><div class="card traffic-card"><div class="card-head"><h2>Сеть сейчас</h2><span class="mini-label" id="networklabel">WAN · eth2.4</span></div><div id="networkgraph" class="networkgraph" role="img" aria-label="График трафика WAN за пять минут"></div><div id="netmetrics" class="traffic-metrics">Ожидание данных…</div><div id="connectioncount" class="muted">Соединений: —</div><div id="netbrief"></div></div></div><div class="cols dashboard-bottom"><div class="card"><h2>Память и основные процессы</h2><div id="memorybreakdown"></div><div id="topprocbrief"></div></div><div class="card"><h2>Температурные датчики</h2><div id="tempdetail"></div><h2 class="subsection">Службы</h2><div id="servicebrief"></div></div></div></section>
+<section id="processes" class="page hidden"><div class="card"><div class="toolbar"><h2>Процессы по RAM</h2><input class="filter-input" id="processfilter" type="search" aria-label="Поиск процесса" placeholder="Поиск по имени процесса"></div><div class="process-sort" role="group" aria-label="Сортировка процессов"><button class="sort-active" type="button" data-sort="cpu">По процессору</button><button type="button" data-sort="mem">По памяти</button><button type="button" data-sort="name">По имени</button></div><div class="table-scroll"><table class="table"><thead><tr><th>Имя</th><th>PID</th><th>CPU</th><th>RAM</th></tr></thead><tbody id="procrows"></tbody></table></div><p class="muted" id="processcount"></p></div></section><section id="services" class="page hidden"><div class="card"><h2>Обнаружение процессов служб</h2><div id="servicerows"></div><p class="muted">«Установлен» означает наличие KeenKit, а не запущенный процесс. Для D2K доступно включение, выключение и перезапуск; для DoQ — включение, перезапуск и временная пауза на 90 секунд с автоматическим восстановлением. Управление по умолчанию отключено на сервере, поскольку доступ к панели не требует токена. Действия могут временно нарушить работу DNS.</p><div id="serviceactionstatus" class="muted" role="status" aria-live="polite"></div></div></section><section id="network" class="page hidden"><div class="card"><h2>Сетевой трафик</h2><div class="net-tabs" role="group" aria-label="Интерфейс графика"><button class="nettab-active" data-iface="eth2.4">WAN</button><button data-iface="br0">LAN</button><button data-iface="ra9">Wi-Fi 5 ГГц</button><button data-iface="ra1">Wi-Fi 2,4 ГГц</button></div><div id="netpagegraph" class="networkgraph">Накапливаем измерения…</div><h2>Сетевые интерфейсы</h2><label class="net-toggle"><input type="checkbox" id="showallnetwork"> Показывать все, включая неактивные</label><div id="netcount" class="muted" role="status"></div><div id="netrows"></div></div></section><section id="storage" class="page hidden"><div class="card"><h2>Флешка и Entware</h2><div id="storageinfo"></div><div class="stat-progress" id="storagebar"><i></i></div><p class="muted">История измерений хранится только в оперативной памяти и не записывается на USB.</p></div></section><section id="logs" class="page hidden"><div class="card"><div class="toolbar"><div><h2>Журнал монитора</h2><div class="muted">События работы Cudy Monitor Pro. До 80 записей только в оперативной памяти; это не системный журнал KeeneticOS.</div></div><button id="refreshlogs" class="utility-button">Обновить</button></div><div id="logrows" role="log" aria-live="polite">Загрузка событий…</div></div></section>
+<section id="settings" class="page hidden"><div class="card"><h2>Настройки интерфейса</h2><p class="muted">Эти параметры меняют только отображение в твоём браузере. Настройки маршрутизатора и служб не затрагиваются.</p><div class="setting-row"><label for="pollseconds">Обновление экрана</label><select id="pollseconds"><option value="2">Каждые 2 секунды</option><option value="5">Каждые 5 секунд</option><option value="10">Каждые 10 секунд</option></select></div><div class="setting-row"><label for="defaultmetric">График по умолчанию</label><select id="defaultmetric"><option value="0">Все показатели</option><option value="1">CPU</option><option value="2">RAM</option><option value="3">Температура</option></select></div><div class="setting-row"><span>Текущая версия</span><b id="settingsversion">—</b></div><p class="muted" id="settingsmessage">Изменения сохраняются в браузере, не на USB.</p></div></section><section id="updates" class="page hidden"><div class="card"><h2>Обновления Cudy Monitor Pro</h2><p class="muted">Обновление только из проверенных выпусков GitHub. Перед заменой создаётся резервная копия, при ошибке запуска выполняется откат.</p><div class="row"><span>Установленная версия</span><b id="currentversion">—</b></div><div class="row"><span>Версия на GitHub</span><b id="latestversion">—</b></div><div id="updatestatus" class="muted" role="status" aria-live="polite" style="padding:15px 0">Нажмите «Проверить обновления».</div><button id="checkupdate" style="background:#3b5a96;color:white;border:0;padding:12px;border-radius:8px;cursor:pointer">Проверить обновления</button> <button id="applyupdate" disabled style="background:#266d59;color:white;border:0;padding:12px;border-radius:8px;cursor:pointer">Установить обновление</button><p class="muted">После установки панель кратковременно отключится и запустится заново. Без установленного компонента обновлений кнопка будет недоступна.</p></div></section><div class="footer">⚡ Rust · Мониторинг без записи истории на USB · Управление службами только при отдельном разрешении</div></main></div>
+<script>
+'use strict';const el=id=>document.getElementById(id);let historyPoints=[],historyLastFetch=0,allNetwork=[],allProcesses=[],lastSuccess=0,lastPollAttempt=0,pollBusy=false,serviceActionPending=false,netPoints=[],netHistoryFetch=0,networkIface="eth2.4";const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const speed=x=>Number(x)*8>=1000000?(Number(x)*8/1000000).toFixed(1)+' Мбит/с':(Number(x)*8/1000).toFixed(1)+' Кбит/с';async function poll(){if(pollBusy)return;pollBusy=true;lastPollAttempt=Date.now();try{const r=await fetch('/api/status',{cache:'no-store'});if(!r.ok)throw Error(r.status);const d=await r.json();if(d.version){el('currentversion').textContent=d.version;el('settingsversion').textContent=d.version;el('sidebarversion').textContent=d.version;}el('online').textContent='● Работает';el('online').className='status';lastSuccess=Date.now();el('lastseen').textContent='данные обновлены';const mp=d.mem_total?100*d.mem_used/d.mem_total:0,dp=d.disk_total?100*d.disk_used/d.disk_total:0;el('cpu').textContent=d.cpu.toFixed(1)+'%';el('temp').textContent=d.temps.length?d.temps[0].c.toFixed(1)+' °C':'Нет датчика';el('mem').textContent=mp.toFixed(1)+'%';el('mem2').textContent=d.mem_used+' / '+d.mem_total+' МБ';el('disk').textContent=dp.toFixed(1)+'%';el('disk2').textContent=d.disk_used+' / '+d.disk_total+' МБ';el('monitorrss').textContent='Монитор: '+Number(d.monitor_rss_mb).toFixed(2)+' МБ RAM';
+const pct=(id,p)=>{const bar=el(id);bar.firstElementChild.style.width=Math.max(0,Math.min(100,p))+'%';bar.classList.toggle('warn',p>85)};
+pct('cpubar',d.cpu);pct('membar',mp);pct('diskbar',dp);pct('storagebar',dp);const ring=(id,p,v)=>{el(id).style.setProperty('--pct',String(Math.max(0,Math.min(100,p))));el(id+'value').textContent=v};const t=d.temps.length?d.temps[0].c:null;ring('cpuring',d.cpu,Math.round(d.cpu)+'%');ring('memring',mp,Math.round(mp)+'%');ring('diskring',dp,Math.round(dp)+'%');ring('tempring',t===null?0:t,t===null?'—':Math.round(t)+'°');el('uptimecard').textContent=Math.floor(d.uptime/86400)+' д. '+String(Math.floor(d.uptime%86400/3600)).padStart(2,'0')+':'+String(Math.floor(d.uptime%3600/60)).padStart(2,'0');renderCoreUsage(d.cores||[],d.cpu_mhz);el('connectioncount').textContent=d.connections_max?'Соединений: '+d.connections+' из '+d.connections_max:'Соединений: нет данных';
+el('healthsummary').textContent='Время работы роутера: '+Math.floor(d.uptime/86400)+' д. '+Math.floor(d.uptime%86400/3600)+' ч. · Монитор '+(d.version||'—');if(!d.disk_total){el('disk').textContent='Нет данных';el('disk2').textContent=d.disk_mount;}if(Date.now()-historyLastFetch>=10000){historyLastFetch=Date.now();fetchHistory();}if(Date.now()-netHistoryFetch>=10000){netHistoryFetch=Date.now();fetchNetworkHistory();}const primary=['eth2.4','br0'];const ranked=[...d.network].sort((a,b)=>{const ai=primary.indexOf(a.name),bi=primary.indexOf(b.name);if(ai>=0||bi>=0)return ai<0?1:bi<0?-1:ai-bi;return(b.rx+b.tx)-(a.rx+a.tx)||a.name.localeCompare(b.name)});el('netbrief').innerHTML=ranked.slice(0,5).map(x=>'<div class="row"><b>'+escape(x.name)+'</b><span>↓ '+speed(x.rx)+' ↑ '+speed(x.tx)+'</span></div>').join('');allNetwork=d.network;renderNetwork();el('tempdetail').innerHTML=d.temps.length?d.temps.map(x=>'<div class="row"><span>'+escape(x.name)+'</span><b>'+x.c.toFixed(1)+' °C</b></div>').join(''):'Датчики не обнаружены';const svc=d.services.map(x=>{const label=x.detected?'● Работает':(x.installed?'○ Установлен':'○ Не определён');return '<div class="row"><b>'+escape(x.name)+'</b><span class="'+(x.detected?'status':'bad')+'">'+label+'</span></div>'}).join('');el('servicebrief').innerHTML=svc;
+el('servicerows').innerHTML=d.services.map(x=>{
+ const supported=x.name==='D2K'||x.name==='DoQ';
+ const id=x.name.toLowerCase();
+ const allowed=d.service_actions_enabled===true;
+ const controls=supported&&allowed?'<span class="service-buttons">'+
+  (x.detected?'<button class="service-restart" type="button" data-service="'+id+'" data-action="stop" title="'+(id==='doq'?'Временная остановка на 90 секунд':'Остановить службу')+'">■ '+(id==='doq'?'Пауза 90 с':'Выключить')+'</button>':'<button class="service-restart" type="button" data-service="'+id+'" data-action="start">▶ Включить</button>')+
+  (x.detected?'<button class="service-restart" type="button" data-service="'+id+'" data-action="restart">↻ Перезапуск</button>':'')+
+ '</span>':(supported?'<span class="muted service-locked">Управление отключено</span>':'');
+ const label=x.detected?'● Работает':(x.installed?'○ Установлен':'○ Не определён');
+ return '<div class="row service-row"><b>'+escape(x.name)+'</b><span class="'+(x.detected?'status':'bad')+'">'+label+'</span>'+controls+'</div>';
+ }).join('');
+document.querySelectorAll('[data-service]').forEach(btn=>btn.onclick=()=>controlService(btn.dataset.service,btn.dataset.action));
+document.querySelectorAll('[data-service]').forEach(btn=>btn.disabled=serviceActionPending);allProcesses=d.processes;renderProcesses();renderMemorySummary(d);el('storageinfo').textContent=d.disk_mount+': '+d.disk_used+' / '+d.disk_total+' МБ, загрузка '+dp.toFixed(1)+'%, uptime '+Math.floor(d.uptime/3600)+' ч.';}catch(e){el('online').textContent='● Нет связи';el('online').className='bad';el('lastseen').textContent=lastSuccess?'последний ответ '+Math.floor((Date.now()-lastSuccess)/1000)+' с назад':'нет данных';el('healthsummary').textContent='Нет связи с монитором. Данные могут быть устаревшими.'}finally{pollBusy=false}}
+async function fetchNetworkHistory(){
+ try{
+  const r=await fetch('/api/network-history?iface='+encodeURIComponent(networkIface),{cache:'no-store'});if(!r.ok)throw Error('network unavailable');
+  const d=await r.json();netPoints=Array.isArray(d.points)?d.points.slice(-150):[];renderNetworkChart();
+ }catch(_){el('networkgraph').textContent='Нет данных графика сети';}
+}
+function renderNetworkChart(){
+ const p=netPoints.filter(v=>Array.isArray(v)&&v.length===3&&v.every(Number.isFinite));
+ if(p.length<2){el('networkgraph').textContent='Накапливаем измерения…';el('netpagegraph').textContent='Накапливаем измерения…';return;}
+ const peak=Math.max(128,...p.map(x=>Math.max(x[1],x[2])));
+ const order=Math.pow(10,Math.floor(Math.log10(peak)));
+ const max=Math.ceil(peak/order)*order;
+ const first=p[0][0],duration=Math.max(1,p[p.length-1][0]-first);
+ const fmt=bytes=>{const bits=bytes*8;return bits>=1000000?(bits/1000000).toFixed(1)+' Мбит/с':bits>=1000?(bits/1000).toFixed(bits>=10000?0:1)+' Кбит/с':Math.round(bits)+' бит/с'};
+ const axis=[1,.75,.5,.25,0].map(f=>'<span>'+fmt(max*f)+'</span>').join('');
+ const grids=[0,25,50,75,100].map(y=>'<path d="M0 '+y+'H500" stroke="#344d68" stroke-dasharray="3 5"/>').join('');
+ const line=i=>p.map(x=>(500*(x[0]-first)/duration).toFixed(1)+','+(100-100*x[i]/max).toFixed(1)).join(' ');
+ const plot='<svg viewBox="0 0 500 100" preserveAspectRatio="none" aria-hidden="true">'+grids+
+ '<polyline points="'+line(1)+'" fill="none" stroke="#3ba6ff" stroke-width="2" vector-effect="non-scaling-stroke"/>'+
+ '<polyline points="'+line(2)+'" fill="none" stroke="#00d49c" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>';
+ // Axis labels are HTML, not SVG, so stretching the plot cannot distort text.
+ const graph='<div class="axis-chart" role="img" aria-label="Скорость сети: шкала слева в битах в секунду">'+
+ '<div class="axis-labels">'+axis+'</div><div class="axis-main"><div class="axis-plot">'+plot+
+ '</div><div class="axis-time"><span>'+(duration<60?'−'+Math.round(duration)+' с':'−'+Math.round(duration/60)+' мин')+'</span><span>сейчас</span></div></div></div>';
+ el('networklabel').textContent=networkIface;el('networkgraph').innerHTML=graph;el('netpagegraph').innerHTML=graph;
+ const last=p[p.length-1];el('netmetrics').textContent='↓ '+speed(last[1])+'   ↑ '+speed(last[2]);
+}
+function renderCoreUsage(cores,mhz){
+ el('coreusage').innerHTML=cores.length?cores.map(c=>'<div class="core-row"><div>Ядро '+(Number(c.id)+1)+' <strong>'+Number(c.usage).toFixed(0)+'%</strong></div><div class="core-track"><i style="width:'+Math.max(0,Math.min(100,c.usage))+'%"></i></div></div>').join(''):'Нет данных по ядрам';
+ el('corehint').textContent=cores.length?'Ядер: '+cores.length+(mhz>0?' · '+mhz+' МГц':''):'Данные недоступны';
+}
+function renderMemorySummary(d){
+ const top=d.processes.slice(0,5),colors=['#0abaff','#986aff','#00d69a','#ffac47','#9cb6d8'],total=Math.max(1,d.mem_total);
+ el('memorybreakdown').innerHTML=top.map((p,i)=>'<span title="'+escape(p.name)+'" style="width:'+(100*p.mem/total).toFixed(2)+'%;background:'+colors[i]+'"></span>').join('')+'<span style="flex:1;background:#637791"></span>';
+ el('topprocbrief').innerHTML=top.map((p,i)=>'<span class="memory-pill"><i style="background:'+colors[i]+'"></i>'+escape(p.name)+' · '+p.mem+' МБ</span>').join('');
+}
+async function controlService(name,action){
+ if(serviceActionPending)return;
+ if(!['d2k','doq'].includes(name)||!['start','stop','restart'].includes(action))return;
+ const readable=name==='d2k'?'D2K':'DoQ';
+ const verbs={start:'включить',stop:'выключить',restart:'перезапустить'};
+ const doqPause=name==='doq'&&action==='stop';
+ const warning=doqPause?'DoQ обслуживает DNS. Остановка будет временной: запланирован автоматический запуск через 90 секунд. До восстановления DNS сайты могут не открываться.':(action==='stop'?'Служба останется остановленной до ручного запуска или перезагрузки. Некоторые сайты могут стать недоступны.':'Возможен короткий перерыв в работе сети.');
+ if(!confirm('Действие: '+verbs[action]+' '+readable+'.\n'+warning+'\nПродолжить?'))return;
+ serviceActionPending=true;
+ const status=el('serviceactionstatus');
+ status.textContent='Отправляю команду '+action+' для '+readable+'…';
+ const buttons=()=>document.querySelectorAll('[data-service]');
+ buttons().forEach(b=>b.disabled=true);
+ try{
+  const response=await fetch('/api/service/'+name+'/'+action,{method:'POST',headers:{'X-Monitor-Action':action}});
+  const answer=await response.json();
+  if(!response.ok)throw Error(answer.error||'HTTP '+response.status);
+  status.textContent='Команда принята. Ожидаю подтверждения процесса '+readable+'…';
+  const started=Date.now();
+  let expectedId=null,verified=false;
+  while(Date.now()-started<23000){
+   await new Promise(resolve=>setTimeout(resolve,900));
+   const r=await fetch('/api/service/action-status',{cache:'no-store'});
+   if(!r.ok)throw Error('Не удалось проверить состояние службы');
+   const result=(await r.json()).action;
+   if(!result||result.name!==readable||result.verb!==action)continue;
+   if(expectedId!==null&&result.id!==expectedId)throw Error('Получена новая команда; проверка предыдущей прервана');
+   expectedId=result.id;
+   if(result.state==='running')continue;
+   status.textContent=(result.state==='verified'?'✓ ':'⚠ ')+result.detail;
+   verified=result.state==='verified';
+   break;
+  }
+  if(expectedId===null||(!verified&&status.textContent.startsWith('Команда принята')))status.textContent='⚠ Нет подтверждения результата за 23 секунды. Проверь состояние службы.';
+  if(doqPause&&verified)status.textContent+=' · Автозапуск DoQ запланирован через 90 секунд.';
+  await poll();
+  await fetchLogs();
+ }catch(e){status.textContent='Ошибка: '+e.message;}
+ finally{serviceActionPending=false;buttons().forEach(b=>b.disabled=false);}
+}
+async function fetchLogs(){
+ try{
+ const r=await fetch('/api/logs',{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);
+ const d=await r.json();
+ const events=Array.isArray(d.events)?d.events:[];
+ el('logrows').innerHTML=events.map(x=>'<div class="row"><span class="muted">+'+Math.floor(x[0]/60)+' мин.</span><span>'+escape(x[1])+'</span></div>').join('')||'<p class="muted">Событий пока нет</p>';
+ }catch(e){el('logrows').textContent='Журнал временно недоступен';}
+}
+el('refreshlogs').onclick=fetchLogs;
+document.querySelectorAll('[data-iface]').forEach(b=>b.onclick=()=>{
+ networkIface=b.dataset.iface;
+ document.querySelectorAll('[data-iface]').forEach(x=>x.classList.toggle('nettab-active',x===b));
+ fetchNetworkHistory();
+});
+
+const loadSetting=(key,defaultValue)=>{try{return localStorage.getItem(key)||defaultValue}catch(_){return defaultValue}};
+const saveSetting=(key,val)=>{try{localStorage.setItem(key,val)}catch(_){}};
+el('pollseconds').value=loadSetting('cudy_refresh','2');
+el('defaultmetric').value=loadSetting('cudy_metric','0');
+el('historymetric').value=el('defaultmetric').value;
+el('pollseconds').onchange=()=>{saveSetting('cudy_refresh',el('pollseconds').value);el('settingsmessage').textContent='Интервал обновления изменён'};
+el('defaultmetric').onchange=()=>{el('historymetric').value=el('defaultmetric').value;saveSetting('cudy_metric',el('defaultmetric').value);drawHistory();el('settingsmessage').textContent='Выбор графика сохранён'};
+let processSort='cpu';
+function renderProcesses(){
+ const query=el('processfilter').value.trim().toLocaleLowerCase('ru');
+ const rows=allProcesses.filter(x=>String(x.name).toLocaleLowerCase('ru').includes(query));
+ if(processSort==='cpu')rows.sort((a,b)=>(b.cpu||0)-(a.cpu||0)||b.mem-a.mem);
+ if(processSort==='mem')rows.sort((a,b)=>b.mem-a.mem);
+ if(processSort==='name')rows.sort((a,b)=>a.name.localeCompare(b.name));
+ el('procrows').innerHTML=rows.map(x=>'<tr><td>'+escape(x.name)+'</td><td>'+x.pid+'</td><td>'+Number(x.cpu||0).toFixed(1)+'%</td><td>'+x.mem+' МБ</td></tr>').join('')||'<tr><td colspan="4" class="muted">Нет процессов по фильтру</td></tr>';
+ el('processcount').textContent='Показано '+rows.length+' из '+allProcesses.length+' отслеживаемых процессов';
+}
+document.querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{
+ processSort=b.dataset.sort;
+ document.querySelectorAll('[data-sort]').forEach(x=>x.classList.toggle('sort-active',x===b));
+ renderProcesses();
+});
+el('processfilter').oninput=renderProcesses;
+function renderNetwork(){
+  const all=Array.isArray(allNetwork)?allNetwork:[];
+  const primary=['eth2.4','br0','eth2'];
+  const showAll=el('showallnetwork').checked;
+  const visible=all.filter(x=>showAll||primary.includes(x.name)||x.rx+x.tx>=1024);
+  visible.sort((a,b)=>{const ai=primary.indexOf(a.name),bi=primary.indexOf(b.name);if(ai>=0||bi>=0)return ai<0?1:bi<0?-1:ai-bi;return(b.rx+b.tx)-(a.rx+a.tx)||a.name.localeCompare(b.name,undefined,{numeric:true})});
+  el('netcount').textContent='Показано '+visible.length+' из '+all.length+(showAll?' интерфейсов':' · остальные скрыты из-за отсутствия трафика');
+  el('netrows').innerHTML=visible.map(x=>'<div class="row"><b>'+escape(x.name)+'</b><span>↓ '+speed(x.rx)+' ↑ '+speed(x.tx)+'</span></div>').join('');
+}
+el('showallnetwork').onchange=renderNetwork;
+async function fetchHistory(){
+  try {
+    const r=await fetch('/api/history',{cache:'no-store'});
+    if(!r.ok)throw Error('HTTP '+r.status);
+    const d=await r.json();
+    historyPoints=Array.isArray(d.points)?d.points.slice(-1080):[];
+    drawHistory();
+  }catch(_){el('historyinfo').textContent='История временно недоступна';}
+}
+function drawHistory(){
+ const idx=Number(el('historymetric').value);
+ const points=historyPoints.filter(p=>Array.isArray(p)&&Number.isFinite(p[0]));
+ const duration=points.length?Math.min(10800,points[points.length-1][0]-points[0][0]):0;
+ el('historyinfo').textContent='Точек: '+points.length+'/1080 · '+(duration<60?Math.round(duration)+' с':Math.floor(duration/60)+' мин.')+' истории';
+ if(points.length<2){el('graph').textContent='История накапливается…';return;}
+ const last=points[points.length-1][0],start=Math.max(points[0][0],last-10800),span=Math.max(1,last-start);
+ const temperature=points.map(p=>p[3]).filter(Number.isFinite);
+ const tempMax=Math.max(100,Math.ceil((temperature.length?Math.max(...temperature):100)/20)*20);
+ const defs=[{id:1,color:'#a86aff',name:'CPU, %'},{id:2,color:'#02d691',name:'RAM, %'},{id:3,color:'#ffab2b',name:'Температура, °C'}];
+ const series=defs.filter(x=>idx===0||x.id===idx);
+ const lines=series.map(x=>{
+  const good=points.filter(p=>Number.isFinite(p[x.id]));
+  const path=good.map(p=>(500*(p[0]-start)/span).toFixed(1)+','+
+     (100-100*Math.max(0,Math.min(x.id===3?tempMax:100,p[x.id]))/(x.id===3?tempMax:100)).toFixed(1)).join(' ');
+  return '<polyline points="'+path+'" fill="none" stroke="'+x.color+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>';
+ }).join('');
+ const showPercent=idx!==3,showTemp=idx===0||idx===3;
+ const axes=[1,.75,.5,.25,0];
+ const llabels=showPercent?axes.map(p=>'<span>'+Math.round(100*p)+'%</span>').join(''):'';
+ const rlabels=showTemp?axes.map(p=>'<span>'+Math.round(tempMax*p)+'°C</span>').join(''):'';
+ const grid=[0,25,50,75,100].map(y=>'<path d="M0 '+y+'H500" stroke="#3a4f6b" stroke-dasharray="3 5"/>').join('');
+ const tickLabel=sec=>{const age=Math.max(0,Math.round(last-sec));if(age<1)return 'сейчас';if(age<120)return '−'+age+' с';if(age<3600)return '−'+Math.round(age/60)+' мин';return '−'+(age/3600).toFixed(1)+' ч';};
+ const graph='<div class="chart-legend">'+series.map(x=>'<span style="color:'+x.color+'">● '+x.name+'</span>').join('')+'</div>'+
+ '<div class="axis-chart" role="img" aria-label="История с неподвижными шкалами процентов и температуры">'+
+ '<div class="axis-labels'+(showPercent?'':' axis-empty')+'">'+llabels+'</div>'+
+ '<div class="axis-main"><div class="axis-plot"><svg viewBox="0 0 500 100" preserveAspectRatio="none" aria-hidden="true">'+grid+lines+'</svg></div>'+
+ '<div class="axis-time"><span>'+tickLabel(start)+'</span><span>'+tickLabel(start+span/2)+'</span><span>сейчас</span></div></div>'+
+ '<div class="axis-labels axis-temperature'+(showTemp?'':' axis-empty')+'">'+rlabels+'</div></div>';
+ el('graph').innerHTML=graph;
+}
+el('historymetric').onchange=()=>{el('defaultmetric').value=el('historymetric').value;saveSetting('cudy_metric',el('historymetric').value);drawHistory()};
+async function checkUpdate(){
+  el('checkupdate').disabled=true;el('applyupdate').disabled=true;
+  el('updatestatus').textContent='Проверка GitHub Releases…';
+  try{
+    const r=await fetch('/api/update/check',{cache:'no-store'});
+    const data=await r.json();
+    if(!r.ok)throw Error(data.error||'Ошибка сети');
+    el('currentversion').textContent=data.current;
+    el('latestversion').textContent=data.latest;
+    el('updatestatus').textContent=data.available?'Доступно обновление '+data.latest:'Установлена актуальная версия';
+    el('applyupdate').disabled=!data.available;
+  }catch(e){el('updatestatus').textContent='Не удалось проверить: '+e.message;}
+  finally{el('checkupdate').disabled=false;}
+}
+async function applyUpdate(){
+  if(!confirm('Установить обновление? Монитор временно перезапустится.'))return;
+  el('applyupdate').disabled=true;el('updatestatus').textContent='Запускаю обновление…';
+  try{
+    const r=await fetch('/api/update/apply',{method:'POST',headers:{'X-Monitor-Action':'apply'}});
+    const d=await r.json();if(!r.ok)throw Error(d.error||'HTTP '+r.status);
+    el('updatestatus').textContent='Обновление запущено. Через несколько секунд проверьте версию снова.';
+  }catch(e){el('updatestatus').textContent='Ошибка обновления: '+e.message;}
+}
+el('checkupdate').onclick=checkUpdate;el('applyupdate').onclick=applyUpdate;
+const closeMenu=()=>{document.querySelector('.shell').classList.remove('menu-open');el('menutoggle').setAttribute('aria-expanded','false')};
+el('menutoggle').onclick=()=>{const opened=document.querySelector('.shell').classList.toggle('menu-open');el('menutoggle').setAttribute('aria-expanded',String(opened))};
+el('menubackdrop').onclick=closeMenu;
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenu()});
+const pageTitles={overview:'Обзор системы',processes:'Процессы и память',services:'Состояние служб',network:'Сетевой трафик',storage:'USB и Entware',logs:'Журналы',settings:'Настройки',updates:'Обновления'};
+function openPage(id){
+ if(!pageTitles[id])return;
+ closeMenu();
+ document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x.dataset.page===id));
+ document.querySelectorAll('.page').forEach(x=>x.classList.toggle('hidden',x.id!==id));
+ if(id==='logs')fetchLogs();
+ el('viewtitle').textContent=pageTitles[id];
+ window.scrollTo(0,0);
+}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>openPage(b.dataset.page));
+document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>openPage(b.dataset.go));
+poll();setInterval(()=>{if(!document.hidden&&!pollBusy&&Date.now()-lastPollAttempt>=Number(el('pollseconds').value)*1000)poll()},1000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){poll();fetchHistory();fetchNetworkHistory();}});
+
+</script></body></html>

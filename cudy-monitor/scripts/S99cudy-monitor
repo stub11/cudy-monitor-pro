@@ -1,0 +1,41 @@
+#!/bin/sh
+# Entware rc.unslung service script. LAN-readonly by default; privileged actions opt-in.
+ENABLED=yes
+PROCS=cudy-monitor-pro
+ARGS=""
+PREARGS=""
+DESC="Cudy Monitor Pro"
+PATH=/opt/bin:/opt/sbin:/usr/bin:/bin
+BINARY=/opt/bin/cudy-monitor-pro
+PIDFILE=/opt/var/run/cudy-monitor-pro.pid
+TOKEN_FILE=/opt/etc/cudy-monitor/token
+BIND_FILE=/opt/etc/cudy-monitor/bind
+ACTION_FILE=/opt/etc/cudy-monitor/service-actions
+case "$1" in
+ start)
+  [ -x "$BINARY" ] || exit 1
+  [ -d /opt/var/run ] || mkdir -p /opt/var/run
+  if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then exit 0; fi
+  BIND="127.0.0.1:8237"
+  [ -f "$BIND_FILE" ] && BIND=$(cat "$BIND_FILE")
+  ACTIONS=0
+  [ -r "$ACTION_FILE" ] && [ "$(head -n 1 "$ACTION_FILE")" = "1" ] && ACTIONS=1
+  CUDY_MONITOR_SERVICE_ACTIONS="$ACTIONS" CUDY_MONITOR_BIND="$BIND" "$BINARY" >/dev/null 2>&1 &
+  echo $! > "$PIDFILE"
+  ;;
+ stop)
+  [ -f "$PIDFILE" ] || exit 0
+  PID=$(cat "$PIDFILE")
+  kill "$PID" 2>/dev/null || true
+  i=0
+  while kill -0 "$PID" 2>/dev/null && [ "$i" -lt 10 ]; do sleep 1; i=$((i+1)); done
+  rm -f "$PIDFILE"
+  ;;
+ restart)
+  "$0" stop && "$0" start
+  ;;
+ status)
+  [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null
+  ;;
+ *) echo "Usage: $0 {start|stop|restart|status}"; exit 2;;
+esac

@@ -1,0 +1,12 @@
+[package]
+name = "cudy-monitor-pro"
+version = "1.0.3"
+edition = "2021"
+license = "MIT"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
