@@ -227,7 +227,164 @@ header{margin-bottom:18px;padding:0 5px}
  .kpi .label{font-size:9px}
  .net-tabs button{font-size:11px}
 }
-</style></head><body><div class="shell"><div class="mobile-header"><span>▥ Cudy Monitor Pro</span><button id="menutoggle" type="button" aria-label="Меню" aria-expanded="false">☰</button></div><div id="menubackdrop" class="mobile-backdrop"></div><aside><div class="logo">▣ Cudy Monitor Pro<small>WBR3000UAX · KN-3811 EA</small></div><nav><button class="active" data-page="overview">◫ Обзор</button><button data-page="processes">▤ Процессы</button><button data-page="services">◉ Сервисы</button><button data-page="network">⌁ Сеть</button><button data-page="storage">▣ Хранилище</button><button data-page="logs">☷ Журналы</button><button data-page="settings">⚙ Настройки</button><button data-page="updates">⇪ Обновления</button></nav><div class="aside-status"><span class="status">● KeeneticOS</span><small>Entware · ARM64</small><small>Монитор <b id="sidebarversion">—</b></small></div></aside><main><header><div><h1 id="viewtitle">Обзор системы</h1><div id="viewsubtitle" class="muted">Cudy WBR3000UAX · KeeneticOS · Entware · Rust ARM64</div><div id="healthsummary">Подключение к домашнему роутеру…</div></div><div><span id="online" class="bad">● Подключение</span> · <span id="lastseen">ожидание</span></div></header>
+
+/* AURORA DASHBOARD v2 — responsive design tokens, zero network assets. */
+:root{
+ --bg:#060d1a;--card:#0d1b31;--stroke:#28405d;--text:#edf7ff;
+ --muted:#9bafcc;--blue:#33adff;--green:#27e1ac;
+ --aqua:#18ddec;--violet:#9875ff;--amber:#ffa84c;
+}
+html{scrollbar-color:#304968 #071223}
+body{background:#060d1a;color:var(--text)}
+.shell{background:
+ radial-gradient(ellipse 50% 29% at 73% -7%,#12376d70,transparent 85%),
+ radial-gradient(ellipse 41% 38% at 105% 100%,#36177929,transparent 81%),
+ linear-gradient(145deg,#071123,#081325 56%,#050c18); min-width:0}
+.shell aside{width:244px;background:linear-gradient(170deg,#0b1931 0%,#081325 55%,#0a1531 100%);
+ border-right:1px solid #25527f65;box-shadow:12px 0 35px #0002;padding:27px 15px}
+.logo{font-weight:800;line-height:1.25;letter-spacing:-.3px;margin-bottom:26px}
+.logo:before{content:"▥";color:#c9f2ff;background:linear-gradient(135deg,#12cbe9,#226de8 65%,#8b58f4);
+ box-shadow:0 0 25px #0096fd40;font-size:25px}
+.logo small{color:#9eb6d8;letter-spacing:0;font-weight:500;margin-top:7px}
+.shell aside nav{display:flex;flex-direction:column;gap:4px}
+.shell aside nav button{display:flex;align-items:center;gap:12px;margin:0;min-height:45px;text-align:left;
+ width:100%;font-size:13px;font-weight:580;line-height:1.2;padding:9px 12px;border:1px solid transparent;
+ color:#b5c9e5;transition:background .2s,border-color .2s,color .2s}
+.shell aside nav button:hover{background:#163455;border-color:#315a87;color:#f2f9ff}
+.shell aside nav button.active{background:linear-gradient(100deg,#076fae,#3267eb 55%,#7547d8);
+ border-color:#5aaaff;box-shadow:0 4px 18px #1d6ffb4d;color:#fff}
+.nav-symbol{display:grid;place-items:center;width:26px;height:26px;flex:0 0 26px;
+ font-size:21px;font-family:system-ui,sans-serif;font-weight:650;line-height:1;color:#70cfff}
+nav button.active .nav-symbol{color:#fff}
+.aside-status{margin:36px 3px 8px;background:linear-gradient(135deg,#113153,#122448);
+ border:1px solid #327aa85c;box-shadow:inset 0 1px #ffffff10;border-radius:14px;padding:15px}
+.aside-status .status{color:#38e4aa}
+main{width:100%;min-width:0;max-width:1920px;margin:0 auto;padding:27px clamp(16px,2.1vw,46px) 42px}
+.aurora-header{display:flex;flex-wrap:wrap;gap:15px;align-items:flex-start;justify-content:space-between;
+ padding:20px 23px;margin-bottom:18px;border-radius:19px;
+ background:linear-gradient(110deg,#0b2943d9,#14234ee0 65%,#261953c9);
+ border:1px solid #3276a080;box-shadow:0 11px 32px #0003,inset 0 1px #ffffff10;
+ position:relative;overflow:hidden;isolation:isolate}
+.aurora-header:before{content:"";position:absolute;inset:-80px 4% auto auto;width:53%;height:146px;
+ border-radius:50%;background:#12ccfc16;filter:blur(48px);z-index:-1;pointer-events:none}
+.aurora-header>div:first-child{min-width:0;flex:1 1 400px}
+#viewtitle{font-size:clamp(23px,2vw,32px);letter-spacing:-.75px;margin:0 0 4px}
+#viewsubtitle{color:#bfd0e8;font-size:12px}
+#healthsummary{color:#a5bddf;margin-top:9px}
+.aurora-header>div:last-child{display:flex;align-items:center;justify-content:flex-end;gap:9px;
+ flex-wrap:wrap;min-height:32px;font-size:12px}
+#online{border-radius:99px;background:#0c4037;border:1px solid #117660!important;
+ color:#30f2b5!important;padding:7px 12px;white-space:nowrap}
+#online.bad{background:#3e2328!important;border-color:#894650!important;color:#ff9da1!important}
+#lastseen{color:#c1d2e9}
+.service-badges{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}
+.service-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #335573;
+ background:#122b48c4;border-radius:99px;padding:5px 10px;font-size:11px;color:#b7cbe6}
+.service-chip:before{content:"";width:6px;height:6px;border-radius:50%;background:#768ba7}
+.service-chip.is-running{color:#72ffcc;border-color:#12785866;background:#0c403655}
+.service-chip.is-running:before{background:#35efae;box-shadow:0 0 8px #35efaab5}
+.service-chip.is-installed{color:#ffc67d;border-color:#8f643860}
+.service-chip.is-installed:before{background:#e5a758}
+.card{min-width:0;background:linear-gradient(145deg,#11243e 0%,#0d1b30 67%,#101b33 100%);
+ border:1px solid #305475a6;border-radius:17px;box-shadow:0 8px 24px #00000025,inset 0 1px #ffffff08;
+ transition:border-color .18s ease,box-shadow .18s ease}
+.card:hover{border-color:#4277a6;box-shadow:0 11px 30px #00000035,inset 0 1px #ffffff0e}
+.card h2{font-size:15px;letter-spacing:-.2px;color:#f0f7ff}
+.card .muted{color:#a6bad7}
+.kpi-grid{gap:13px;margin-bottom:14px}
+.kpi{min-height:128px;gap:12px;padding:17px 15px;overflow:hidden;position:relative}
+.kpi:after{content:"";position:absolute;bottom:0;left:18px;right:18px;height:1px;
+ background:linear-gradient(90deg,transparent,#3b7dc96c,transparent);pointer-events:none}
+.kpi .label{font-size:11px;color:#acc4df;letter-spacing:.5px}
+.kpi .value{font-size:clamp(20px,1.7vw,28px);font-weight:800;letter-spacing:-.85px;line-height:1.16;
+ font-variant-numeric:tabular-nums}
+.kpi .muted{font-size:11px}
+.ring{flex-basis:73px;width:73px;height:73px;background:conic-gradient(var(--ring-color) calc(var(--pct)*1%),#29405b 0);
+ box-shadow:0 0 22px color-mix(in srgb,var(--ring-color) 12%,transparent),inset 0 0 0 2px #52658025}
+.ring-inner{background:#0b1a30}
+.cpu-ring{--ring-color:#19bfff}.temp-ring{--ring-color:#ffb048}.ram-ring{--ring-color:#21e9a7}
+.disk-ring{--ring-color:#9980ff}
+.stat-progress{background:#253b58}
+.stat-progress>i{background:linear-gradient(90deg,#178fe6,#38d5ff)}
+#diskbar>i{background:linear-gradient(90deg,#6c62ef,#a486ff)}
+#membar>i{background:linear-gradient(90deg,#0ba88e,#47f4bd)}
+.uptime-icon{color:#9fa8ff}
+.dashboard-top{display:grid;grid-template-columns:minmax(0,1.9fr) minmax(190px,.77fr) minmax(230px,1fr);
+ align-items:stretch;gap:13px;margin-bottom:13px}
+.dashboard-bottom{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:13px}
+.dashboard-top>.card{min-height:312px}
+.dashboard-top .history-card{min-width:0}
+.dashboard-top .history-card .bars{min-height:220px}
+.dashboard-top .traffic-card .networkgraph{min-height:165px}
+#graph .axis-plot,#graph .axis-labels{height:166px}
+.networkgraph .axis-plot,.networkgraph .axis-labels{height:145px}
+.axis-labels{color:#adc4e5}
+.axis-temperature{color:#ffc07a}
+.axis-time{color:#9eb5d5}
+.axis-chart{gap:7px}
+#memorybreakdown{height:17px;border-radius:99px;background:#324862}
+#topprocbrief{gap:7px}
+.memory-pill{border-radius:99px;background:#152c49;border-color:#31516c;padding:7px 10px}
+#servicebrief .row{padding:9px 0;border-bottom:1px solid #29415b55}
+#servicebrief .row:last-child{border-bottom:0}
+#netbrief .row{border-bottom:1px solid #29415b55;padding:7px 0}
+#netbrief .row:last-child{border-bottom:0}
+button,select,input{font-family:inherit}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid #64d6ff;outline-offset:2px}
+@media(max-width:1440px){
+ .dashboard-top{grid-template-columns:minmax(0,1.6fr) minmax(190px,.75fr)}
+ .dashboard-top>.traffic-card{grid-column:span 2;min-height:0}
+ .dashboard-top .traffic-card .networkgraph{min-height:138px}
+}
+@media(max-width:1050px){
+ .shell aside{width:202px;padding:18px 9px}
+ main{padding:19px 16px 30px}
+ .kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+ .dashboard-top{grid-template-columns:minmax(0,1fr) minmax(0,.78fr)}
+}
+@media(max-width:800px){
+ .dashboard-top{grid-template-columns:1fr}
+ .dashboard-top>.traffic-card{grid-column:auto}
+ .dashboard-top>.card{min-height:0}
+ .dashboard-bottom{grid-template-columns:1fr}
+ .kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:650px), (pointer:coarse) and (max-width:1100px){
+ .shell aside{width:min(294px,86vw);padding:21px 13px;background:linear-gradient(160deg,#0a1b32,#0b1230)}
+ .shell aside nav button{display:flex;margin:3px 0;padding:11px 12px}
+ .mobile-header{background:linear-gradient(115deg,#0b2039,#0d1833);border-color:#2b4e77;
+  box-shadow:0 5px 20px #0005}
+ .mobile-header button{background:#173958;border-color:#3e7593}
+ main{padding:12px 11px 28px}
+ .aurora-header{padding:17px 15px;gap:8px;border-radius:15px}
+ .aurora-header>div:first-child,.aurora-header>div:last-child{width:100%;flex:1 1 auto}
+ .aurora-header>div:last-child{justify-content:flex-start}
+ #viewtitle{font-size:23px}
+ .service-badges{gap:5px;margin-top:9px}
+ .service-chip{font-size:10px;padding:4px 7px}
+ .kpi-grid{gap:9px;margin-bottom:10px}
+ .kpi{padding:13px 9px;gap:8px;min-height:126px}
+ .kpi .value{font-size:19px}
+ .kpi .label{font-size:10px}
+ .card{border-radius:14px}
+ .dashboard-top,.dashboard-bottom{gap:10px}
+ .ring{width:63px;height:63px;flex-basis:63px}
+ .ring-inner{width:47px;height:47px}
+ #graph .axis-plot,#graph .axis-labels{height:136px}
+ .networkgraph .axis-plot,.networkgraph .axis-labels{height:129px}
+ .history-card,.traffic-card{min-height:0}
+}
+@media(max-width:360px){
+ .kpi{padding:11px 7px}
+ .kpi .value{font-size:17px}
+ .ring{width:55px;height:55px;flex-basis:55px}
+ .ring-inner{width:40px;height:40px}
+}
+@media(prefers-reduced-motion:reduce){
+ *,*:before,*:after{transition-duration:.01ms!important;animation-duration:.01ms!important}
+}
+
+</style></head><body><div class="shell"><div class="mobile-header"><span>Cudy Monitor Pro</span><button id="menutoggle" type="button" aria-label="Меню" aria-expanded="false">☰</button></div><div id="menubackdrop" class="mobile-backdrop"></div><aside><div class="logo">Cudy Monitor Pro<small>WBR3000UAX · KN-3811 EA</small></div><nav><button class="active" data-page="overview"><span class="nav-symbol" aria-hidden="true">⌂</span><span>Обзор</span></button><button data-page="processes"><span class="nav-symbol" aria-hidden="true">▥</span><span>Процессы</span></button><button data-page="services"><span class="nav-symbol" aria-hidden="true">◈</span><span>Сервисы</span></button><button data-page="network"><span class="nav-symbol" aria-hidden="true">⌁</span><span>Сеть</span></button><button data-page="storage"><span class="nav-symbol" aria-hidden="true">▣</span><span>Хранилище</span></button><button data-page="logs"><span class="nav-symbol" aria-hidden="true">≡</span><span>Журналы</span></button><button data-page="settings"><span class="nav-symbol" aria-hidden="true">⚙</span><span>Настройки</span></button><button data-page="updates"><span class="nav-symbol" aria-hidden="true">↻</span><span>Обновления</span></button></nav><div class="aside-status"><span class="status">● KeeneticOS</span><small>Entware · ARM64</small><small>Монитор <b id="sidebarversion">—</b></small></div></aside><main><header class="aurora-header"><div><h1 id="viewtitle">Обзор системы</h1><div id="viewsubtitle" class="muted">Cudy WBR3000UAX · KeeneticOS · Entware · Rust ARM64</div><div id="healthsummary">Подключение к домашнему роутеру…</div><div id="servicebadges" class="service-badges" role="group" aria-label="Состояние установленных служб"></div></div><div><span id="online" class="bad">● Подключение</span> · <span id="lastseen">ожидание</span></div></header>
 <section id="overview" class="page"><div class="grid kpi-grid">
 <div class="card kpi"><div class="ring cpu-ring" id="cpuring"><div class="ring-inner"><strong id="cpuringvalue">—</strong></div></div><div class="kpi-info"><div class="label">ПРОЦЕССОР</div><div class="value" id="cpu">—</div><div class="muted">Нагрузка CPU</div><div class="stat-progress" id="cpubar"><i></i></div></div></div>
 <div class="card kpi"><div class="ring temp-ring" id="tempring"><div class="ring-inner"><strong id="tempringvalue">—</strong></div></div><div class="kpi-info"><div class="label">ТЕМПЕРАТУРА</div><div class="value" id="temp">—</div><div class="muted">Процессор</div><div class="label" id="tempnote">Датчик ядра</div></div></div>
@@ -241,7 +398,7 @@ header{margin-bottom:18px;padding:0 5px}
 'use strict';const el=id=>document.getElementById(id);let historyPoints=[],historyLastFetch=0,allNetwork=[],allProcesses=[],lastSuccess=0,lastPollAttempt=0,pollBusy=false,serviceActionPending=false,netPoints=[],netHistoryFetch=0,networkIface="eth2.4";const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const speed=x=>Number(x)*8>=1000000?(Number(x)*8/1000000).toFixed(1)+' Мбит/с':(Number(x)*8/1000).toFixed(1)+' Кбит/с';async function poll(){if(pollBusy)return;pollBusy=true;lastPollAttempt=Date.now();try{const r=await fetch('/api/status',{cache:'no-store'});if(!r.ok)throw Error(r.status);const d=await r.json();if(d.version){el('currentversion').textContent=d.version;el('settingsversion').textContent=d.version;el('sidebarversion').textContent=d.version;}el('online').textContent='● Работает';el('online').className='status';lastSuccess=Date.now();el('lastseen').textContent='данные обновлены';const mp=d.mem_total?100*d.mem_used/d.mem_total:0,dp=d.disk_total?100*d.disk_used/d.disk_total:0;el('cpu').textContent=d.cpu.toFixed(1)+'%';el('temp').textContent=d.temps.length?d.temps[0].c.toFixed(1)+' °C':'Нет датчика';el('mem').textContent=mp.toFixed(1)+'%';el('mem2').textContent=d.mem_used+' / '+d.mem_total+' МБ';el('disk').textContent=dp.toFixed(1)+'%';el('disk2').textContent=d.disk_used+' / '+d.disk_total+' МБ';el('monitorrss').textContent='Монитор: '+Number(d.monitor_rss_mb).toFixed(2)+' МБ RAM';
 const pct=(id,p)=>{const bar=el(id);bar.firstElementChild.style.width=Math.max(0,Math.min(100,p))+'%';bar.classList.toggle('warn',p>85)};
 pct('cpubar',d.cpu);pct('membar',mp);pct('diskbar',dp);pct('storagebar',dp);const ring=(id,p,v)=>{el(id).style.setProperty('--pct',String(Math.max(0,Math.min(100,p))));el(id+'value').textContent=v};const t=d.temps.length?d.temps[0].c:null;ring('cpuring',d.cpu,Math.round(d.cpu)+'%');ring('memring',mp,Math.round(mp)+'%');ring('diskring',dp,Math.round(dp)+'%');ring('tempring',t===null?0:t,t===null?'—':Math.round(t)+'°');el('uptimecard').textContent=Math.floor(d.uptime/86400)+' д. '+String(Math.floor(d.uptime%86400/3600)).padStart(2,'0')+':'+String(Math.floor(d.uptime%3600/60)).padStart(2,'0');renderCoreUsage(d.cores||[],d.cpu_mhz);el('connectioncount').textContent=d.connections_max?'Соединений: '+d.connections+' из '+d.connections_max:'Соединений: нет данных';
-el('healthsummary').textContent='Время работы роутера: '+Math.floor(d.uptime/86400)+' д. '+Math.floor(d.uptime%86400/3600)+' ч. · Монитор '+(d.version||'—');if(!d.disk_total){el('disk').textContent='Нет данных';el('disk2').textContent=d.disk_mount;}if(Date.now()-historyLastFetch>=10000){historyLastFetch=Date.now();fetchHistory();}if(Date.now()-netHistoryFetch>=10000){netHistoryFetch=Date.now();fetchNetworkHistory();}const primary=['eth2.4','br0'];const ranked=[...d.network].sort((a,b)=>{const ai=primary.indexOf(a.name),bi=primary.indexOf(b.name);if(ai>=0||bi>=0)return ai<0?1:bi<0?-1:ai-bi;return(b.rx+b.tx)-(a.rx+a.tx)||a.name.localeCompare(b.name)});el('netbrief').innerHTML=ranked.slice(0,5).map(x=>'<div class="row"><b>'+escape(x.name)+'</b><span>↓ '+speed(x.rx)+' ↑ '+speed(x.tx)+'</span></div>').join('');allNetwork=d.network;renderNetwork();el('tempdetail').innerHTML=d.temps.length?d.temps.map(x=>'<div class="row"><span>'+escape(x.name)+'</span><b>'+x.c.toFixed(1)+' °C</b></div>').join(''):'Датчики не обнаружены';const svc=d.services.map(x=>{const label=x.detected?'● Работает':(x.installed?'○ Установлен':'○ Не определён');return '<div class="row"><b>'+escape(x.name)+'</b><span class="'+(x.detected?'status':'bad')+'">'+label+'</span></div>'}).join('');el('servicebrief').innerHTML=svc;
+const statusChips=el('servicebadges');if(statusChips){statusChips.replaceChildren(...(d.services||[]).map(x=>{const b=document.createElement('span');b.className='service-chip '+(x.detected?'is-running':x.installed?'is-installed':'is-absent');b.textContent=x.name+' · '+(x.detected?'Работает':x.installed?'Установлен':'Не найден');return b}));}el('healthsummary').textContent='Время работы роутера: '+Math.floor(d.uptime/86400)+' д. '+Math.floor(d.uptime%86400/3600)+' ч. · Монитор '+(d.version||'—');if(!d.disk_total){el('disk').textContent='Нет данных';el('disk2').textContent=d.disk_mount;}if(Date.now()-historyLastFetch>=10000){historyLastFetch=Date.now();fetchHistory();}if(Date.now()-netHistoryFetch>=10000){netHistoryFetch=Date.now();fetchNetworkHistory();}const primary=['eth2.4','br0'];const ranked=[...d.network].sort((a,b)=>{const ai=primary.indexOf(a.name),bi=primary.indexOf(b.name);if(ai>=0||bi>=0)return ai<0?1:bi<0?-1:ai-bi;return(b.rx+b.tx)-(a.rx+a.tx)||a.name.localeCompare(b.name)});el('netbrief').innerHTML=ranked.slice(0,5).map(x=>'<div class="row"><b>'+escape(x.name)+'</b><span>↓ '+speed(x.rx)+' ↑ '+speed(x.tx)+'</span></div>').join('');allNetwork=d.network;renderNetwork();el('tempdetail').innerHTML=d.temps.length?d.temps.map(x=>'<div class="row"><span>'+escape(x.name)+'</span><b>'+x.c.toFixed(1)+' °C</b></div>').join(''):'Датчики не обнаружены';const svc=d.services.map(x=>{const label=x.detected?'● Работает':(x.installed?'○ Установлен':'○ Не определён');return '<div class="row"><b>'+escape(x.name)+'</b><span class="'+(x.detected?'status':'bad')+'">'+label+'</span></div>'}).join('');el('servicebrief').innerHTML=svc;
 el('servicerows').innerHTML=d.services.map(x=>{
  const supported=x.name==='D2K'||x.name==='DoQ';
  const id=x.name.toLowerCase();

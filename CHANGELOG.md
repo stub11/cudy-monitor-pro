@@ -1,11 +1,11 @@
 # Cudy Monitor Pro — Release notes
 
-## Unreleased — public testing distribution
-- GitHub bug and feature request templates, PR template, contribution and security policies, MIT license.
-- Fixed fresh installer for BusyBox variants where sh -n is unsupported.
-- Added automated public-content privacy guard and installer compatibility CI checks.
-- Make installer restore prior monitor files when health verification fails.
-
+## 1.1.0 — Aurora dashboard
+- First implementation of Aurora visual design: responsive cards, clearer navigation and spacious desktop charts.
+- Show real local service status chips from the existing API; no fabricated metrics.
+- Add improved focus styling, reduced-motion support and mobile viewport checks.
+- Preserve existing APIs and disabled-by-default service controls.
+- Harden standalone installer rollback and Entware tool detection.
 
 ## 1.0.4 — OTA and HTTP reliability
 - Correct update availability: only versions strictly newer than the installed release are offered.

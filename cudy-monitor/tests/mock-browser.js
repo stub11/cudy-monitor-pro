@@ -1,7 +1,7 @@
 // Synthetic telemetry for isolated UI screenshots only. Never included in the router binary.
 (function(){
  const data={
-   version:"1.0.0-preview",cpu:12.4,mem_total:486,mem_used:198,mem_cached:48,
+   version:"1.1.0-preview",cpu:12.4,mem_total:486,mem_used:198,mem_cached:48,
    disk_total:14441,disk_used:208,disk_mount:"/opt",uptime:187457,monitor_rss_mb:1.15,
    cpu_mhz:1300,connections:1834,connections_max:65536,
    temps:[{name:"cpu-thermal",c:49.1}],
@@ -22,7 +22,7 @@
   else if(p.includes("/api/network-history"))payload={interface:"eth2.4",max_points:150,interval_sec:2,points:traffic};
   else if(p.includes("/api/history"))payload={max_points:1080,interval_sec:10,points:samples};
   else if(p.includes("/api/logs"))payload={source:"monitor",max_events:80,events:[[0,"Монитор запущен"],[60,"Состояние системы нормально"]]};
-  else if(p.includes("/api/update/check"))payload={current:"1.0.0-preview",latest:"1.0.0-preview",available:false};
+  else if(p.includes("/api/update/check"))payload={current:"1.1.0-preview",latest:"1.1.0-preview",available:false};
   else return original(url,options);
   return {ok:true,status:200,json:async()=>payload};
  };
