@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "cudy-monitor-pro"
 version = "1.0.4"
 edition = "2021"
@@ -10,4 +10,3 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
-
