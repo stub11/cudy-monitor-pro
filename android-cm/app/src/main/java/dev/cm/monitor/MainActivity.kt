@@ -97,6 +97,8 @@ class MainActivity : ComponentActivity() {
             var showDetails by remember { mutableStateOf(false) }
             var showGithubSettings by remember { mutableStateOf(false) }
             var lastFetchAt by remember { mutableStateOf<Long?>(null) }
+            var fetchLatencyMs by remember { mutableStateOf<Long?>(null) }
+            var lastSampleTime by remember { mutableStateOf<String?>(null) }
             var lastEndpoint by remember { mutableStateOf<String?>(null) }
             var pending by remember { mutableStateOf<Triple<String, Int, String>?>(null) }
             var busy by remember { mutableStateOf(false) }
@@ -114,11 +116,15 @@ class MainActivity : ComponentActivity() {
                 val shouldRemember = rememberRouter
                 worker.execute {
                     try {
+                        val startedAt = android.os.SystemClock.elapsedRealtime()
                         val result = client.fetch(h, p, u, pw)
+                        val durationMs = android.os.SystemClock.elapsedRealtime() - startedAt
                         val profileSaved = if (shouldRemember) {
                             runCatching { profileStore.save(SavedRouter(nameForSave, h, p, u, pw)) }.isSuccess
                         } else false
                         runOnUiThread {
+                            fetchLatencyMs = durationMs
+                            lastSampleTime = java.text.SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(java.util.Date())
                             if (profileSaved) savedRouter = true
                             showConnectionSettings = false
                             val old = if (endpoint == lastEndpoint) snapshot else null
@@ -195,6 +201,8 @@ class MainActivity : ComponentActivity() {
                                 Text("$host · SSH $portText · ${if (busy) "Подключение…" else if (snapshot != null) "Подключён" else "Нет данных"}",
                                     color = if (snapshot != null) mint else Color(0xFFFFC27C),
                                     style = MaterialTheme.typography.bodyMedium)
+                                Text("Последний замер: ${lastSampleTime ?: "—"} · ${fetchLatencyMs?.let { "${it} мс" } ?: "—"}",
+                                    color = Color(0xFFB6C9DE), style = MaterialTheme.typography.labelMedium)
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     OutlinedButton(onClick = { showConnectionSettings = true },
                                         modifier = Modifier.weight(1f)) { Text("Настройки") }
