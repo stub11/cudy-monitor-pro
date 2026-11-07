@@ -30,6 +30,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val client = RouterClient(applicationContext)
         val github = GitHubFeatures(applicationContext)
+        val profileStore = RouterProfileStore(applicationContext)
+        val rememberedRouter = profileStore.load()
         @Suppress("DEPRECATION")
         val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "0.1.2"
         setContent {
@@ -78,10 +80,13 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-            var host by remember { mutableStateOf("") }
-            var portText by remember { mutableStateOf("22") }
-            var username by remember { mutableStateOf("root") }
-            var password by remember { mutableStateOf("") }
+            var routerName by remember { mutableStateOf(rememberedRouter?.name ?: "Cudy WBR3000UAX") }
+            var host by remember { mutableStateOf(rememberedRouter?.host ?: "") }
+            var portText by remember { mutableStateOf(rememberedRouter?.port?.toString() ?: "22") }
+            var username by remember { mutableStateOf(rememberedRouter?.username ?: "admin") }
+            var password by remember { mutableStateOf(rememberedRouter?.password ?: "") }
+            var rememberRouter by remember { mutableStateOf(true) }
+            var savedRouter by remember { mutableStateOf(rememberedRouter != null) }
             var status by remember { mutableStateOf("Подключись к роутеру по домашнему Wi-Fi") }
             var snapshot by remember { mutableStateOf<RouterSnapshot?>(null) }
             var cpuPercent by remember { mutableStateOf<Double?>(null) }
@@ -100,10 +105,16 @@ class MainActivity : ComponentActivity() {
                 val u = username.trim()
                 val pw = password
                 val endpoint = "$h:$p:$u"
+                val nameForSave = routerName.trim().ifEmpty { "Домашний роутер" }.take(60)
+                val shouldRemember = rememberRouter
                 worker.execute {
                     try {
                         val result = client.fetch(h, p, u, pw)
+                        val profileSaved = if (shouldRemember) {
+                            runCatching { profileStore.save(SavedRouter(nameForSave, h, p, u, pw)) }.isSuccess
+                        } else false
                         runOnUiThread {
+                            if (profileSaved) savedRouter = true
                             val old = if (endpoint == lastEndpoint) snapshot else null
                             if (old != null) {
                                 cpuPercent = TelemetryMath.cpuPercent(
@@ -120,7 +131,7 @@ class MainActivity : ComponentActivity() {
                             lastEndpoint = endpoint
                             lastFetchAt = android.os.SystemClock.elapsedRealtime()
                             snapshot = result
-                            status = "Подключено"
+                            status = if (profileSaved) "Подключено · Роутер сохранён" else "Подключено"
                             autoRefresh = true
                             pending = null
                             busy = false
@@ -162,6 +173,12 @@ class MainActivity : ComponentActivity() {
                 ) {
                     Text("CM", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
                     Text("Aurora · Монитор роутера по SSH", color = Color(0xFF9CB7D6))
+                    if (savedRouter) {
+                        Text("Сохранённый роутер: $routerName", color = mint, fontWeight = FontWeight.SemiBold)
+                    }
+                    OutlinedTextField(routerName, { routerName = it.take(60) },
+                        label = { Text("Имя роутера") }, modifier = Modifier.fillMaxWidth(),
+                        singleLine = true)
                     OutlinedTextField(host, { host = it }, label = { Text("Локальный IPv4 роутера") },
                         modifier = Modifier.fillMaxWidth(), singleLine = true)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -173,6 +190,26 @@ class MainActivity : ComponentActivity() {
                     OutlinedTextField(password, { password = it }, label = { Text("SSH пароль") },
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Checkbox(checked = rememberRouter, onCheckedChange = { rememberRouter = it })
+                        Text("Запомнить роутер и SSH-вход на этом телефоне",
+                            modifier = Modifier.padding(top = 12.dp),
+                            style = MaterialTheme.typography.bodySmall, color = Color(0xFFB6C9DE))
+                    }
+                    if (savedRouter) {
+                        OutlinedButton(
+                            onClick = {
+                                profileStore.clear()
+                                savedRouter = false
+                                rememberRouter = false
+                                password = ""
+                                autoRefresh = false
+                                status = "Сохранённый вход удалён с телефона"
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !busy
+                        ) { Text("Удалить сохранённое подключение") }
+                    }
                     Button(onClick = { connect() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                         Text(if (busy) "Подключение…" else "Подключиться / Обновить")
                     }
