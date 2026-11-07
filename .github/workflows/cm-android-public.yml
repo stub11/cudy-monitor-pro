@@ -5,6 +5,11 @@ on:
     paths:
       - 'android-cm/**'
       - '.github/workflows/cm-android-public.yml'
+  push:
+    branches: [build/cm-android-public-ci]
+    paths:
+      - 'android-cm/**'
+      - '.github/workflows/cm-android-public.yml'
   workflow_dispatch:
 permissions:
   contents: read
@@ -24,6 +29,28 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+      - name: Prepare persistent signing for trusted branch pushes only
+        id: signing
+        if: github.event_name == 'push' && github.ref == 'refs/heads/build/cm-android-public-ci' && github.actor == 'stub11'
+        env:
+          CM_KEYSTORE_B64: ${{ secrets.CM_SIGNING_KEYSTORE_B64 }}
+          CM_STORE_PASS: ${{ secrets.CM_SIGNING_STORE_PASSWORD }}
+          CM_KEY_PASS: ${{ secrets.CM_SIGNING_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          if [[ -z "$CM_KEYSTORE_B64" || -z "$CM_STORE_PASS" || -z "$CM_KEY_PASS" ]]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No private signing secrets configured. Publishing test APK only."
+            exit 0
+          fi
+          umask 077
+          KEYSTORE="$RUNNER_TEMP/cm-stable-signing.p12"
+          printf '%s' "$CM_KEYSTORE_B64" | base64 --decode > "$KEYSTORE"
+          test -s "$KEYSTORE"
+          echo "CM_SIGNING_STORE_FILE=$KEYSTORE" >> "$GITHUB_ENV"
+          echo "CM_SIGNING_STORE_PASSWORD=$CM_STORE_PASS" >> "$GITHUB_ENV"
+          echo "CM_SIGNING_KEY_PASSWORD=$CM_KEY_PASS" >> "$GITHUB_ENV"
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
       - name: Build and test CM debug APK
         run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace --no-daemon
       - name: Detect Android app version
@@ -32,10 +59,29 @@ jobs:
           VERSION=$(awk -F '"' '/versionName =/ {print $2; exit}' app/build.gradle.kts)
           test -n "$VERSION"
           echo "value=$VERSION" >> "$GITHUB_OUTPUT"
-      - name: Upload test APK
+      - name: Verify persistent APK signature
+        if: steps.signing.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --print-certs app/build/outputs/apk/debug/app-debug.apk
+      - name: Upload permanently signed APK
+        if: steps.signing.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: CM-android-v${{ steps.version.outputs.value }}
           path: android-cm/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
+      - name: Upload unsigned-for-release test APK (not OTA)
+        if: steps.signing.outputs.enabled != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: CM-android-test-v${{ steps.version.outputs.value }}
+          path: android-cm/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+      - name: Destroy temporary signing file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/cm-stable-signing.p12"
