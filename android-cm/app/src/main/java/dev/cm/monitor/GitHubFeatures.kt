@@ -64,9 +64,9 @@ internal class GitHubFeatures(private val context: Context) {
     }
 
     fun latestUpdate(currentVersion: String): CmUpdate? {
-        val runs = json("https://api.github.com/repos/$buildRepo/actions/workflows/cm-android-public.yml/runs?event=pull_request&status=success&per_page=20")
+        val runs = json("https://api.github.com/repos/$buildRepo/actions/workflows/cm-android-public.yml/runs?event=pull_request&status=success&per_page=8")
             .getJSONArray("workflow_runs")
-        var best: CmUpdate? = null
+        
         for (i in 0 until runs.length()) {
             val run = runs.getJSONObject(i)
             if (run.optString("head_branch") != "build/cm-android-public-ci") continue
@@ -81,13 +81,13 @@ internal class GitHubFeatures(private val context: Context) {
                 val name = art.optString("name")
                 val match = Regex("^CM-android-v(\\d+\\.\\d+\\.\\d+)$").matchEntire(name) ?: continue
                 val version = match.groupValues[1]
-                if (newer(version, currentVersion) && (best == null || newer(version, best.version))) {
-                    best = CmUpdate(version, id, art.getLong("id"), art.optString("digest").takeIf { it.startsWith("sha256:") })
-                }
+                return if (newer(version, currentVersion)) {
+                    CmUpdate(version, id, art.getLong("id"), art.optString("digest").takeIf { it.startsWith("sha256:") })
+                } else null
             }
-            if (best != null) break // newest successful workflow runs are first
+
         }
-        return best
+        return null
     }
 
     fun fetchApk(update: CmUpdate): File {
