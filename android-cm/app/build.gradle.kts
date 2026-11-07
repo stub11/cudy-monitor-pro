@@ -10,8 +10,8 @@ android {
         applicationId = "dev.cm.monitor"
         minSdk = 26
         targetSdk = 35
-        versionCode = 22
-        versionName = "0.1.21"
+        versionCode = 23
+        versionName = "0.1.22"
     }
     // Stable signing is opt-in; the keystore is never committed or uploaded.
     // GitHub Actions provisions CM_SIGNING_STORE_FILE from its encrypted secrets.
