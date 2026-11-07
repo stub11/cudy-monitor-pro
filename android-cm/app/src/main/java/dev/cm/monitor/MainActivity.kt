@@ -140,6 +140,9 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+            LaunchedEffect(Unit) {
+                checkForUpdate()
+            }
             LaunchedEffect(autoRefresh, snapshot, busy) {
                 if (autoRefresh && snapshot != null && !busy) {
                     delay(15_000)
