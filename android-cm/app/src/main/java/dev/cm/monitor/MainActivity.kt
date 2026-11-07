@@ -1,6 +1,8 @@
 package dev.cm.monitor
 
 import android.os.Bundle
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -27,7 +29,55 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val client = RouterClient(applicationContext)
+        val github = GitHubFeatures(applicationContext)
+        @Suppress("DEPRECATION")
+        val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "0.1.2"
         setContent {
+            var githubTokenInput by remember { mutableStateOf("") }
+            var githubHasToken by remember { mutableStateOf(github.hasToken()) }
+            var diagnosticsEnabled by remember { mutableStateOf(github.reportingEnabled()) }
+            var githubStatus by remember { mutableStateOf("Обновления проверяются по GitHub. Автоотчёты — в приватный CM.") }
+            var update by remember { mutableStateOf<CmUpdate?>(null) }
+            var hasUpdateFile by remember { mutableStateOf(false) }
+            var githubBusy by remember { mutableStateOf(false) }
+            fun checkForUpdate() {
+                if (githubBusy) return
+                githubBusy = true
+                githubStatus = "Проверяем доступные версии…"
+                worker.execute {
+                    try {
+                        val found = github.latestUpdate(version)
+                        runOnUiThread {
+                            update = found
+                            githubStatus = if (found == null) "Обновлений нет ($version)" else "Новая версия CM ${found.version}"
+                            githubBusy = false
+                        }
+                    } catch (e: Exception) {
+                        runOnUiThread { githubStatus = "Проверка обновлений: ${e.message ?: "ошибка сети"}"; githubBusy = false }
+                    }
+                }
+            }
+            fun downloadUpdate() {
+                val selected = update ?: return
+                if (githubBusy) return
+                githubBusy = true
+                githubStatus = "Загружаем CM ${selected.version}…"
+                worker.execute {
+                    try {
+                        github.fetchApk(selected)
+                        runOnUiThread {
+                            hasUpdateFile = true
+                            githubBusy = false
+                            githubStatus = "APK загружен. Подтверди установку Android."
+                            try { github.installDownloadedApk() } catch (e: Exception) {
+                                githubStatus = "Запуск установки: ${e.message}"
+                            }
+                        }
+                    } catch (e: Exception) {
+                        runOnUiThread { githubBusy = false; githubStatus = "Не удалось загрузить: ${e.message}" }
+                    }
+                }
+            }
             var host by remember { mutableStateOf("") }
             var portText by remember { mutableStateOf("22") }
             var username by remember { mutableStateOf("root") }
@@ -78,7 +128,15 @@ class MainActivity : ComponentActivity() {
                     } catch (e: UntrustedHostKey) {
                         runOnUiThread { pending = Triple(h, p, e.fingerprint); status = "Подтверди ключ роутера"; busy = false; autoRefresh = false }
                     } catch (e: Exception) {
-                        runOnUiThread { status = e.message ?: "Ошибка подключения"; busy = false; autoRefresh = false }
+                        val reported = try { github.sendErrorReport(e, version) } catch (_: Exception) { false }
+                        runOnUiThread {
+                            status = if (e.message?.contains("Exhausted available authentication") == true)
+                                "SSH отклонил авторизацию. Для root нужен пароль SSH Entware, а не обязательно пароль admin панели."
+                            else e.message ?: "Ошибка подключения"
+                            if (reported) status += " · Отчёт отправлен в приватный GitHub."
+                            busy = false
+                            autoRefresh = false
+                        }
                     }
                 }
             }
@@ -154,7 +212,67 @@ class MainActivity : ComponentActivity() {
                         Metric("Entware /opt", if (s.storageTotalKb > 0) String.format(Locale.US, "%.1f%%", 100.0 * (s.storageTotalKb - s.storageAvailableKb) / s.storageTotalKb) else "Нет данных",
                             if (s.storageTotalKb > 0) "${(s.storageTotalKb - s.storageAvailableKb) / 1024} / ${s.storageTotalKb / 1024} МБ" else "")
                     }
-                    Text("CM 0.1.0 · SSH без серверного агента", color = Color.Gray)
+                    HorizontalDivider()
+                    Text("Обновления CM", fontWeight = FontWeight.Bold)
+                    Button(onClick = { checkForUpdate() }, enabled = !githubBusy, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (githubBusy) "Проверка / загрузка…" else "Проверить обновления")
+                    }
+                    update?.let { available ->
+                        Text("Доступна версия ${available.version}", color = mint)
+                        Button(onClick = { downloadUpdate() }, enabled = !githubBusy && githubHasToken,
+                            modifier = Modifier.fillMaxWidth()) { Text("Скачать и установить внутри CM") }
+                        if (!githubHasToken) {
+                            Text("Для загрузки из GitHub Actions нужен токен с Actions: Read. Или открой сборку в браузере.")
+                            TextButton(onClick = {
+                                startActivity(Intent(Intent.ACTION_VIEW,
+                                    Uri.parse("https://github.com/stub11/cudy-monitor-pro/actions/runs/${available.runId}")))
+                            }) { Text("Открыть APK на GitHub") }
+                        }
+                    }
+                    if (hasUpdateFile) {
+                        OutlinedButton(onClick = {
+                            try { github.installDownloadedApk() }
+                            catch (e: Exception) { githubStatus = "Не удалось открыть установщик: ${e.message}" }
+                        }, modifier = Modifier.fillMaxWidth()) { Text("Продолжить установку загруженного APK") }
+                    }
+                    HorizontalDivider()
+                    Text("Автодиагностика GitHub", fontWeight = FontWeight.Bold)
+                    Text("Ошибки SSH отправляются только в приватный stub11/CM. Пароли, IP-адреса, SSH-ключи и журналы не передаются.",
+                        style = MaterialTheme.typography.bodySmall, color = Color(0xFFB6C9DE))
+                    OutlinedTextField(value = githubTokenInput, onValueChange = { githubTokenInput = it },
+                        label = { Text(if (githubHasToken) "Заменить GitHub-токен" else "GitHub-токен: Issues Write + Actions Read") },
+                        visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+                        singleLine = true)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = {
+                            try {
+                                if (githubTokenInput.isBlank()) error("Введите токен")
+                                github.saveToken(githubTokenInput)
+                                githubTokenInput = ""
+                                githubHasToken = true
+                                githubStatus = "Токен защищён Android Keystore"
+                            } catch (e: Exception) { githubStatus = "Не удалось сохранить токен: ${e.message}" }
+                        }, modifier = Modifier.weight(1f)) { Text("Сохранить") }
+                        OutlinedButton(onClick = {
+                            github.removeToken()
+                            githubHasToken = false
+                            diagnosticsEnabled = false
+                            github.setReportingEnabled(false)
+                            githubTokenInput = ""
+                            githubStatus = "Токен удалён"
+                        }, modifier = Modifier.weight(1f)) { Text("Удалить токен") }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Checkbox(checked = diagnosticsEnabled, enabled = githubHasToken,
+                            onCheckedChange = { value ->
+                                diagnosticsEnabled = value
+                                github.setReportingEnabled(value)
+                            })
+                        Text("Автоматически отправлять новые ошибки SSH (не чаще раза в сутки на тип)",
+                            modifier = Modifier.padding(top = 5.dp), style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text(githubStatus, color = Color(0xFFB6C9DE))
+                    Text("CM $version · SSH без серверного агента", color = Color.Gray)
                 }
             }
         }
