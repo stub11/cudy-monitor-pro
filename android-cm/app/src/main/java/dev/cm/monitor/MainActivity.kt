@@ -35,6 +35,7 @@ class MainActivity : ComponentActivity() {
         val rememberedRouter = profileStore.load()
         // Only persist credentials when they actually change, never on every telemetry poll.
         var lastSavedProfile = rememberedRouter
+        val requestInFlight = java.util.concurrent.atomic.AtomicBoolean(false)
         val uiPreferences = getSharedPreferences("cm_display", MODE_PRIVATE)
         @Suppress("DEPRECATION")
         val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "0.1.2"
@@ -109,9 +110,12 @@ class MainActivity : ComponentActivity() {
             var refreshSeconds by remember { mutableIntStateOf(PollingPolicy.normalize(uiPreferences.getInt("refresh_seconds", 5))) }
             var consecutiveFailures by remember { mutableIntStateOf(0) }
             fun connect() {
-                if (busy) return
-                busy = true
-                if (snapshot == null) status = "Подключение по SSH…"
+                if (!requestInFlight.compareAndSet(false, true)) return
+                val firstConnection = snapshot == null
+                if (firstConnection) {
+                    busy = true
+                    status = "Подключение по SSH…"
+                }
                 val h = host.trim()
                 val p = portText.toIntOrNull() ?: 0
                 val u = username.trim()
@@ -160,10 +164,17 @@ class MainActivity : ComponentActivity() {
                             status = if (profileSaved) "Подключено · Роутер сохранён" else "Подключено"
                             autoRefresh = true
                             pending = null
-                            busy = false
+                            if (firstConnection) busy = false
+                            requestInFlight.set(false)
                         }
                     } catch (e: UntrustedHostKey) {
-                        runOnUiThread { pending = Triple(h, p, e.fingerprint); status = "Подтверди ключ роутера"; busy = false; autoRefresh = false }
+                        runOnUiThread {
+                            pending = Triple(h, p, e.fingerprint)
+                            status = "Подтверди ключ роутера"
+                            if (firstConnection) busy = false
+                            autoRefresh = false
+                            requestInFlight.set(false)
+                        }
                     } catch (e: Exception) {
                         val reported = try { github.sendErrorReport(e, version) } catch (_: Exception) { false }
                         runOnUiThread {
@@ -171,7 +182,8 @@ class MainActivity : ComponentActivity() {
                                 "SSH отклонил авторизацию. Для root нужен пароль SSH Entware, а не обязательно пароль admin панели."
                             else e.message ?: "Ошибка подключения"
                             if (reported) status += " · Отчёт отправлен в приватный GitHub."
-                            busy = false
+                            if (firstConnection) busy = false
+                            requestInFlight.set(false)
                             consecutiveFailures++
                             // Stop after repeated failures; never hammer the router.
                             if (consecutiveFailures >= 4) {
