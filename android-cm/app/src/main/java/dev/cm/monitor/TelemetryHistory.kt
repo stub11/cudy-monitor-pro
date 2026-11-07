@@ -19,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 internal data class TelemetryPoint(
     val cpu: Double?,
     val ram: Double,
+    val load1: Double?,
     val temp: Double?,
     val rxBps: Double?,
     val txBps: Double?
