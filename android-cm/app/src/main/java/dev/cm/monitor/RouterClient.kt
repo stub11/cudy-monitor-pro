@@ -111,38 +111,24 @@ class RouterClient(private val context: Context) {
         }
     }
 
-    fun fetch(host: String, port: Int, username: String, password: String): RouterSnapshot {
-        require(privateIpv4(host)) { "Укажи локальный IPv4 роутера" }
-        require(port in 1..65535) { "Некорректный порт SSH" }
-        require(username.isNotBlank()) { "Укажи имя пользователя" }
-        val pinned = store.getString("$host:$port", null)
-        var untrustedFingerprint: String? = null
-        var changedKey = false
-        try {
-          prepareSshCrypto()
-          SSHClient().use { ssh ->
-            ssh.addHostKeyVerifier(object : HostKeyVerifier {
-                override fun findExistingAlgorithms(hostname: String, port: Int): List<String> = emptyList()
-                override fun verify(hostname: String, port: Int, key: PublicKey): Boolean {
-                    val digest = MessageDigest.getInstance("SHA-256").digest(key.encoded)
-                    val fingerprint = Base64.getEncoder().withoutPadding().encodeToString(digest)
-                    if (pinned == null) {
-                        untrustedFingerprint = fingerprint
-                        return false
-                    }
-                    if (pinned != fingerprint) {
-                        changedKey = true
-                        return false
-                    }
-                    return true
-                }
-            })
-            ssh.connectTimeout = 5000
-            ssh.connect(host, port)
-            ssh.authPassword(username, password)
-            // The exec channel does not depend on interactive terminal line
-            // discipline. A failure here is non-fatal; try PTY below.
-            runCatching { fetchViaExec(ssh) }.getOrNull()?.let { return it }
+    // Retain one authenticated SSH transport; open a fresh channel for each
+    // telemetry sample. All operations are serialized and the transport is
+    // never stored together with passwords or committed to GitHub.
+    private var cachedTransport: SSHClient? = null
+    private var cachedEndpoint: String? = null
+    private var cachedMode: String? = null // "exec" or "pty"
+
+    @Synchronized
+    fun close() {
+        val old = cachedTransport
+        cachedTransport = null
+        cachedEndpoint = null
+        cachedMode = null
+        runCatching { old?.disconnect() }
+        runCatching { old?.close() }
+    }
+
+    private fun fetchViaPty(ssh: SSHClient): RouterSnapshot {
             ssh.startSession().use { session ->
                 // KeeneticOS SSH initially opens its own CLI, not a POSIX shell.
                 // The same "exec sh" command confirmed manually by the owner
@@ -213,11 +199,77 @@ class RouterClient(private val context: Context) {
                     }
                 }
             }
-          }
-        } catch (error: Exception) {
+    }
+
+    private fun openConnection(host: String, port: Int, username: String, password: String): SSHClient {
+        val pinned = store.getString("$host:$port", null)
+        var untrustedFingerprint: String? = null
+        var changedKey = false
+        val ssh = SSHClient()
+        try {
+            ssh.addHostKeyVerifier(object : HostKeyVerifier {
+                override fun findExistingAlgorithms(hostname: String, port: Int): List<String> = emptyList()
+                override fun verify(hostname: String, port: Int, key: PublicKey): Boolean {
+                    val digest = MessageDigest.getInstance("SHA-256").digest(key.encoded)
+                    val fingerprint = Base64.getEncoder().withoutPadding().encodeToString(digest)
+                    if (pinned == null) {
+                        untrustedFingerprint = fingerprint
+                        return false
+                    }
+                    if (pinned != fingerprint) {
+                        changedKey = true
+                        return false
+                    }
+                    return true
+                }
+            })
+            ssh.connectTimeout = 5000
+            ssh.connect(host, port)
+            ssh.authPassword(username, password)
+            return ssh
+        } catch (e: Exception) {
+            runCatching { ssh.disconnect() }
+            runCatching { ssh.close() }
             if (changedKey) throw ChangedHostKey()
             untrustedFingerprint?.let { throw UntrustedHostKey(it) }
-            throw error
+            throw e
         }
+    }
+
+    // Reuse transport after a successful sample, reconnect only if the session
+    // or channel becomes unusable. No overlapping requests are permitted.
+    @Synchronized
+    fun fetch(host: String, port: Int, username: String, password: String): RouterSnapshot {
+        require(privateIpv4(host)) { "Укажи локальный IPv4 роутера" }
+        require(port in 1..65535) { "Некорректный порт SSH" }
+        require(username.isNotBlank()) { "Укажи имя пользователя" }
+        val endpoint = "$host:$port:$username"
+        if (cachedEndpoint != endpoint) close()
+        prepareSshCrypto()
+        for (attempt in 0..1) {
+            val ssh = cachedTransport ?: openConnection(host, port, username, password).also {
+                cachedTransport = it
+                cachedEndpoint = endpoint
+            }
+            try {
+                val mode = cachedMode
+                if (mode == "exec") return fetchViaExec(ssh)
+                if (mode == "pty") return fetchViaPty(ssh)
+                // Probe only on a newly established transport. The mode that
+                // works is reused on subsequent polls to avoid 8s failed probes.
+                val execResult = runCatching { fetchViaExec(ssh) }
+                if (execResult.isSuccess) {
+                    cachedMode = "exec"
+                    return execResult.getOrThrow()
+                }
+                val result = fetchViaPty(ssh)
+                cachedMode = "pty"
+                return result
+            } catch (e: Exception) {
+                close()
+                if (attempt == 1) throw e
+            }
+        }
+        error("SSH connection unavailable")
     }
 }
