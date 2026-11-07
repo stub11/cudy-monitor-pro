@@ -278,10 +278,10 @@ class MainActivity : ComponentActivity() {
                         Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                             MiniMetric("Процессор",
                                 cpuPercent?.let { String.format(Locale.US, "%.1f%%", it) } ?: "Замер…",
-                                history.map { it.cpu }, Modifier.weight(1f))
+                                history.map { it.cpu }, Modifier.weight(1f), percentScale = true)
                             MiniMetric("Память",
                                 String.format(Locale.US, "%.1f%%", s.memoryUsedPercent),
-                                history.map { it.ram }, Modifier.weight(1f))
+                                history.map { it.ram }, Modifier.weight(1f), percentScale = true)
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                             MiniMetric("Температура",
@@ -422,8 +422,8 @@ private fun Metric(title: String, value: String, subtitle: String) {
 
 private fun formatRate(bitsPerSecond: Double): String =
     if (bitsPerSecond >= 1_000_000.0)
-        String.format(Locale.US, "%.2f Мбит/с", bitsPerSecond / 1_000_000.0)
-    else String.format(Locale.US, "%.0f Кбит/с", bitsPerSecond / 1000.0)
+        String.format(Locale.US, "%.1f Мб/с", bitsPerSecond / 1_000_000.0)
+    else String.format(Locale.US, "%.0f Кб/с", bitsPerSecond / 1000.0)
 
 private fun formatBytes(value: Long): String = when {
     value >= 1_000_000_000 -> String.format(Locale.US, "%.2f ГБ", value / 1_000_000_000.0)
