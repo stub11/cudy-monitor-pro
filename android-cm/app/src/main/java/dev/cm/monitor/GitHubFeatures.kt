@@ -94,7 +94,8 @@ internal class GitHubFeatures(private val context: Context) {
         val token = secrets.read() ?: error("Для скачивания через приложение нужен GitHub-токен с Actions: Read")
         val conn = connection("https://api.github.com/repos/$buildRepo/actions/artifacts/${update.artifactId}/zip", token)
         val zip = File(context.cacheDir, "cm-update-artifact.zip")
-        val apk = File(context.cacheDir, "cm-update.apk")
+        val apk = File(context.cacheDir, "cm-updates/cm-update.apk")
+        apk.parentFile?.mkdirs()
         try {
             if (conn.responseCode != 200) error("GitHub не разрешил скачать APK: HTTP ${conn.responseCode}. Нужны права Actions: Read")
             val md = MessageDigest.getInstance("SHA-256")
@@ -193,8 +194,8 @@ internal class GitHubFeatures(private val context: Context) {
         val body = JSONObject().apply {
             put("title", "[CM auto-diagnostic] $code")
             put("body", "Automatically submitted from CM Android (private repository).\\n\\n" +
-                "- Error code: \`$code\`\\n- App version: \`$appVersion\`\\n" +
-                "- Android API: \`${Build.VERSION.SDK_INT}\`\\n- Stage: \`SSH connection/authentication\`\\n" +
+                "- Error code: `$code`\\n- App version: `$appVersion`\\n" +
+                "- Android API: `${Build.VERSION.SDK_INT}`\\n- Stage: `SSH connection/authentication`\\n" +
                 "- No credentials, IPs or raw logs included.")
         }
         val conn = connection("https://api.github.com/repos/$reportsRepo/issues", token, "POST")
