@@ -13,6 +13,28 @@ android {
         versionCode = 7
         versionName = "0.1.6"
     }
+    // Stable signing is opt-in; the keystore is never committed or uploaded.
+    // GitHub Actions provisions CM_SIGNING_STORE_FILE from its encrypted secrets.
+    val signingStore = System.getenv("CM_SIGNING_STORE_FILE")
+    val signingStorePassword = System.getenv("CM_SIGNING_STORE_PASSWORD")
+    val signingKeyPassword = System.getenv("CM_SIGNING_KEY_PASSWORD")
+    val configured = listOf(signingStore, signingStorePassword, signingKeyPassword).count { !it.isNullOrBlank() }
+    require(configured == 0 || configured == 3) { "Incomplete CM signing configuration" }
+    if (configured == 3) {
+        signingConfigs {
+            create("cmStable") {
+                storeFile = file(signingStore!!)
+                storePassword = signingStorePassword!!
+                keyAlias = "cm"
+                keyPassword = signingKeyPassword!!
+            }
+        }
+        buildTypes {
+            getByName("debug") {
+                signingConfig = signingConfigs.getByName("cmStable")
+            }
+        }
+    }
     buildFeatures { compose = true }
     packaging {
         resources {
