@@ -95,6 +95,7 @@ class MainActivity : ComponentActivity() {
             var transferRate by remember { mutableStateOf<Pair<Double, Double>?>(null) }
             var history by remember { mutableStateOf<List<TelemetryPoint>>(emptyList()) }
             var showDetails by remember { mutableStateOf(false) }
+            var showGithubSettings by remember { mutableStateOf(false) }
             var lastFetchAt by remember { mutableStateOf<Long?>(null) }
             var lastEndpoint by remember { mutableStateOf<String?>(null) }
             var pending by remember { mutableStateOf<Triple<String, Int, String>?>(null) }
@@ -137,8 +138,9 @@ class MainActivity : ComponentActivity() {
                             lastFetchAt = android.os.SystemClock.elapsedRealtime()
                             snapshot = result
                             history = TelemetryHistory.append(history,
-                                TelemetryPoint(cpuPercent, result.memoryUsedPercent, result.temperatureC,
-                                    transferRate?.first, transferRate?.second))
+                                TelemetryPoint(cpuPercent, result.memoryUsedPercent,
+                                    result.loadAverage.split(" ").firstOrNull()?.toDoubleOrNull(),
+                                    result.temperatureC, transferRate?.first, transferRate?.second))
                             status = if (profileSaved) "Подключено · Роутер сохранён" else "Подключено"
                             autoRefresh = true
                             pending = null
@@ -285,9 +287,9 @@ class MainActivity : ComponentActivity() {
                             MiniMetric("Температура",
                                 s.temperatureC?.let { String.format(Locale.US, "%.1f°C", it) } ?: "Нет датчика",
                                 history.map { it.temp }, Modifier.weight(1f))
-                            MiniMetric("Загрузка Linux", s.loadAverage,
-                                emptyList(), Modifier.weight(1f),
-                                note = "Средняя за 1 / 5 / 15 мин")
+                            MiniMetric("Нагрузка · 1 мин",
+                                s.loadAverage.split(" ").firstOrNull() ?: "—",
+                                history.map { it.load1 }, Modifier.weight(1f))
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                             MiniMetric("Приём ↓",
@@ -345,6 +347,11 @@ class MainActivity : ComponentActivity() {
                             catch (e: Exception) { githubStatus = "Не удалось открыть установщик: ${e.message}" }
                         }, modifier = Modifier.fillMaxWidth()) { Text("Продолжить установку загруженного APK") }
                     }
+                    OutlinedButton(
+                        onClick = { showGithubSettings = !showGithubSettings },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(if (showGithubSettings) "Скрыть настройки GitHub" else "Диагностика и настройки GitHub") }
+                    if (showGithubSettings) {
                     HorizontalDivider()
                     Text("Автодиагностика GitHub", fontWeight = FontWeight.Bold, color = Color.White)
                     Text("Ошибки SSH отправляются только в приватный stub11/CM. Пароли, IP-адреса, SSH-ключи и журналы не передаются.",
@@ -383,6 +390,7 @@ class MainActivity : ComponentActivity() {
                             color = Color(0xFFB6C9DE))
                     }
                     Text(githubStatus, color = Color(0xFFB6C9DE))
+                    }
                     Text("CM $version · SSH без серверного агента", color = Color.Gray)
                 }
             }
