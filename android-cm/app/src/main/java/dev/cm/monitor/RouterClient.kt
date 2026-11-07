@@ -91,7 +91,7 @@ class RouterClient(private val context: Context) {
                             } else if (started && normalized == "CM_EXEC_END_4F21") {
                                 return@submit output.toString()
                             } else if (started) {
-                                output.append(line).append('\\n')
+                                output.append(line).append('\n')
                                 check(output.length < 65536) { "Ответ SSH слишком большой" }
                             }
                         }
