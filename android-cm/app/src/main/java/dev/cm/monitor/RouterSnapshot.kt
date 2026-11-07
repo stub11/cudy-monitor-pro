@@ -22,6 +22,9 @@ data class RouterSnapshot(
             (100.0 * (memoryTotalKb - memoryAvailableKb) / memoryTotalKb).coerceIn(0.0, 100.0)
 }
 
+class RouterTelemetryException(val missingFields: List<String>) :
+    IllegalArgumentException("SSH shell не вернул корректные поля Linux: " + missingFields.joinToString(", "))
+
 object RouterSnapshotParser {
     fun parse(raw: String): RouterSnapshot {
         val map = raw.lineSequence().mapNotNull { line ->
@@ -35,10 +38,14 @@ object RouterSnapshotParser {
         val cpu = map["CPU"]?.split(',', limit = 2)
         val cpuTotal = cpu?.getOrNull(0)?.toLongOrNull()
         val cpuIdle = cpu?.getOrNull(1)?.toLongOrNull()
-        require(uptime != null && uptime >= 0 && memory != null && memory > 0 &&
-            cpuTotal != null && cpuTotal > 0 && cpuIdle != null && cpuIdle in 0L..cpuTotal) {
-            "SSH не вернул системные данные Linux. Проверь доступ к shell в KeeneticOS."
+        val missing = buildList {
+            if (uptime == null || uptime < 0) add("UPTIME")
+            if (memory == null || memory <= 0) add("MEMTOTAL")
+            if (cpuTotal == null || cpuTotal <= 0 ||
+                cpuIdle == null || cpuIdle < 0 || cpuIdle > cpuTotal
+            ) add("CPU")
         }
+        if (missing.isNotEmpty()) throw RouterTelemetryException(missing)
         val available = map["MEMAVAILABLE"]?.toLongOrNull()?.coerceIn(0L, memory) ?: 0L
         val storage = map["STORAGE"]?.split(',', limit = 2)
         val storageTotal = storage?.getOrNull(0)?.toLongOrNull()?.coerceAtLeast(0) ?: 0L
