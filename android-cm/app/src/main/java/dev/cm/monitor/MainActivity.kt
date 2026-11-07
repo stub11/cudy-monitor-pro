@@ -27,6 +27,18 @@ private val mint = Color(0xFF26E1AC)
 private val worker = Executors.newSingleThreadExecutor()
 
 class MainActivity : ComponentActivity() {
+    private var foreground by mutableStateOf(true)
+
+    override fun onResume() {
+        super.onResume()
+        foreground = true
+    }
+
+    override fun onPause() {
+        foreground = false
+        super.onPause()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val client = RouterClient(applicationContext)
@@ -198,8 +210,8 @@ class MainActivity : ComponentActivity() {
                 checkForUpdate()
                 if (rememberedRouter != null) connect()
             }
-            LaunchedEffect(autoRefresh, snapshot, busy, refreshSeconds, consecutiveFailures) {
-                if (autoRefresh && snapshot != null && !busy) {
+            LaunchedEffect(autoRefresh, snapshot, busy, refreshSeconds, consecutiveFailures, foreground) {
+                if (foreground && autoRefresh && snapshot != null && !busy) {
                     delay(PollingPolicy.delayMs(refreshSeconds, consecutiveFailures))
                     connect()
                 }
