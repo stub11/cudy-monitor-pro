@@ -47,6 +47,17 @@ class RouterSnapshotParserTest {
         } catch (_: IllegalArgumentException) { }
     }
 
+    @Test fun reportsMissingCoreFieldsWithoutRawTerminalOutput() {
+        try {
+            RouterSnapshotParser.parse("Welcome to KeeneticOS\\nUPTIME=10\\nMEMTOTAL=8000\\n")
+            throw AssertionError("Expected CPU parsing failure")
+        } catch (expected: RouterTelemetryException) {
+            assertEquals(listOf("CPU"), expected.missingFields)
+            assert(expected.message?.contains("CPU") == true)
+            assert(expected.message?.contains("KeeneticOS") == false)
+        }
+    }
+
     @Test fun unavailableSensorIsNotReportedAsZero() {
         val result = RouterSnapshotParser.parse(sample.replace("TEMP=62500", "TEMP=0"))
         assertNull(result.temperatureC)
