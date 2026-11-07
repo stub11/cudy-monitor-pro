@@ -10,8 +10,8 @@ android {
         applicationId = "dev.cm.monitor"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 3
+        versionName = "0.1.2"
     }
     buildFeatures { compose = true }
     packaging {
@@ -28,6 +28,7 @@ dependencies {
     implementation(platform("androidx.compose:compose-bom:2026.03.00"))
     implementation("androidx.compose.material3:material3")
     implementation("androidx.activity:activity-compose:1.11.0")
+    implementation("androidx.core:core:1.17.0")
     implementation("com.hierynomus:sshj:0.41.2")
     implementation("org.bouncycastle:bcprov-jdk18on:1.86")
     implementation("org.bouncycastle:bcutil-jdk18on:1.86")
