@@ -150,10 +150,13 @@ class MainActivity : ComponentActivity() {
                 }
             }
             MaterialTheme(colorScheme = darkColorScheme(
-                primary = mint, background = bg, surface = card, onBackground = Color.White
+                primary = mint, onPrimary = bg, background = bg, onBackground = Color.White,
+                surface = card, onSurface = Color.White, onSurfaceVariant = Color(0xFFB6C9DE),
+                surfaceVariant = card, outline = Color(0xFF71839C)
             )) {
                 Column(
                     Modifier.fillMaxSize().background(bg)
+                        .statusBarsPadding().navigationBarsPadding()
                         .verticalScroll(rememberScrollState()).padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(13.dp)
                 ) {
@@ -216,7 +219,7 @@ class MainActivity : ComponentActivity() {
                             if (s.storageTotalKb > 0) "${(s.storageTotalKb - s.storageAvailableKb) / 1024} / ${s.storageTotalKb / 1024} МБ" else "")
                     }
                     HorizontalDivider()
-                    Text("Обновления CM", fontWeight = FontWeight.Bold)
+                    Text("Обновления CM", fontWeight = FontWeight.Bold, color = Color.White)
                     Button(onClick = { checkForUpdate() }, enabled = !githubBusy, modifier = Modifier.fillMaxWidth()) {
                         Text(if (githubBusy) "Проверка / загрузка…" else "Проверить обновления")
                     }
@@ -239,7 +242,7 @@ class MainActivity : ComponentActivity() {
                         }, modifier = Modifier.fillMaxWidth()) { Text("Продолжить установку загруженного APK") }
                     }
                     HorizontalDivider()
-                    Text("Автодиагностика GitHub", fontWeight = FontWeight.Bold)
+                    Text("Автодиагностика GitHub", fontWeight = FontWeight.Bold, color = Color.White)
                     Text("Ошибки SSH отправляются только в приватный stub11/CM. Пароли, IP-адреса, SSH-ключи и журналы не передаются.",
                         style = MaterialTheme.typography.bodySmall, color = Color(0xFFB6C9DE))
                     OutlinedTextField(value = githubTokenInput, onValueChange = { githubTokenInput = it },
@@ -272,7 +275,8 @@ class MainActivity : ComponentActivity() {
                                 github.setReportingEnabled(value)
                             })
                         Text("Автоматически отправлять новые ошибки SSH (не чаще раза в сутки на тип)",
-                            modifier = Modifier.padding(top = 5.dp), style = MaterialTheme.typography.bodySmall)
+                            modifier = Modifier.padding(top = 5.dp), style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFFB6C9DE))
                     }
                     Text(githubStatus, color = Color(0xFFB6C9DE))
                     Text("CM $version · SSH без серверного агента", color = Color.Gray)
