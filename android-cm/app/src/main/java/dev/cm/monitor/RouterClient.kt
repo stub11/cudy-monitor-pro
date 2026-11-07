@@ -12,9 +12,11 @@ import java.util.Base64
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicReference
 
 class UntrustedHostKey(val fingerprint: String) : Exception("Требуется подтверждение ключа SSH")
 class ChangedHostKey : Exception("Ключ роутера изменился. Подключение заблокировано.")
+class SshShellTimeout(val stage: String) : Exception("SSH shell: превышено время ожидания ($stage)")
 
 class RouterClient(private val context: Context) {
     companion object {
@@ -97,6 +99,7 @@ class RouterClient(private val context: Context) {
                     val markerEnd = "CM_SNAPSHOT_END_72F2"
                     val readyMarker = "CM_LINUX_READY_72F2"
                     val reader = shell.inputStream.bufferedReader()
+                    val step = AtomicReference("WAIT_LINUX_SHELL")
                     val taskExecutor = Executors.newSingleThreadExecutor { r ->
                         Thread(r, "cm-ssh-reader").apply { isDaemon = true }
                     }
@@ -104,22 +107,24 @@ class RouterClient(private val context: Context) {
                         val work = taskExecutor.submit<String> {
                             val writer = shell.outputStream
                             fun send(line: String) {
-                                writer.write((line + "\n").toByteArray(Charsets.UTF_8))
+                                writer.write((line + "\r").toByteArray(Charsets.UTF_8))
                                 writer.flush()
                             }
                             // KeeneticOS can discard a paste sent during its CLI -> sh transition.
                             // Wait for a unique Linux-only marker before sending telemetry.
                             send("exec sh")
-                            Thread.sleep(400)
+                            Thread.sleep(700)
                             send("printf '\\n$readyMarker\\n'")
                             var ready = false
                             while (!ready) {
                                 val line = reader.readLine() ?: error("SSH CLI закрылась до входа в Linux")
-                                if (line.replace("\r", "").trim() == readyMarker) ready = true
+                                val clean = line.replace("\r", "").trim()
+                                if (clean.endsWith(readyMarker) && !clean.contains("printf")) ready = true
                             }
                             send("printf '\\n$markerStart\\n'")
                             // Each shell command must be a separate PTY input line.
                             // Do not paste one long command into the KeeneticOS CLI.
+                            step.set("READ_LINUX_TELEMETRY")
                             readOnlyCommand.lineSequence().forEach { command ->
                                 send(command)
                                 Thread.sleep(20)
@@ -130,11 +135,11 @@ class RouterClient(private val context: Context) {
                             while (true) {
                                 val line = reader.readLine() ?: break
                                 val normalized = line.replace("\r", "").trim()
-                                if (normalized == markerStart) {
+                                if (normalized.endsWith(markerStart) && !normalized.contains("printf")) {
                                     collecting = true
                                     continue
                                 }
-                                if (normalized == markerEnd && collecting) return@submit result.toString()
+                                if (normalized.endsWith(markerEnd) && !normalized.contains("printf") && collecting) return@submit result.toString()
                                 if (collecting) {
                                     result.append(line).append('\n')
                                     if (result.length > 65_536) error("SSH вернул слишком много данных")
@@ -146,7 +151,7 @@ class RouterClient(private val context: Context) {
                             work.get(22, TimeUnit.SECONDS)
                         } catch (e: TimeoutException) {
                             work.cancel(true)
-                            throw IllegalStateException("Нет подтверждения Linux shell или показателей за 22 секунды", e)
+                            throw SshShellTimeout(step.get())
                         }
                         return RouterSnapshotParser.parse(output)
                     } finally {
