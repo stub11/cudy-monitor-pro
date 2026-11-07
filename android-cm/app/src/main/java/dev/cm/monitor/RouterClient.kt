@@ -10,6 +10,8 @@ import java.security.MessageDigest
 import java.security.PublicKey
 import java.util.Base64
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeoutException
 
 class UntrustedHostKey(val fingerprint: String) : Exception("Требуется подтверждение ключа SSH")
 class ChangedHostKey : Exception("Ключ роутера изменился. Подключение заблокировано.")
@@ -86,10 +88,53 @@ class RouterClient(private val context: Context) {
             ssh.connect(host, port)
             ssh.authPassword(username, password)
             ssh.startSession().use { session ->
-                val command = session.exec(readOnlyCommand)
-                val result = command.inputStream.bufferedReader().use { it.readText() }
-                command.join(8, TimeUnit.SECONDS)
-                return RouterSnapshotParser.parse(result)
+                // KeeneticOS SSH initially opens its own CLI, not a POSIX shell.
+                // The same "exec sh" command confirmed manually by the owner
+                // enters the Linux BusyBox shell. This is read-only telemetry.
+                session.allocateDefaultPTY()
+                session.startShell().use { shell ->
+                    val markerStart = "CM_SNAPSHOT_BEGIN_72F2"
+                    val markerEnd = "CM_SNAPSHOT_END_72F2"
+                    val script = "exec sh\n" +
+                        "printf '\n$markerStart\n'\n" +
+                        readOnlyCommand + "\n" +
+                        "printf '\n$markerEnd\n'\n"
+                    val reader = shell.inputStream.bufferedReader()
+                    val taskExecutor = Executors.newSingleThreadExecutor { r ->
+                        Thread(r, "cm-ssh-reader").apply { isDaemon = true }
+                    }
+                    try {
+                        val work = taskExecutor.submit<String> {
+                            shell.outputStream.write(script.toByteArray(Charsets.UTF_8))
+                            shell.outputStream.flush()
+                            val result = StringBuilder()
+                            var collecting = false
+                            while (true) {
+                                val line = reader.readLine() ?: break
+                                val normalized = line.replace("\r", "").trim()
+                                if (normalized == markerStart) {
+                                    collecting = true
+                                    continue
+                                }
+                                if (normalized == markerEnd && collecting) return@submit result.toString()
+                                if (collecting) {
+                                    result.append(line).append('\n')
+                                    if (result.length > 65_536) error("SSH вернул слишком много данных")
+                                }
+                            }
+                            error("SSH shell завершился без системных показателей")
+                        }
+                        val output = try {
+                            work.get(12, TimeUnit.SECONDS)
+                        } catch (e: TimeoutException) {
+                            work.cancel(true)
+                            throw IllegalStateException("Вход в Linux через exec sh не завершился за 12 секунд", e)
+                        }
+                        return RouterSnapshotParser.parse(output)
+                    } finally {
+                        taskExecutor.shutdownNow()
+                    }
+                }
             }
           }
         } catch (error: Exception) {
