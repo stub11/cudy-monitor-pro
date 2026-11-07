@@ -54,9 +54,9 @@ jobs:
           os.chmod(keyfile, 0o600)
           print("::add-mask::" + password)
           with open(os.environ["GITHUB_ENV"], "a") as env:
-              env.write("CM_SIGNING_STORE_FILE=" + keyfile + "\\n")
-              env.write("CM_SIGNING_STORE_PASSWORD=" + password + "\\n")
-              env.write("CM_SIGNING_KEY_PASSWORD=" + password + "\\n")
+              env.write("CM_SIGNING_STORE_FILE=" + keyfile + "\n")
+              env.write("CM_SIGNING_STORE_PASSWORD=" + password + "\n")
+              env.write("CM_SIGNING_KEY_PASSWORD=" + password + "\n")
           PY
           echo "enabled=true" >> "$GITHUB_OUTPUT"
       - name: Build and test CM debug APK
