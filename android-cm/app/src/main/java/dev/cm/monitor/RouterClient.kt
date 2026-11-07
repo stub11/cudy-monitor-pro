@@ -60,6 +60,57 @@ class RouterClient(private val context: Context) {
         return parts[0] == 10 || (parts[0] == 172 && parts[1] in 16..31) ||
             (parts[0] == 192 && parts[1] == 168)
     }
+    // KeeneticOS exposes "exec sh" as a CLI command. On some firmware builds,
+    // an SSH exec channel forwards stdin to the resulting Linux shell.
+    // Probe it first; keep interactive PTY as a separate fallback.
+    private fun fetchViaExec(ssh: SSHClient): RouterSnapshot {
+        ssh.startSession().use { session ->
+            val cmd = session.exec("exec sh")
+            cmd.use {
+                val executor = Executors.newSingleThreadExecutor { runnable ->
+                    Thread(runnable, "cm-ssh-exec").apply { isDaemon = true }
+                }
+                try {
+                    val future = executor.submit<String> {
+                        val script = listOf(
+                            "printf '\\nCM_EXEC_BEGIN_4F21\\n'",
+                            readOnlyCommand,
+                            "printf '\\nCM_EXEC_END_4F21\\n'",
+                            "exit"
+                        ).joinToString("\n", postfix = "\n")
+                        cmd.outputStream.write(script.toByteArray(Charsets.UTF_8))
+                        cmd.outputStream.flush()
+                        val output = StringBuilder()
+                        val reader = cmd.inputStream.bufferedReader()
+                        var started = false
+                        while (true) {
+                            val line = reader.readLine() ?: break
+                            val normalized = line.replace("\\r", "").trim()
+                            if (!started && normalized == "CM_EXEC_BEGIN_4F21") {
+                                started = true
+                            } else if (started && normalized == "CM_EXEC_END_4F21") {
+                                return@submit output.toString()
+                            } else if (started) {
+                                output.append(line).append('\\n')
+                                check(output.length < 65536) { "Ответ SSH слишком большой" }
+                            }
+                        }
+                        error("SSH exec: отсутствует конец вывода Linux")
+                    }
+                    val raw = try {
+                        future.get(8, TimeUnit.SECONDS)
+                    } catch (_: TimeoutException) {
+                        future.cancel(true)
+                        throw SshShellTimeout("SSH_EXEC_MODE")
+                    }
+                    return RouterSnapshotParser.parse(raw)
+                } finally {
+                    executor.shutdownNow()
+                }
+            }
+        }
+    }
+
     fun fetch(host: String, port: Int, username: String, password: String): RouterSnapshot {
         require(privateIpv4(host)) { "Укажи локальный IPv4 роутера" }
         require(port in 1..65535) { "Некорректный порт SSH" }
@@ -89,6 +140,9 @@ class RouterClient(private val context: Context) {
             ssh.connectTimeout = 5000
             ssh.connect(host, port)
             ssh.authPassword(username, password)
+            // The exec channel does not depend on interactive terminal line
+            // discipline. A failure here is non-fatal; try PTY below.
+            runCatching { fetchViaExec(ssh) }.getOrNull()?.let { return it }
             ssh.startSession().use { session ->
                 // KeeneticOS SSH initially opens its own CLI, not a POSIX shell.
                 // The same "exec sh" command confirmed manually by the owner
