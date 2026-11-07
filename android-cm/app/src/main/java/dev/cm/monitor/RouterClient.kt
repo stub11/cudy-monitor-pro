@@ -36,17 +36,17 @@ class RouterClient(private val context: Context) {
     private val store = context.getSharedPreferences("ssh_pins", Context.MODE_PRIVATE)
     // Intentionally constant: never concatenate user-supplied strings into shell commands.
     private val readOnlyCommand = """
-        printf 'UPTIME='; cut -d ' ' -f 1 /proc/uptime
-        printf 'MEMTOTAL='; awk '/^MemTotal:/{print $2}' /proc/meminfo
-        printf 'MEMAVAILABLE='; awk '/^MemAvailable:/{print $2}' /proc/meminfo
-        printf 'TEMP='; cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0
-        printf 'LOAD='; cut -d ' ' -f 1-3 /proc/loadavg
-        printf 'D2K='; if pidof d2kd >/dev/null 2>&1; then echo 1; else echo 0; fi
-        printf 'DOQ='; if pidof doqd >/dev/null 2>&1; then echo 1; else echo 0; fi
-        printf 'CPU='; awk 'NR==1 {idle=$5+$6; total=0; for(i=2;i<=NF;i++)total+=${'$'}i; printf "%.0f,%.0f\n", total, idle}' /proc/stat
-        printf 'NETRX='; awk 'NR>2 && $1 !~ /^lo:/ {gsub(/:/, "", $1); total += $2} END {printf "%.0f\n", total+0}' /proc/net/dev
-        printf 'NETTX='; awk 'NR>2 && $1 !~ /^lo:/ {gsub(/:/, "", $1); total += $10} END {printf "%.0f\n", total+0}' /proc/net/dev
-        printf 'STORAGE='; df -k /opt 2>/dev/null | awk 'NR==2 {print $2","$4}'
+        printf '\nUPTIME='; cut -d ' ' -f 1 /proc/uptime
+        printf '\nMEMTOTAL='; awk '/^MemTotal:/{print $2}' /proc/meminfo
+        printf '\nMEMAVAILABLE='; awk '/^MemAvailable:/{print $2}' /proc/meminfo
+        printf '\nTEMP='; cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0
+        printf '\nLOAD='; cut -d ' ' -f 1-3 /proc/loadavg
+        printf '\nD2K='; if pidof d2kd >/dev/null 2>&1; then echo 1; else echo 0; fi
+        printf '\nDOQ='; if pidof doqd >/dev/null 2>&1; then echo 1; else echo 0; fi
+        printf '\nCPU='; awk 'NR==1 {idle=$5+$6; total=0; for(i=2;i<=NF;i++)total+=${'$'}i; printf "%.0f,%.0f\n", total, idle}' /proc/stat
+        printf '\nNETRX='; awk 'NR>2 && $1 !~ /^lo:/ {gsub(/:/, "", $1); total += $2} END {printf "%.0f\n", total+0}' /proc/net/dev
+        printf '\nNETTX='; awk 'NR>2 && $1 !~ /^lo:/ {gsub(/:/, "", $1); total += $10} END {printf "%.0f\n", total+0}' /proc/net/dev
+        printf '\nSTORAGE='; df -k /opt 2>/dev/null | awk 'NR==2 {print $2","$4}'
     """.trimIndent().replace("\n", "; ")
 
     fun approve(host: String, port: Int, fingerprint: String) {
