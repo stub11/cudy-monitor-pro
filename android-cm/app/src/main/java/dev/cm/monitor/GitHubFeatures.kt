@@ -204,6 +204,11 @@ internal class GitHubFeatures(private val context: Context) {
         if (!reportingEnabled()) return false
         val token = secrets.read() ?: return false
         val code = codeFor(error)
+        val safeMissing = (error as? RouterTelemetryException)?.missingFields
+            ?.filter { it in setOf("UPTIME", "MEMTOTAL", "CPU") }
+            ?.joinToString(", ")
+            ?.ifBlank { "none" } ?: "not applicable"
+        val stage = if (error is RouterTelemetryException) "Linux telemetry parsing" else "SSH connection/authentication"
         val now = System.currentTimeMillis()
         val last = prefs.getLong("last_report_$code", 0)
         if (now - last < 24L * 60 * 60 * 1000) return false
@@ -217,7 +222,8 @@ internal class GitHubFeatures(private val context: Context) {
                 - Error code: `$code`
                 - App version: `$appVersion`
                 - Android API: `${Build.VERSION.SDK_INT}`
-                - Stage: `SSH connection/authentication`
+                - Stage: `$stage`
+                - Missing fields (allowlisted): `$safeMissing`
                 - No credentials, IPs or raw logs included.
             """.trimIndent())
         }
