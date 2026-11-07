@@ -49,7 +49,7 @@ class RouterSnapshotParserTest {
 
     @Test fun reportsMissingCoreFieldsWithoutRawTerminalOutput() {
         try {
-            RouterSnapshotParser.parse("Welcome to KeeneticOS\\nUPTIME=10\\nMEMTOTAL=8000\\n")
+            RouterSnapshotParser.parse("Welcome to KeeneticOS\nUPTIME=10\nMEMTOTAL=8000\n")
             throw AssertionError("Expected CPU parsing failure")
         } catch (expected: RouterTelemetryException) {
             assertEquals(listOf("CPU"), expected.missingFields)
