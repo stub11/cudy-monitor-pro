@@ -151,7 +151,7 @@ internal class GitHubFeatures(private val context: Context) {
     }
 
     fun installDownloadedApk() {
-        val apk = File(context.cacheDir, "cm-update.apk")
+        val apk = File(context.cacheDir, "cm-updates/cm-update.apk")
         require(apk.isFile) { "Обновление ещё не загружено" }
         if (Build.VERSION.SDK_INT >= 26 && !context.packageManager.canRequestPackageInstalls()) {
             val settings = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
@@ -193,9 +193,9 @@ internal class GitHubFeatures(private val context: Context) {
         // token, raw error message, command output, network identifiers or logs.
         val body = JSONObject().apply {
             put("title", "[CM auto-diagnostic] $code")
-            put("body", "Automatically submitted from CM Android (private repository).\\n\\n" +
-                "- Error code: `$code`\\n- App version: `$appVersion`\\n" +
-                "- Android API: `${Build.VERSION.SDK_INT}`\\n- Stage: `SSH connection/authentication`\\n" +
+            put("body", "Automatically submitted from CM Android (private repository).\n\n" +
+                "- Error code: `$code`\n- App version: `$appVersion`\n" +
+                "- Android API: `${Build.VERSION.SDK_INT}`\n- Stage: `SSH connection/authentication`\n" +
                 "- No credentials, IPs or raw logs included.")
         }
         val conn = connection("https://api.github.com/repos/$reportsRepo/issues", token, "POST")
