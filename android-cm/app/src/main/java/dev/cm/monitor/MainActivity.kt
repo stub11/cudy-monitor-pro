@@ -221,7 +221,7 @@ class MainActivity : ComponentActivity() {
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     OutlinedButton(onClick = { showConnectionSettings = true },
                                         modifier = Modifier.weight(1f)) { Text("Настройки") }
-                                    Button(onClick = { connect() }, enabled = !busy,
+                                    Button(onClick = { connect() }, enabled = true,
                                         modifier = Modifier.weight(1f)) {
                                         Text("Обновить", maxLines = 1)
                                     }
