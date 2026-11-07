@@ -184,6 +184,7 @@ internal class GitHubFeatures(private val context: Context) {
 
     private fun codeFor(error: Throwable): String = when (error) {
         is RouterTelemetryException -> "SSH_TELEMETRY_PARSE_FAILED"
+        is SshShellTimeout -> if (error.stage == "WAIT_LINUX_SHELL") "SSH_SHELL_READY_TIMEOUT" else "SSH_TELEMETRY_TIMEOUT"
         is UntrustedHostKey -> "SSH_HOST_KEY_APPROVAL"
         is ChangedHostKey -> "SSH_HOST_KEY_CHANGED"
         else -> {
