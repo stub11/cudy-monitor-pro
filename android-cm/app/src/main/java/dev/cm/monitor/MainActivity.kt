@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import kotlinx.coroutines.delay
@@ -87,6 +88,7 @@ class MainActivity : ComponentActivity() {
             var password by remember { mutableStateOf(rememberedRouter?.password ?: "") }
             var rememberRouter by remember { mutableStateOf(true) }
             var savedRouter by remember { mutableStateOf(rememberedRouter != null) }
+            var showConnectionSettings by remember { mutableStateOf(rememberedRouter == null) }
             var status by remember { mutableStateOf("Подключись к роутеру по домашнему Wi-Fi") }
             var snapshot by remember { mutableStateOf<RouterSnapshot?>(null) }
             var cpuPercent by remember { mutableStateOf<Double?>(null) }
@@ -115,6 +117,7 @@ class MainActivity : ComponentActivity() {
                         } else false
                         runOnUiThread {
                             if (profileSaved) savedRouter = true
+                            showConnectionSettings = false
                             val old = if (endpoint == lastEndpoint) snapshot else null
                             if (old != null) {
                                 cpuPercent = TelemetryMath.cpuPercent(
@@ -153,10 +156,11 @@ class MainActivity : ComponentActivity() {
             }
             LaunchedEffect(Unit) {
                 checkForUpdate()
+                if (rememberedRouter != null) connect()
             }
             LaunchedEffect(autoRefresh, snapshot, busy) {
                 if (autoRefresh && snapshot != null && !busy) {
-                    delay(15_000)
+                    delay(5_000)
                     connect()
                 }
             }
@@ -171,53 +175,79 @@ class MainActivity : ComponentActivity() {
                         .verticalScroll(rememberScrollState()).padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(13.dp)
                 ) {
-                    Text("CM", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+                    Text("CM", style = MaterialTheme.typography.headlineLarge,
+                        fontWeight = FontWeight.Bold, color = Color.White)
                     Text("Aurora · Монитор роутера по SSH", color = Color(0xFF9CB7D6))
-                    if (savedRouter) {
-                        Text("Сохранённый роутер: $routerName", color = mint, fontWeight = FontWeight.SemiBold)
-                    }
-                    OutlinedTextField(routerName, { routerName = it.take(60) },
-                        label = { Text("Имя роутера") }, modifier = Modifier.fillMaxWidth(),
-                        singleLine = true)
-                    OutlinedTextField(host, { host = it }, label = { Text("Локальный IPv4 роутера") },
-                        modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(portText, { portText = it }, label = { Text("SSH порт") },
-                            modifier = Modifier.weight(1f), singleLine = true)
-                        OutlinedTextField(username, { username = it }, label = { Text("Пользователь") },
-                            modifier = Modifier.weight(2f), singleLine = true)
-                    }
-                    OutlinedTextField(password, { password = it }, label = { Text("SSH пароль") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Checkbox(checked = rememberRouter, onCheckedChange = { rememberRouter = it })
-                        Text("Запомнить роутер и SSH-вход на этом телефоне",
-                            modifier = Modifier.padding(top = 12.dp),
-                            style = MaterialTheme.typography.bodySmall, color = Color(0xFFB6C9DE))
-                    }
-                    if (savedRouter) {
-                        OutlinedButton(
-                            onClick = {
+                    if ((snapshot != null || savedRouter) && !showConnectionSettings) {
+                        Card(colors = CardDefaults.cardColors(containerColor = card),
+                            modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(routerName.ifBlank { "Домашний роутер" },
+                                    color = Color.White, style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold)
+                                Text("$host · SSH $portText · ${if (busy) "Подключение…" else if (snapshot != null) "Подключён" else "Нет данных"}",
+                                    color = if (snapshot != null) mint else Color(0xFFFFC27C),
+                                    style = MaterialTheme.typography.bodyMedium)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(onClick = { showConnectionSettings = true },
+                                        modifier = Modifier.weight(1f)) { Text("Настройки") }
+                                    Button(onClick = { connect() }, enabled = !busy,
+                                        modifier = Modifier.weight(1f)) {
+                                        Text(if (busy) "Обновление…" else "Обновить")
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        if (snapshot != null) {
+                            TextButton(onClick = { showConnectionSettings = false }) {
+                                Text("Вернуться к показателям")
+                            }
+                        }
+                        OutlinedTextField(routerName, { routerName = it.take(60) },
+                            label = { Text("Имя роутера") }, modifier = Modifier.fillMaxWidth(),
+                            singleLine = true)
+                        OutlinedTextField(host, { host = it }, label = { Text("Локальный IPv4 роутера") },
+                            modifier = Modifier.fillMaxWidth(), singleLine = true)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(portText, { portText = it }, label = { Text("SSH порт") },
+                                modifier = Modifier.weight(1f), singleLine = true)
+                            OutlinedTextField(username, { username = it }, label = { Text("Пользователь") },
+                                modifier = Modifier.weight(2f), singleLine = true)
+                        }
+                        OutlinedTextField(password, { password = it }, label = { Text("SSH пароль") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth(), singleLine = true)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Checkbox(checked = rememberRouter, onCheckedChange = { rememberRouter = it })
+                            Text("Запомнить роутер и SSH-вход на этом телефоне",
+                                modifier = Modifier.padding(top = 12.dp),
+                                style = MaterialTheme.typography.bodySmall, color = Color(0xFFB6C9DE))
+                        }
+                        if (savedRouter) {
+                            OutlinedButton(onClick = {
                                 profileStore.clear()
                                 savedRouter = false
                                 rememberRouter = false
                                 password = ""
                                 autoRefresh = false
                                 status = "Сохранённый вход удалён с телефона"
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = !busy
-                        ) { Text("Удалить сохранённое подключение") }
+                            }, modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                                Text("Удалить сохранённое подключение")
+                            }
+                        }
+                        Button(onClick = { connect() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                            Text(if (busy) "Подключение…" else "Подключиться / Обновить")
+                        }
                     }
-                    Button(onClick = { connect() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                        Text(if (busy) "Подключение…" else "Подключиться / Обновить")
+                    if (snapshot == null || status != "Подключено · Роутер сохранён" && status != "Подключено") {
+                        Text(status, color = if (snapshot != null) mint else Color(0xFFFFC27C))
                     }
-                    Text(status, color = if (snapshot != null) mint else Color(0xFFFFC27C))
                     if (snapshot != null) {
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Checkbox(checked = autoRefresh, onCheckedChange = { autoRefresh = it })
-                            Text("Обновлять каждые 15 секунд", modifier = Modifier.padding(top = 12.dp))
+                            Text("Автообновление каждые 5 секунд", modifier = Modifier.padding(top = 12.dp),
+                                color = Color(0xFFB6C9DE))
                         }
                     }
                     pending?.let { (pendingHost, pendingPort, fingerprint) ->
@@ -240,7 +270,7 @@ class MainActivity : ComponentActivity() {
                             "Рассчитывается по разнице /proc/stat между обновлениями")
                         transferRate?.let { pair ->
                             Metric("Скорость сети ↓ / ↑",
-                                String.format(Locale.US, "%.1f / %.1f Кбит/с", pair.first / 1000.0, pair.second / 1000.0),
+                                formatRate(pair.first) + " / " + formatRate(pair.second),
                                 "Приблизительно по суммарным счётчикам интерфейсов")
                         }
                         Metric("Оперативная память", String.format(Locale.US, "%.1f%%", s.memoryUsedPercent),
@@ -332,6 +362,11 @@ private fun Metric(title: String, value: String, subtitle: String) {
         }
     }
 }
+
+private fun formatRate(bitsPerSecond: Double): String =
+    if (bitsPerSecond >= 1_000_000.0)
+        String.format(Locale.US, "%.2f Мбит/с", bitsPerSecond / 1_000_000.0)
+    else String.format(Locale.US, "%.0f Кбит/с", bitsPerSecond / 1000.0)
 
 private fun formatBytes(value: Long): String = when {
     value >= 1_000_000_000 -> String.format(Locale.US, "%.2f ГБ", value / 1_000_000_000.0)
