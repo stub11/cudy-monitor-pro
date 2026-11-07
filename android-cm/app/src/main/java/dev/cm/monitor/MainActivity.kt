@@ -33,6 +33,8 @@ class MainActivity : ComponentActivity() {
         val github = GitHubFeatures(applicationContext)
         val profileStore = RouterProfileStore(applicationContext)
         val rememberedRouter = profileStore.load()
+        // Only persist credentials when they actually change, never on every telemetry poll.
+        var lastSavedProfile = rememberedRouter
         val uiPreferences = getSharedPreferences("cm_display", MODE_PRIVATE)
         @Suppress("DEPRECATION")
         val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "0.1.2"
@@ -122,9 +124,13 @@ class MainActivity : ComponentActivity() {
                         val startedAt = android.os.SystemClock.elapsedRealtime()
                         val result = client.fetch(h, p, u, pw)
                         val durationMs = android.os.SystemClock.elapsedRealtime() - startedAt
-                        val profileSaved = if (shouldRemember) {
-                            runCatching { profileStore.save(SavedRouter(nameForSave, h, p, u, pw)) }.isSuccess
-                        } else false
+                        val candidate = SavedRouter(nameForSave, h, p, u, pw)
+                        val profileSaved = if (!shouldRemember) false else if (lastSavedProfile == candidate) true else {
+                            runCatching {
+                                profileStore.save(candidate)
+                                lastSavedProfile = candidate
+                            }.isSuccess
+                        }
                         runOnUiThread {
                             consecutiveFailures = 0
                             fetchLatencyMs = durationMs
@@ -251,6 +257,7 @@ class MainActivity : ComponentActivity() {
                         if (savedRouter) {
                             OutlinedButton(onClick = {
                                 profileStore.clear()
+                                lastSavedProfile = null
                                 savedRouter = false
                                 rememberRouter = false
                                 password = ""
