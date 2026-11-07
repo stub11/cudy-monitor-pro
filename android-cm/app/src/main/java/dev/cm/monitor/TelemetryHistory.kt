@@ -13,6 +13,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.MaterialTheme
 
 /** Keeps no sensitive data: only bounded in-memory samples while CM is open. */
@@ -38,7 +40,8 @@ internal fun MiniMetric(
     value: String,
     points: List<Double?>,
     modifier: Modifier = Modifier,
-    note: String = ""
+    note: String = "",
+    percentScale: Boolean = false
 ) {
     val lineColor = Color(0xFF26E1AC)
     Card(
@@ -49,8 +52,14 @@ internal fun MiniMetric(
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Text(title, color = Color(0xFFB6C9DE), style = MaterialTheme.typography.labelLarge)
             Text(value, color = lineColor, fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.titleLarge, maxLines = 2)
-            Sparkline(points, lineColor, Modifier.fillMaxWidth().height(42.dp))
+                fontSize = if (value.contains("Мб/с")) 18.sp else 24.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, softWrap = false)
+            if (points.count { it != null && it.isFinite() } >= 3) {
+                Sparkline(points, lineColor, Modifier.fillMaxWidth().height(42.dp),
+                    percentScale = percentScale)
+            } else {
+                Spacer(Modifier.height(42.dp))
+            }
             if (note.isNotBlank()) {
                 Text(note, color = Color(0xFFB6C9DE), style = MaterialTheme.typography.labelSmall)
             }
@@ -59,13 +68,20 @@ internal fun MiniMetric(
 }
 
 @Composable
-internal fun Sparkline(points: List<Double?>, color: Color, modifier: Modifier = Modifier) {
+internal fun Sparkline(
+    points: List<Double?>, color: Color, modifier: Modifier = Modifier,
+    percentScale: Boolean = false
+) {
     Canvas(modifier) {
-        if (points.size < 2) return@Canvas
+        if (points.size < 3) return@Canvas
         val defined = points.filterNotNull().filter { it.isFinite() }
-        if (defined.size < 2) return@Canvas
-        val low = defined.minOrNull() ?: return@Canvas
-        val high = defined.maxOrNull() ?: return@Canvas
+        if (defined.size < 3) return@Canvas
+        val min = defined.minOrNull() ?: return@Canvas
+        val max = defined.maxOrNull() ?: return@Canvas
+        // Percentage cards must not make tiny changes look like a 0-100% swing.
+        // Other values use padded bounds, including a zero baseline for traffic.
+        val low = if (percentScale) 0.0 else if (min >= 0) 0.0 else min
+        val high = if (percentScale) 100.0 else (max * 1.1).coerceAtLeast(low + 0.1)
         val span = (high - low).coerceAtLeast(0.1)
         val path = Path()
         var active = false
@@ -74,7 +90,7 @@ internal fun Sparkline(points: List<Double?>, color: Color, modifier: Modifier =
                 active = false
             } else {
                 val x = size.width * index / (points.size - 1).toFloat()
-                val y = size.height * (1f - ((value - low) / span).toFloat())
+                val y = size.height * (1f - ((value - low) / span).toFloat().coerceIn(0f, 1f))
                 if (!active) path.moveTo(x, y) else path.lineTo(x, y)
                 active = true
             }
