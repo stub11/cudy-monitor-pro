@@ -65,7 +65,7 @@ internal class GitHubFeatures(private val context: Context) {
     }
 
     fun latestUpdate(currentVersion: String): CmUpdate? {
-        val runs = json("https://api.github.com/repos/$buildRepo/actions/workflows/cm-android-public.yml/runs?event=pull_request&status=success&per_page=8")
+        val runs = json("https://api.github.com/repos/$buildRepo/actions/workflows/cm-android-public.yml/runs?event=push&status=success&per_page=12")
             .getJSONArray("workflow_runs")
         
         for (i in 0 until runs.length()) {
