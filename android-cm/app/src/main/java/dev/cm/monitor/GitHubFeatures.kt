@@ -191,7 +191,8 @@ internal class GitHubFeatures(private val context: Context) {
                 "exhausted available authentication" in message -> "SSH_AUTH_REJECTED"
                 "authentication" in message || "auth fail" in message -> "SSH_AUTH_FAILED"
                 "x25519" in message || "algorithm" in message -> "SSH_CRYPTO_NEGOTIATION"
-                "timeout" in message || "timed out" in message -> "SSH_TIMEOUT"
+                "timeout" in message || "timed out" in message ||
+                    ("failed to connect" in message && "after " in message) -> "SSH_CONNECT_TIMEOUT"
                 "refused" in message -> "SSH_CONNECTION_REFUSED"
                 else -> "SSH_OTHER_ERROR"
             }
