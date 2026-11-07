@@ -33,6 +33,7 @@ class MainActivity : ComponentActivity() {
         val github = GitHubFeatures(applicationContext)
         val profileStore = RouterProfileStore(applicationContext)
         val rememberedRouter = profileStore.load()
+        val uiPreferences = getSharedPreferences("cm_display", MODE_PRIVATE)
         @Suppress("DEPRECATION")
         val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "0.1.2"
         setContent {
@@ -103,6 +104,8 @@ class MainActivity : ComponentActivity() {
             var pending by remember { mutableStateOf<Triple<String, Int, String>?>(null) }
             var busy by remember { mutableStateOf(false) }
             var autoRefresh by remember { mutableStateOf(false) }
+            var refreshSeconds by remember { mutableIntStateOf(PollingPolicy.normalize(uiPreferences.getInt("refresh_seconds", 5))) }
+            var consecutiveFailures by remember { mutableIntStateOf(0) }
             fun connect() {
                 if (busy) return
                 busy = true
@@ -123,6 +126,7 @@ class MainActivity : ComponentActivity() {
                             runCatching { profileStore.save(SavedRouter(nameForSave, h, p, u, pw)) }.isSuccess
                         } else false
                         runOnUiThread {
+                            consecutiveFailures = 0
                             fetchLatencyMs = durationMs
                             lastSampleTime = java.text.SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(java.util.Date())
                             if (profileSaved) savedRouter = true
@@ -162,7 +166,12 @@ class MainActivity : ComponentActivity() {
                             else e.message ?: "Ошибка подключения"
                             if (reported) status += " · Отчёт отправлен в приватный GitHub."
                             busy = false
-                            autoRefresh = false
+                            consecutiveFailures++
+                            // Stop after repeated failures; never hammer the router.
+                            if (consecutiveFailures >= 4) {
+                                autoRefresh = false
+                                status += " · Автоопрос остановлен после 4 ошибок."
+                            }
                         }
                     }
                 }
@@ -171,9 +180,9 @@ class MainActivity : ComponentActivity() {
                 checkForUpdate()
                 if (rememberedRouter != null) connect()
             }
-            LaunchedEffect(autoRefresh, snapshot, busy) {
+            LaunchedEffect(autoRefresh, snapshot, busy, refreshSeconds, consecutiveFailures) {
                 if (autoRefresh && snapshot != null && !busy) {
-                    delay(5_000)
+                    delay(PollingPolicy.delayMs(refreshSeconds, consecutiveFailures))
                     connect()
                 }
             }
@@ -198,7 +207,7 @@ class MainActivity : ComponentActivity() {
                                 Text(routerName.ifBlank { "Домашний роутер" },
                                     color = Color.White, style = MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.Bold)
-                                Text("$host · SSH $portText · ${if (busy) "Подключение…" else if (snapshot != null) "Подключён" else "Нет данных"}",
+                                Text("$host · SSH $portText · ${if (consecutiveFailures > 0) "Связь нестабильна" else if (busy) "Обновление…" else if (snapshot != null) "Подключён" else "Нет данных"}",
                                     color = if (snapshot != null) mint else Color(0xFFFFC27C),
                                     style = MaterialTheme.typography.bodyMedium)
                                 Text("Последний замер: ${lastSampleTime ?: "—"} · ${fetchLatencyMs?.let { "${it} мс" } ?: "—"}",
@@ -261,8 +270,26 @@ class MainActivity : ComponentActivity() {
                     if (snapshot != null) {
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Checkbox(checked = autoRefresh, onCheckedChange = { autoRefresh = it })
-                            Text("Автообновление каждые 5 секунд", modifier = Modifier.padding(top = 12.dp),
+                            Text("Автообновление", modifier = Modifier.padding(top = 12.dp),
                                 color = Color(0xFFB6C9DE))
+                        }
+                    }
+                    if (snapshot != null && autoRefresh) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            PollingPolicy.supportedSeconds.forEach { seconds ->
+                                FilterChip(
+                                    selected = refreshSeconds == seconds,
+                                    onClick = {
+                                        refreshSeconds = seconds
+                                        uiPreferences.edit().putInt("refresh_seconds", seconds).apply()
+                                    },
+                                    label = { Text("${seconds} с") }
+                                )
+                            }
+                        }
+                        if (consecutiveFailures > 0) {
+                            Text("Повтор подключения: задержка ${PollingPolicy.delayMs(refreshSeconds, consecutiveFailures) / 1000} с",
+                                color = Color(0xFFFFC27C), style = MaterialTheme.typography.bodySmall)
                         }
                     }
                     pending?.let { (pendingHost, pendingPort, fingerprint) ->
