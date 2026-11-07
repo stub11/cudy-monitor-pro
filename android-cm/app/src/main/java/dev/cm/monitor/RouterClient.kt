@@ -47,7 +47,7 @@ class RouterClient(private val context: Context) {
         printf '\nNETRX='; awk 'NR>2 && $1 !~ /^lo:/ {gsub(/:/, "", $1); total += $2} END {printf "%.0f\n", total+0}' /proc/net/dev
         printf '\nNETTX='; awk 'NR>2 && $1 !~ /^lo:/ {gsub(/:/, "", $1); total += $10} END {printf "%.0f\n", total+0}' /proc/net/dev
         printf '\nSTORAGE='; df -k /opt 2>/dev/null | awk 'NR==2 {print $2","$4}'
-    """.trimIndent().replace("\n", "; ")
+    """.trimIndent()
 
     fun approve(host: String, port: Int, fingerprint: String) {
         store.edit().putString("$host:$port", fingerprint).apply()
@@ -95,18 +95,36 @@ class RouterClient(private val context: Context) {
                 session.startShell().use { shell ->
                     val markerStart = "CM_SNAPSHOT_BEGIN_72F2"
                     val markerEnd = "CM_SNAPSHOT_END_72F2"
-                    val script = "exec sh\n" +
-                        "printf '\n$markerStart\n'\n" +
-                        readOnlyCommand + "\n" +
-                        "printf '\n$markerEnd\n'\n"
+                    val readyMarker = "CM_LINUX_READY_72F2"
                     val reader = shell.inputStream.bufferedReader()
                     val taskExecutor = Executors.newSingleThreadExecutor { r ->
                         Thread(r, "cm-ssh-reader").apply { isDaemon = true }
                     }
                     try {
                         val work = taskExecutor.submit<String> {
-                            shell.outputStream.write(script.toByteArray(Charsets.UTF_8))
-                            shell.outputStream.flush()
+                            val writer = shell.outputStream
+                            fun send(line: String) {
+                                writer.write((line + "\n").toByteArray(Charsets.UTF_8))
+                                writer.flush()
+                            }
+                            // KeeneticOS can discard a paste sent during its CLI -> sh transition.
+                            // Wait for a unique Linux-only marker before sending telemetry.
+                            send("exec sh")
+                            Thread.sleep(400)
+                            send("printf '\\n$readyMarker\\n'")
+                            var ready = false
+                            while (!ready) {
+                                val line = reader.readLine() ?: error("SSH CLI закрылась до входа в Linux")
+                                if (line.replace("\r", "").trim() == readyMarker) ready = true
+                            }
+                            send("printf '\\n$markerStart\\n'")
+                            // Each shell command must be a separate PTY input line.
+                            // Do not paste one long command into the KeeneticOS CLI.
+                            readOnlyCommand.lineSequence().forEach { command ->
+                                send(command)
+                                Thread.sleep(20)
+                            }
+                            send("printf '\\n$markerEnd\\n'")
                             val result = StringBuilder()
                             var collecting = false
                             while (true) {
@@ -122,13 +140,13 @@ class RouterClient(private val context: Context) {
                                     if (result.length > 65_536) error("SSH вернул слишком много данных")
                                 }
                             }
-                            error("SSH shell завершился без системных показателей")
+                            error("SSH shell завершился до конца чтения Linux")
                         }
                         val output = try {
-                            work.get(12, TimeUnit.SECONDS)
+                            work.get(22, TimeUnit.SECONDS)
                         } catch (e: TimeoutException) {
                             work.cancel(true)
-                            throw IllegalStateException("Вход в Linux через exec sh не завершился за 12 секунд", e)
+                            throw IllegalStateException("Нет подтверждения Linux shell или показателей за 22 секунды", e)
                         }
                         return RouterSnapshotParser.parse(output)
                     } finally {
