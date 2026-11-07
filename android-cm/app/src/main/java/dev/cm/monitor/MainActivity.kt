@@ -93,6 +93,8 @@ class MainActivity : ComponentActivity() {
             var snapshot by remember { mutableStateOf<RouterSnapshot?>(null) }
             var cpuPercent by remember { mutableStateOf<Double?>(null) }
             var transferRate by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+            var history by remember { mutableStateOf<List<TelemetryPoint>>(emptyList()) }
+            var showDetails by remember { mutableStateOf(false) }
             var lastFetchAt by remember { mutableStateOf<Long?>(null) }
             var lastEndpoint by remember { mutableStateOf<String?>(null) }
             var pending by remember { mutableStateOf<Triple<String, Int, String>?>(null) }
@@ -134,6 +136,9 @@ class MainActivity : ComponentActivity() {
                             lastEndpoint = endpoint
                             lastFetchAt = android.os.SystemClock.elapsedRealtime()
                             snapshot = result
+                            history = TelemetryHistory.append(history,
+                                TelemetryPoint(cpuPercent, result.memoryUsedPercent, result.temperatureC,
+                                    transferRate?.first, transferRate?.second))
                             status = if (profileSaved) "Подключено · Роутер сохранён" else "Подключено"
                             autoRefresh = true
                             pending = null
@@ -266,24 +271,56 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     snapshot?.let { s ->
-                        Metric("Загрузка процессора", cpuPercent?.let { String.format(Locale.US, "%.1f%%", it) } ?: "Ожидание второго замера",
-                            "Рассчитывается по разнице /proc/stat между обновлениями")
-                        transferRate?.let { pair ->
-                            Metric("Скорость сети ↓ / ↑",
-                                formatRate(pair.first) + " / " + formatRate(pair.second),
-                                "Приблизительно по суммарным счётчикам интерфейсов")
+                        Text("Обзор", style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold, color = Color.White)
+                        Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                            MiniMetric("Процессор",
+                                cpuPercent?.let { String.format(Locale.US, "%.1f%%", it) } ?: "Замер…",
+                                history.map { it.cpu }, Modifier.weight(1f))
+                            MiniMetric("Память",
+                                String.format(Locale.US, "%.1f%%", s.memoryUsedPercent),
+                                history.map { it.ram }, Modifier.weight(1f))
                         }
-                        Metric("Оперативная память", String.format(Locale.US, "%.1f%%", s.memoryUsedPercent),
-                            "${(s.memoryTotalKb - s.memoryAvailableKb) / 1024} / ${s.memoryTotalKb / 1024} МБ")
-                        Metric("Температура", s.temperatureC?.let { String.format(Locale.US, "%.1f°C", it) } ?: "Нет датчика", "")
-                        Metric("Нагрузка Linux", s.loadAverage, "Load average за 1, 5 и 15 минут; не процент CPU")
-                        Metric("Время работы", "${(s.uptimeSeconds / 3600).toInt()} ч", "")
-                        Metric("D2K", if (s.d2kRunning) "Работает" else "Не найден", "")
-                        Metric("DoQ", if (s.doqRunning) "Работает" else "Не найден", "")
-                        Metric("Сеть · получено", formatBytes(s.networkRxBytes), "Суммарный счётчик интерфейсов, без loopback")
-                        Metric("Сеть · отправлено", formatBytes(s.networkTxBytes), "Суммарный счётчик интерфейсов, без loopback")
-                        Metric("Entware /opt", if (s.storageTotalKb > 0) String.format(Locale.US, "%.1f%%", 100.0 * (s.storageTotalKb - s.storageAvailableKb) / s.storageTotalKb) else "Нет данных",
-                            if (s.storageTotalKb > 0) "${(s.storageTotalKb - s.storageAvailableKb) / 1024} / ${s.storageTotalKb / 1024} МБ" else "")
+                        Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                            MiniMetric("Температура",
+                                s.temperatureC?.let { String.format(Locale.US, "%.1f°C", it) } ?: "Нет датчика",
+                                history.map { it.temp }, Modifier.weight(1f))
+                            MiniMetric("Загрузка Linux", s.loadAverage,
+                                emptyList(), Modifier.weight(1f),
+                                note = "Средняя за 1 / 5 / 15 мин")
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                            MiniMetric("Приём ↓",
+                                transferRate?.first?.let(::formatRate) ?: "Замер…",
+                                history.map { it.rxBps }, Modifier.weight(1f))
+                            MiniMetric("Отдача ↑",
+                                transferRate?.second?.let(::formatRate) ?: "Замер…",
+                                history.map { it.txBps }, Modifier.weight(1f))
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                            ServiceMetric("D2K", s.d2kRunning, Modifier.weight(1f))
+                            ServiceMetric("DoQ", s.doqRunning, Modifier.weight(1f))
+                        }
+                        Text("Скорость сети приблизительная: суммируются интерфейсы Linux.",
+                            color = Color(0xFF9CB7D6), style = MaterialTheme.typography.bodySmall)
+                        OutlinedButton(onClick = { showDetails = !showDetails },
+                            modifier = Modifier.fillMaxWidth()) {
+                            Text(if (showDetails) "Скрыть подробности" else "Подробные показатели")
+                        }
+                        if (showDetails) {
+                            Metric("Время работы", "${(s.uptimeSeconds / 3600).toInt()} ч", "")
+                            Metric("Сеть · получено", formatBytes(s.networkRxBytes),
+                                "Суммарный счётчик интерфейсов, без loopback")
+                            Metric("Сеть · отправлено", formatBytes(s.networkTxBytes),
+                                "Суммарный счётчик интерфейсов, без loopback")
+                            Metric("Entware /opt",
+                                if (s.storageTotalKb > 0) String.format(Locale.US, "%.1f%%",
+                                    100.0 * (s.storageTotalKb - s.storageAvailableKb) / s.storageTotalKb)
+                                else "Нет данных",
+                                if (s.storageTotalKb > 0)
+                                    "${(s.storageTotalKb - s.storageAvailableKb) / 1024} / ${s.storageTotalKb / 1024} МБ"
+                                else "")
+                        }
                     }
                     HorizontalDivider()
                     Text("Обновления CM", fontWeight = FontWeight.Bold, color = Color.White)
@@ -352,6 +389,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+@Composable
+private fun ServiceMetric(title: String, running: Boolean, modifier: Modifier = Modifier) {
+    Card(colors = CardDefaults.cardColors(containerColor = card), modifier = modifier) {
+        Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, color = Color(0xFFB6C9DE), style = MaterialTheme.typography.labelLarge)
+            Text(if (running) "Работает" else "Не найден",
+                color = if (running) mint else Color(0xFFFFC27C),
+                fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+        }
+    }
+}
+
 @Composable
 private fun Metric(title: String, value: String, subtitle: String) {
     Card(colors = CardDefaults.cardColors(containerColor = card), modifier = Modifier.fillMaxWidth()) {
