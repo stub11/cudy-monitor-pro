@@ -14,7 +14,7 @@ class TelemetryHistoryTest {
     }
 
     @Test fun acceptsMissingSensorsWithoutCoercingToZero() {
-        val point = TelemetryPoint(null, 42.0, null, null, null)
+        val point = TelemetryPoint(null, 42.0, 0.25, null, null, null)
         val list = TelemetryHistory.append(emptyList(), point)
         assertEquals(1, list.size)
         assertTrue(list.first().cpu == null)
