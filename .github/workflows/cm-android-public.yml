@@ -33,23 +33,31 @@ jobs:
         id: signing
         if: github.event_name == 'push' && github.ref == 'refs/heads/build/cm-android-public-ci' && github.actor == 'stub11'
         env:
-          CM_KEYSTORE_B64: ${{ secrets.CM_SIGNING_KEYSTORE_B64 }}
-          CM_STORE_PASS: ${{ secrets.CM_SIGNING_STORE_PASSWORD }}
-          CM_KEY_PASS: ${{ secrets.CM_SIGNING_KEY_PASSWORD }}
+          CM_SIGNING_BUNDLE_B64: ${{ secrets.CM_SIGNING_BUNDLE_B64 }}
         shell: bash
         run: |
-          if [[ -z "$CM_KEYSTORE_B64" || -z "$CM_STORE_PASS" || -z "$CM_KEY_PASS" ]]; then
+          if [[ -z "$CM_SIGNING_BUNDLE_B64" ]]; then
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No private signing secrets configured. Publishing test APK only."
+            echo "::notice::No private signing secret configured. Test APK only."
             exit 0
           fi
           umask 077
-          KEYSTORE="$RUNNER_TEMP/cm-stable-signing.p12"
-          printf '%s' "$CM_KEYSTORE_B64" | base64 --decode > "$KEYSTORE"
-          test -s "$KEYSTORE"
-          echo "CM_SIGNING_STORE_FILE=$KEYSTORE" >> "$GITHUB_ENV"
-          echo "CM_SIGNING_STORE_PASSWORD=$CM_STORE_PASS" >> "$GITHUB_ENV"
-          echo "CM_SIGNING_KEY_PASSWORD=$CM_KEY_PASS" >> "$GITHUB_ENV"
+          python3 - <<'PY'
+          import os, json, base64
+          bundle = json.loads(base64.b64decode(os.environ["CM_SIGNING_BUNDLE_B64"], validate=True))
+          assert bundle["alias"] == "cm"
+          key = base64.b64decode(bundle["keystore_b64"], validate=True)
+          password = bundle["password"]
+          assert 1000 < len(key) < 50000 and 16 <= len(password) <= 256
+          keyfile = os.path.join(os.environ["RUNNER_TEMP"], "cm-stable-signing.p12")
+          with open(keyfile, "wb") as out: out.write(key)
+          os.chmod(keyfile, 0o600)
+          print("::add-mask::" + password)
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              env.write("CM_SIGNING_STORE_FILE=" + keyfile + "\\n")
+              env.write("CM_SIGNING_STORE_PASSWORD=" + password + "\\n")
+              env.write("CM_SIGNING_KEY_PASSWORD=" + password + "\\n")
+          PY
           echo "enabled=true" >> "$GITHUB_OUTPUT"
       - name: Build and test CM debug APK
         run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace --no-daemon
