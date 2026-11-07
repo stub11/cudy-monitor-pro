@@ -14,6 +14,11 @@ android {
         versionName = "0.1.1"
     }
     buildFeatures { compose = true }
+    packaging {
+        resources {
+            pickFirsts += setOf("META-INF/LICENSE.md", "META-INF/NOTICE.md")
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
