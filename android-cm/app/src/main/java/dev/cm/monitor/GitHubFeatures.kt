@@ -2,6 +2,7 @@ package dev.cm.monitor
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
 import android.net.Uri
@@ -153,6 +154,21 @@ internal class GitHubFeatures(private val context: Context) {
     fun installDownloadedApk() {
         val apk = File(context.cacheDir, "cm-updates/cm-update.apk")
         require(apk.isFile) { "Обновление ещё не загружено" }
+        // Public GitHub debug runners may rotate APK signing keys between runs.
+        // Never bypass Android signature checks.
+        @Suppress("DEPRECATION")
+        val archiveInfo = context.packageManager.getPackageArchiveInfo(apk.absolutePath, PackageManager.GET_SIGNATURES)
+        @Suppress("DEPRECATION")
+        val currentInfo = context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES)
+        @Suppress("DEPRECATION")
+        val archiveSigner = archiveInfo?.signatures?.firstOrNull()?.toByteArray()
+        @Suppress("DEPRECATION")
+        val currentSigner = currentInfo.signatures?.firstOrNull()?.toByteArray()
+        if (archiveSigner == null || currentSigner == null ||
+            !MessageDigest.isEqual(archiveSigner, currentSigner)
+        ) {
+            error("Подпись APK отличается от установленной. Android не разрешит обновление поверх CM. Для тестовой сборки удали старый CM или настрой постоянный ключ подписи.")
+        }
         if (Build.VERSION.SDK_INT >= 26 && !context.packageManager.canRequestPackageInstalls()) {
             val settings = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                 Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
