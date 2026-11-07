@@ -46,7 +46,11 @@ object RouterSnapshotParser {
             ) add("CPU")
         }
         if (missing.isNotEmpty()) throw RouterTelemetryException(missing)
-        val available = map["MEMAVAILABLE"]?.toLongOrNull()?.coerceIn(0L, memory) ?: 0L
+        val safeUptime = requireNotNull(uptime)
+        val safeMemory = requireNotNull(memory)
+        val safeCpuTotal = requireNotNull(cpuTotal)
+        val safeCpuIdle = requireNotNull(cpuIdle)
+        val available = map["MEMAVAILABLE"]?.toLongOrNull()?.coerceIn(0L, safeMemory) ?: 0L
         val storage = map["STORAGE"]?.split(',', limit = 2)
         val storageTotal = storage?.getOrNull(0)?.toLongOrNull()?.coerceAtLeast(0) ?: 0L
         val storageFree = storage?.getOrNull(1)?.toLongOrNull()?.coerceIn(0L, storageTotal) ?: 0L
@@ -54,15 +58,15 @@ object RouterSnapshotParser {
             ?.let { if (it >= 1000) it / 1000 else it }?.takeIf { it in -40.0..150.0 }
 
         return RouterSnapshot(
-            uptimeSeconds = uptime,
-            memoryTotalKb = memory,
+            uptimeSeconds = safeUptime,
+            memoryTotalKb = safeMemory,
             memoryAvailableKb = available,
             temperatureC = temperature,
             loadAverage = map["LOAD"].orEmpty(),
             d2kRunning = map["D2K"] == "1",
             doqRunning = map["DOQ"] == "1",
-            cpuTotalTicks = cpuTotal,
-            cpuIdleTicks = cpuIdle,
+            cpuTotalTicks = safeCpuTotal,
+            cpuIdleTicks = safeCpuIdle,
             networkRxBytes = map["NETRX"]?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L,
             networkTxBytes = map["NETTX"]?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L,
             storageTotalKb = storageTotal,
