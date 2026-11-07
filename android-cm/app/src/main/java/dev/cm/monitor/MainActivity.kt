@@ -109,7 +109,7 @@ class MainActivity : ComponentActivity() {
             fun connect() {
                 if (busy) return
                 busy = true
-                status = "Подключение по SSH…"
+                if (snapshot == null) status = "Подключение по SSH…"
                 val h = host.trim()
                 val p = portText.toIntOrNull() ?: 0
                 val u = username.trim()
@@ -207,7 +207,7 @@ class MainActivity : ComponentActivity() {
                                 Text(routerName.ifBlank { "Домашний роутер" },
                                     color = Color.White, style = MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.Bold)
-                                Text("$host · SSH $portText · ${if (consecutiveFailures > 0) "Связь нестабильна" else if (busy) "Обновление…" else if (snapshot != null) "Подключён" else "Нет данных"}",
+                                Text("$host · SSH $portText · ${if (consecutiveFailures > 0) "Связь нестабильна" else if (snapshot != null) "Подключён" else "Нет данных"}",
                                     color = if (snapshot != null) mint else Color(0xFFFFC27C),
                                     style = MaterialTheme.typography.bodyMedium)
                                 Text("Последний замер: ${lastSampleTime ?: "—"} · ${fetchLatencyMs?.let { "${it} мс" } ?: "—"}",
@@ -217,7 +217,7 @@ class MainActivity : ComponentActivity() {
                                         modifier = Modifier.weight(1f)) { Text("Настройки") }
                                     Button(onClick = { connect() }, enabled = !busy,
                                         modifier = Modifier.weight(1f)) {
-                                        Text(if (busy) "Обновление…" else "Обновить")
+                                        Text("Обновить", maxLines = 1)
                                     }
                                 }
                             }
@@ -264,7 +264,7 @@ class MainActivity : ComponentActivity() {
                             Text(if (busy) "Подключение…" else "Подключиться / Обновить")
                         }
                     }
-                    if (snapshot == null || status != "Подключено · Роутер сохранён" && status != "Подключено") {
+                    if (snapshot == null || (consecutiveFailures > 0 && !busy)) {
                         Text(status, color = if (snapshot != null) mint else Color(0xFFFFC27C))
                     }
                     if (snapshot != null) {
