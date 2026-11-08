@@ -20,6 +20,8 @@ wget -qO /tmp/cudy-monitor-easy.sh https://raw.githubusercontent.com/stub11/cudy
 
 Скрипт скачивает и проверяет APK v1.2.3, устанавливает, включает монитор в LAN и печатает ссылку. Не используйте на недоверенной сети: перед запуском можно скачать и изучить скрипт. Если LAN неоднозначна, скрипт не угадывает адрес.
 
+Update/remove using the same [universal script](../../scripts/easy-install.sh) with `--update` or `--remove`. See the Russian [tester guide](INSTALL-TESTER-RU.md) for one-line commands.
+
 ## Clean install (tester, SSH)
 1. Verify version and architecture: `cat /etc/openwrt_release; apk --print-arch; uname -m`.
 2. Backup config, keep a stable SSH connection, and make sure no Entware monitor is already bound to 8237.

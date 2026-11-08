@@ -52,6 +52,22 @@ logread | grep -i cudy
 
 Проверьте, что телефон в основной LAN/Wi-Fi роутера, а не в гостевом сегменте. Пришлите вывод команд без секретов, WAN IP и паролей.
 
+## Обновление и удаление одной командой
+
+Скопируйте команду целиком в SSH-консоль роутера. Обновление сохраняет настройки, удаление оставляет конфигурацию для повторной установки. Команда не трогает сторонние службы.
+
+**Обновить:**
+
+```sh
+wget -qO /tmp/cudy-monitor-easy.sh https://raw.githubusercontent.com/stub11/cudy-monitor-pro/main/scripts/easy-install.sh && /bin/sh /tmp/cudy-monitor-easy.sh --update
+```
+
+**Удалить:**
+
+```sh
+wget -qO /tmp/cudy-monitor-easy.sh https://raw.githubusercontent.com/stub11/cudy-monitor-pro/main/scripts/easy-install.sh && /bin/sh /tmp/cudy-monitor-easy.sh --remove
+```
+
 ## Дополнительно
 
 - Повторная установка одной командой не должна изменять настройки DNS, firewall, Wi-Fi или маршрутизацию.

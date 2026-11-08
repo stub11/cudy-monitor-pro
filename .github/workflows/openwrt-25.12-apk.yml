@@ -47,6 +47,10 @@ jobs:
           assert 'elif [ -d /opt/etc/init.d ] && [ -x /opt/bin/opkg ]; then' in easy
           assert '/bin/sh "$FILE" --lan' in easy
           assert 'packaging/openwrt/install-openwrt.sh' in easy
+          assert 'apk del cudy-monitor-pro' in easy
+          assert '/opt/bin/opkg remove cudy-monitor-pro' in easy
+          assert 'ACTION=${1:---install}' in easy
+          assert 'forbidden placeholder' not in easy
           PY
       - name: Build static Linux ARM64 binary
         working-directory: cudy-monitor

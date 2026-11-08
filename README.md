@@ -24,6 +24,32 @@ wget -qO /tmp/cudy-monitor-easy.sh https://raw.githubusercontent.com/stub11/cudy
 
 **У панели пока нет пароля:** никогда не открывайте порт 8237 в интернет или гостевую сеть. Обычная установка не меняет настройки DNS, firewall и маршрутизации. При отсутствии `wget` воспользуйтесь отдельной инструкцией для своей платформы.
 
+## Простое управление: установка, обновление, удаление
+
+Все три команды выполняются в **Linux shell** роутера по SSH под root. На Keenetic Ported, если видите `(config)>`, предварительно выполните `exec sh`. Используется один открытый исходный код скрипта [easy-install.sh](scripts/easy-install.sh); адрес панели после установки обычно `http://IP-роутера:8237/`.
+
+**Установить (одна команда):**
+
+```sh
+wget -qO /tmp/cudy-monitor-easy.sh https://raw.githubusercontent.com/stub11/cudy-monitor-pro/main/scripts/easy-install.sh && /bin/sh /tmp/cudy-monitor-easy.sh --install
+```
+
+**Обновить (одна команда):**
+
+```sh
+wget -qO /tmp/cudy-monitor-easy.sh https://raw.githubusercontent.com/stub11/cudy-monitor-pro/main/scripts/easy-install.sh && /bin/sh /tmp/cudy-monitor-easy.sh --update
+```
+
+**Удалить (одна команда):**
+
+```sh
+wget -qO /tmp/cudy-monitor-easy.sh https://raw.githubusercontent.com/stub11/cudy-monitor-pro/main/scripts/easy-install.sh && /bin/sh /tmp/cudy-monitor-easy.sh --remove
+```
+
+Скрипт автоматически выбирает нативный OpenWrt APK или отдельную установку Entware для Keenetic Ported. Удаление не удаляет другие пакеты Entware, не меняет DNS, прошивку или сеть и оставляет настройки монитора для возможной повторной установки. Нативный APK удаляется через `apk del`, зарегистрированный Entware IPK — через `opkg remove`, отдельная установка Entware — очисткой **только** известных файлов самого монитора. Если монитор установлен как Entware IPK, команда `--update` остановится с инструкцией использовать пакетный менеджер, чтобы не нарушать его базу.
+
+Если нет `wget`, скачайте скрипт доступным `curl` или используйте подробную инструкцию. Для роутеров с несколькими LAN-адресами может потребоваться явно задать правильный адрес; скрипт не угадывает его. Доступ к панели без пароля допустим только в доверенной локальной сети.
+
 ## Возможности
 
 - CPU: общая загрузка, ядра, частота (если данные доступны).
