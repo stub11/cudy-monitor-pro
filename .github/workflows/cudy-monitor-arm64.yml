@@ -28,6 +28,7 @@ jobs:
           sh -n scripts/update.sh
           sh -n scripts/S99cudy-monitor
           sh -n scripts/install.sh
+          sh scripts/install.sh --check | grep -q 'Architecture:'
           sh -n scripts/openwrt-procd
           sh -n scripts/build-ipk.sh
           grep -q 'USE_PROCD=1' scripts/openwrt-procd
