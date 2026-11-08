@@ -8,13 +8,13 @@ cat > "$DIR/ip" <<'EOF'
 #!/bin/sh
 case "$*" in
   "-4 -o addr show dev custom-bridge")
-    [ "${TEST_CASE:-}" = "uci" ] && echo '3: custom-bridge    inet 192.168.1.1/24 brd 192.168.1.255 scope global custom-bridge' ;;
+    [ "${TEST_CASE:-}" = "uci" ] && echo '3: custom-bridge    inet 192.168.1.1/24 scope global custom-bridge' ;;
   "-4 -o addr show dev br-lan") : ;;
   "-4 -o addr show dev br0") : ;;
   "-4 -o addr show dev lan0") : ;;
   "-4 -o addr show")
     case "${TEST_CASE:-}" in
-      uci) echo '3: custom-bridge inet 192.168.1.1/24 brd 192.168.1.255 scope global custom-bridge' ;;
+      uci) echo '3: custom-bridge inet 192.168.1.1/24 scope global custom-bridge' ;;
       fallback) printf '%s\n' '2: eth0 inet 203.0.113.2/24 scope global eth0' '8: weirdlan inet 10.0.0.1/24 scope global weirdlan' ;;
       ambiguous) printf '%s\n' '4: inside1 inet 192.168.1.1/24 scope global inside1' '5: inside2 inet 10.0.0.1/24 scope global inside2' ;;
       wan) echo '4: eth0 inet 192.168.1.1/24 scope global eth0' ;;
