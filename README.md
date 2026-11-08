@@ -29,14 +29,52 @@
 | Требование | Статус |
 |---|---|
 | Процессор **aarch64 / ARM64**, Linux | Обязательно |
-| Совместимая KeeneticOS с доступом к shell | Протестированная среда |
+| KeeneticOS + Entware | Проверено на Cudy WBR3000UAX |
+| OpenWrt + Entware + procd | Поддержка реализована, физические испытания впереди |
 | Entware, подключённый по пути `/opt` | Обязательно |
 | `curl`, `sha256sum`, `/bin/sh` | Обязательно |
 | Свободное место на `/opt` | Для бинарника, резервной копии и обновлений |
 | Доступ в интернет до GitHub Releases | Для установки и OTA |
 | Браузер в доверенной локальной сети | Для просмотра интерфейса |
 
-**Не проверено:** MIPS/MIPSEL, ARMv7, OpenWrt без совместимых Entware/init-скриптов, произвольные модели Keenetic/Cudy. Установка на этих устройствах не обещается.
+**Не проверено:** MIPS/MIPSEL, ARMv7, OpenWrt без Entware, произвольные модели OpenWrt/Keenetic. Сборка рассчитана только на ARM64; OpenWrt пока проверен в CI, а не на реальном устройстве.
+
+## OpenWrt и BusyBox: быстрая установка
+
+Поддерживаются **OpenWrt с Entware в `/opt`** и KeeneticOS с Entware. В OpenWrt установленная служба использует штатный **procd**, на KeeneticOS — службу Entware. Две копии демона одновременно не запускаются.
+
+Подключитесь к роутеру по SSH: командная строка `root@OpenWrt:~#` уже является BusyBox shell. В Keenetic CLI сначала выполните `exec sh`.
+
+```sh
+mkdir -p /opt/tmp
+/opt/bin/curl --proto '=https' --tlsv1.2 -fsSL \
+  https://raw.githubusercontent.com/stub11/cudy-monitor-pro/main/cudy-monitor/scripts/install.sh \
+  -o /opt/tmp/cudy-monitor-install.sh
+/bin/sh /opt/tmp/cudy-monitor-install.sh --check
+```
+
+Просмотрите файл `/opt/tmp/cudy-monitor-install.sh` и выберите режим установки:
+
+```sh
+# Установить и открыть панель в доверенной LAN на IP br-lan/br0:
+/bin/sh /opt/tmp/cudy-monitor-install.sh --lan
+
+# Или установить только для локального доступа 127.0.0.1:8237:
+/bin/sh /opt/tmp/cudy-monitor-install.sh --local
+```
+
+`--lan` выбирает только частный IPv4 на `br-lan` или `br0`; если безопасный адрес не найден, установка прекращается без изменения настроек сети. Уже существующий файл `/opt/etc/cudy-monitor/bind` сохраняется. **Пароля у панели нет**, поэтому не открывайте порт 8237 в интернет, гостевую сеть или VPN с недоверенными клиентами.
+
+### Пакет Entware IPK
+
+В <https://github.com/stub11/cudy-monitor-pro/releases> доступен `cudy-monitor-pro_VERSION-1_aarch64-3.10.ipk`. Для установки используйте **именно Entware opkg**:
+
+```sh
+/opt/bin/opkg print-architecture
+/opt/bin/opkg install /opt/tmp/cudy-monitor-pro_VERSION-1_aarch64-3.10.ipk
+```
+
+Замените `VERSION` на версию скачанного пакета, предварительно скопированного в `/opt/tmp`. Пакет устанавливает бинарник, скрипт обновлений и службу; на OpenWrt автоматически регистрирует `procd`. По умолчанию он слушает только `127.0.0.1:8237`. **Не устанавливайте один и тот же монитор одновременно через IPK и обычный shell-установщик без предварительного резервного копирования:** они используют одни файлы, а автоматическое OTA бинарника не обновляет базу версий opkg.
 
 ## Быстрая установка
 
