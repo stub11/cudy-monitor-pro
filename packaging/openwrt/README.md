@@ -15,7 +15,7 @@ The native OpenWrt package:
 **[Пошаговая установка и открытие панели на Netis N6 v2](INSTALL-TESTER-RU.md)** — самый простой способ (одна команда в SSH):
 
 ```sh
-wget -qO /tmp/cudy-monitor-install.sh https://raw.githubusercontent.com/stub11/cudy-monitor-pro/main/packaging/openwrt/install-openwrt.sh && sh /tmp/cudy-monitor-install.sh
+wget -qO /tmp/cudy-monitor-easy.sh https://raw.githubusercontent.com/stub11/cudy-monitor-pro/main/scripts/easy-install.sh && /bin/sh /tmp/cudy-monitor-easy.sh
 ```
 
 Скрипт скачивает и проверяет APK v1.2.3, устанавливает, включает монитор в LAN и печатает ссылку. Не используйте на недоверенной сети: перед запуском можно скачать и изучить скрипт. Если LAN неоднозначна, скрипт не угадывает адрес.

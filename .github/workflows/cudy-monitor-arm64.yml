@@ -5,6 +5,7 @@ on:
       - main
     paths:
       - 'cudy-monitor/**'
+      - 'scripts/easy-install.sh'
       - '.github/workflows/cudy-monitor-arm64.yml'
   workflow_dispatch:
 permissions:
@@ -28,6 +29,7 @@ jobs:
           sh -n scripts/update.sh
           sh -n scripts/S99cudy-monitor
           sh -n scripts/install.sh
+          sh -n ../scripts/easy-install.sh
           sh -n scripts/detect-lan.sh
           sh -n tests/test-detect-lan.sh
           sh tests/test-detect-lan.sh

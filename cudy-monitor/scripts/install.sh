@@ -25,7 +25,22 @@ CURL=/opt/bin/curl
 SHASUM=/opt/bin/sha256sum
 [ -x "$CURL" ] || CURL=curl
 [ -x "$SHASUM" ] || SHASUM=sha256sum
-command -v "$CURL" >/dev/null 2>&1 || { echo "Requires curl" >&2; exit 1; }
+if command -v "$CURL" >/dev/null 2>&1; then
+    FETCH_TOOL=curl
+elif command -v wget >/dev/null 2>&1; then
+    FETCH_TOOL=wget
+else
+    echo "Requires curl or wget" >&2; exit 1
+fi
+fetch() {
+    url=$1
+    dest=$2
+    if [ "$FETCH_TOOL" = curl ]; then
+        "$CURL" --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 120 "$url" -o "$dest"
+    else
+        wget -q -O "$dest" "$url"
+    fi
+}
 command -v "$SHASUM" >/dev/null 2>&1 || { echo "Requires sha256sum" >&2; exit 1; }
 [ "$(uname -m)" = "aarch64" ] || { echo "Expected aarch64 router" >&2; exit 1; }
 [ -d "$ROOT/etc/init.d" ] && [ -d "$ROOT/bin" ] || { echo "Entware not mounted" >&2; exit 1; }
@@ -35,15 +50,15 @@ esac
 mkdir -p /opt/tmp
 TMP=$(mktemp -d /opt/tmp/cudy-monitor.XXXXXX) || exit 1
 trap 'rm -rf "$TMP"' EXIT
-"$CURL" --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 20 "$REPO/releases/latest/download/latest.txt" -o "$TMP/latest"
+fetch "$REPO/releases/latest/download/latest.txt" "$TMP/latest"
 VER=$(sed -n '1p' "$TMP/latest")
 SUM=$(sed -n '2p' "$TMP/latest")
 printf '%s\n' "$VER" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || exit 1
 printf '%s\n' "$SUM" | grep -Eq '^[a-f0-9]{64}$' || exit 1
-"$CURL" --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 120 "$REPO/releases/download/cudy-monitor-v$VER/cudy-monitor-pro-aarch64" -o "$TMP/monitor"
+fetch "$REPO/releases/download/cudy-monitor-v$VER/cudy-monitor-pro-aarch64" "$TMP/monitor"
 [ "$("$SHASUM" "$TMP/monitor" | awk '{print $1}')" = "$SUM" ] || { echo "Checksum mismatch" >&2; exit 1; }
 for script in update.sh S99cudy-monitor detect-lan.sh $(if [ "$OPENWRT" = 1 ]; then echo openwrt-procd; fi); do
-    "$CURL" --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 20 "$BASE/cudy-monitor-v$VER/cudy-monitor/scripts/$script" -o "$TMP/$script"
+    fetch "$BASE/cudy-monitor-v$VER/cudy-monitor/scripts/$script" "$TMP/$script"
     # Some BusyBox ash builds reject "sh -n", so do not require it on the router.
     case "$script" in openwrt-procd) expected_header='#!/bin/sh /etc/rc.common' ;; *) expected_header='#!/bin/sh' ;; esac
     [ "$(sed -n '1p' "$TMP/$script")" = "$expected_header" ] || {
@@ -146,7 +161,7 @@ fi
 /opt/etc/init.d/S99cudy-monitor restart
 sleep 2
 HEALTH_BIND=$(cat /opt/etc/cudy-monitor/bind)
-"$CURL" -fsS --max-time 4 "http://$HEALTH_BIND/health" >/dev/null || {
+( if [ "$FETCH_TOOL" = curl ]; then "$CURL" -fsS --max-time 4 "http://$HEALTH_BIND/health"; else wget -q -O - "http://$HEALTH_BIND/health"; fi ) >/dev/null || {
     echo "Health check failed" >&2
     exit 1
 }

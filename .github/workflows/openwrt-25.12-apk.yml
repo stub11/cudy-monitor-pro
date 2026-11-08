@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'packaging/openwrt/**'
+      - 'scripts/easy-install.sh'
       - '.github/workflows/openwrt-25.12-apk.yml'
       - 'cudy-monitor/src/**'
       - 'cudy-monitor/web/**'
@@ -26,6 +27,7 @@ jobs:
           sh -n packaging/openwrt/files/cudy-monitor-pro.init
           sh -n packaging/openwrt/files/cudy-monitor-lan
           sh -n packaging/openwrt/install-openwrt.sh
+          sh -n scripts/easy-install.sh
           sh -n cudy-monitor/scripts/detect-lan.sh
           python3 - <<'PY'
           from pathlib import Path
@@ -40,6 +42,11 @@ jobs:
           install=Path('packaging/openwrt/install-openwrt.sh').read_text()
           assert 'apk add --allow-untrusted' in install and 'sha256sum -c -' in install and 'cudy-monitor-lan --lan' in install
           assert 'PKG_VERSION:=1.2.3' in p and 'VERSION=1.2.3' in install
+          easy=Path('scripts/easy-install.sh').read_text()
+          assert 'if [ -f /etc/openwrt_release ]; then' in easy
+          assert 'elif [ -d /opt/etc/init.d ] && [ -x /opt/bin/opkg ]; then' in easy
+          assert '/bin/sh "$FILE" --lan' in easy
+          assert 'packaging/openwrt/install-openwrt.sh' in easy
           PY
       - name: Build static Linux ARM64 binary
         working-directory: cudy-monitor
