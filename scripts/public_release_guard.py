@@ -19,7 +19,7 @@ secrets = [
 ]
 emails = re.compile(r"(?<![\w])[\w.+%-]+@[\w.-]+\.[A-Za-z]{2,}")
 ips = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
-allowed_ips = {"127.0.0.1", "192.168.1.1", "0.0.0.0"}
+allowed_ips = {"127.0.0.1", "192.168.1.1", "10.0.0.1", "0.0.0.0"}
 for path in paths:
     rel = path.relative_to(ROOT).as_posix()
     if path.suffix.lower() in {".pem", ".p12", ".pfx", ".key", ".ppk", ".env", ".bak", ".log"}:
