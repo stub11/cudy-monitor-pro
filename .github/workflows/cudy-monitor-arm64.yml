@@ -31,6 +31,14 @@ jobs:
           sh -n scripts/detect-lan.sh
           sh -n tests/test-detect-lan.sh
           sh tests/test-detect-lan.sh
+          # LAN resolution must happen before any installed files or services are modified.
+          python3 - <<'PY'
+          from pathlib import Path
+          sh=Path("scripts/install.sh").read_text()
+          assert sh.index("SELECTED_IP=$(/bin/sh") < sh.index("backup binary")
+          assert "--bind-ip" in sh
+          assert 'detect-lan.sh' in sh
+          PY
           sh scripts/install.sh --check | grep -q 'Architecture:'
           sh -n scripts/openwrt-procd
           sh -n scripts/build-ipk.sh
@@ -203,6 +211,7 @@ jobs:
           ar t "$IPK" | grep -q '^control.tar.gz$'
           ar p "$IPK" control.tar.gz | tar -xzOf - ./control | grep -q 'Architecture: aarch64-3.10'
           ar p "$IPK" data.tar.gz | tar -tzf - | grep -q 'opt/share/cudy-monitor/openwrt-procd'
+          ar p "$IPK" data.tar.gz | tar -tzf - | grep -q 'opt/share/cudy-monitor/detect-lan.sh'
           ar p "$IPK" control.tar.gz | tar -xzOf - ./postinst | sh -n
           ar p "$IPK" control.tar.gz | tar -xzOf - ./prerm | sh -n
       - name: Upload Entware IPK
