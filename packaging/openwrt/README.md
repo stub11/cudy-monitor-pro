@@ -10,6 +10,10 @@ The native OpenWrt package:
 - does not use Entware `opkg`, modify DNS/firewall, or change routing;
 - does not yet support native APK-integrated in-panel OTA; use `apk upgrade` for signed repository upgrades and do not apply the Entware binary updater here.
 
+## Инструкция для тестера (русский язык)
+
+**[Пошаговая установка и открытие панели на Netis N6 v2](INSTALL-TESTER-RU.md)** — после установки обязательно выполните `cudy-monitor-lan --lan`, затем откройте напечатанный адрес `http://IP-роутера:8237/` в браузере устройства из LAN/Wi-Fi.
+
 ## Clean install (tester, SSH)
 1. Verify version and architecture: `cat /etc/openwrt_release; apk --print-arch; uname -m`.
 2. Backup config, keep a stable SSH connection, and make sure no Entware monitor is already bound to 8237.
