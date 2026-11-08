@@ -11,6 +11,13 @@ PIDFILE=/opt/var/run/cudy-monitor-pro.pid
 TOKEN_FILE=/opt/etc/cudy-monitor/token
 BIND_FILE=/opt/etc/cudy-monitor/bind
 ACTION_FILE=/opt/etc/cudy-monitor/service-actions
+# When OpenWrt's procd service is installed, do not start a second daemon
+# through Entware rc.unslung. Delegate the same lifecycle actions to procd.
+if [ -f /etc/openwrt_release ] && [ -x /etc/init.d/cudy-monitor-pro ]; then
+  case "$1" in
+    start|stop|restart|status) exec /etc/init.d/cudy-monitor-pro "$1" ;;
+  esac
+fi
 case "$1" in
  start)
   [ -x "$BINARY" ] || exit 1
