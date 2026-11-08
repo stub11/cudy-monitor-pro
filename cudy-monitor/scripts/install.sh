@@ -1,8 +1,19 @@
 #!/bin/sh
-# One-time installer for Cudy WBR3000UAX with KeeneticOS + Entware.
+# Portable installer for OpenWrt/KeeneticOS ARM64 routers with Entware.
 # Run only after reviewing the script and confirming a working /opt USB mount.
 set -eu
 ROOT=/opt
+MODE="${1:---local}"
+case "$MODE" in --local|--lan|--check) ;; *) echo "Usage: sh install.sh [--local|--lan|--check]" >&2; exit 2;; esac
+OPENWRT=0
+[ ! -f /etc/openwrt_release ] || OPENWRT=1
+if [ "$MODE" = --check ]; then
+    echo "Platform: $(if [ "$OPENWRT" = 1 ]; then echo OpenWrt; else echo KeeneticOS/other; fi)"
+    echo "Architecture: $(uname -m)"
+    [ -x /opt/bin/opkg ] && /opt/bin/opkg print-architecture || echo "Entware opkg not found under /opt/bin"
+    [ -d /opt/etc/init.d ] || echo "Entware /opt/etc/init.d not found"
+    exit 0
+fi
 REPO=https://github.com/stub11/cudy-monitor-pro
 BASE=https://raw.githubusercontent.com/stub11/cudy-monitor-pro
 CURL=/opt/bin/curl
@@ -26,10 +37,11 @@ printf '%s\n' "$VER" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || exit 1
 printf '%s\n' "$SUM" | grep -Eq '^[a-f0-9]{64}$' || exit 1
 "$CURL" --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 120 "$REPO/releases/download/cudy-monitor-v$VER/cudy-monitor-pro-aarch64" -o "$TMP/monitor"
 [ "$("$SHASUM" "$TMP/monitor" | awk '{print $1}')" = "$SUM" ] || { echo "Checksum mismatch" >&2; exit 1; }
-for script in update.sh S99cudy-monitor; do
+for script in update.sh S99cudy-monitor $(if [ "$OPENWRT" = 1 ]; then echo openwrt-procd; fi); do
     "$CURL" --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 20 "$BASE/cudy-monitor-v$VER/cudy-monitor/scripts/$script" -o "$TMP/$script"
     # Some BusyBox ash builds reject "sh -n", so do not require it on the router.
-    [ "$(sed -n '1p' "$TMP/$script")" = '#!/bin/sh' ] || {
+    case "$script" in openwrt-procd) expected_header='#!/bin/sh /etc/rc.common' ;; *) expected_header='#!/bin/sh' ;; esac
+    [ "$(sed -n '1p' "$TMP/$script")" = "$expected_header" ] || {
         echo "Unexpected $script header" >&2; exit 1;
     }
     case "$script" in
@@ -37,7 +49,7 @@ for script in update.sh S99cudy-monitor; do
         grep -q 'stub11/cudy-monitor-pro/releases' "$TMP/$script" || {
             echo "Unexpected OTA source" >&2; exit 1;
         } ;;
-      S99cudy-monitor)
+      S99cudy-monitor|openwrt-procd)
         grep -q '/opt/bin/cudy-monitor-pro' "$TMP/$script" || {
             echo "Unexpected service launcher" >&2; exit 1;
         } ;;
@@ -50,6 +62,9 @@ UPD=/opt/share/cudy-monitor/update.sh
 META=/opt/share/cudy-monitor/VERSION
 BIND=/opt/etc/cudy-monitor/bind
 PREV="$BIN.previous"
+PROCD=/etc/init.d/cudy-monitor-pro
+PROCD_WAS_ENABLED=0
+[ -e /etc/rc.d/S99cudy-monitor-pro ] && PROCD_WAS_ENABLED=1
 WAS_RUNNING=0
 if [ -x "$INIT" ] && "$INIT" status >/dev/null 2>&1; then WAS_RUNNING=1; fi
 backup() { [ ! -f "$2" ] || cp -p "$2" "$TMP/backup/$1"; }
@@ -66,6 +81,7 @@ backup updater "$UPD"
 backup version "$META"
 backup bind "$BIND"
 backup previous "$PREV"
+if [ "$OPENWRT" = 1 ]; then backup procd "$PROCD"; fi
 COMMITTED=0
 finish() {
     result=$?
@@ -79,6 +95,11 @@ finish() {
         restore version "$META"
         restore bind "$BIND"
         restore previous "$PREV"
+        if [ "$OPENWRT" = 1 ]; then
+            [ "$PROCD_WAS_ENABLED" = 1 ] || [ ! -x "$PROCD" ] || "$PROCD" disable >/dev/null 2>&1 || true
+            restore procd "$PROCD"
+            if [ "$PROCD_WAS_ENABLED" = 1 ] && [ -x "$PROCD" ]; then "$PROCD" enable || true; fi
+        fi
         if [ "$WAS_RUNNING" -eq 1 ] && [ -x "$INIT" ]; then
             "$INIT" start || echo "WARNING: prior monitor did not restart" >&2
         fi
@@ -89,13 +110,38 @@ finish() {
 trap finish EXIT
 chmod 700 /opt/etc/cudy-monitor
 # Version 0.4.4+ runs without a login token; preserve any legacy token file but do not use it.
-[ -f /opt/etc/cudy-monitor/bind ] || printf '127.0.0.1:8237\n' > /opt/etc/cudy-monitor/bind
+if [ ! -f "$BIND" ]; then
+    IP=127.0.0.1
+    if [ "$MODE" = --lan ]; then
+        for IFACE in br-lan br0; do
+            IP_CMD=/sbin/ip
+            [ -x "$IP_CMD" ] || IP_CMD=ip
+            CANDIDATE=$("$IP_CMD" -4 addr show dev "$IFACE" 2>/dev/null | awk '/inet / {split($2,a,"/"); print a[1]; exit}')
+            case "$CANDIDATE" in
+                10.*|192.168.*) IP=$CANDIDATE; break ;;
+                172.*) SECOND=$(printf '%s' "$CANDIDATE" | cut -d. -f2);
+                    if [ "$SECOND" -ge 16 ] && [ "$SECOND" -le 31 ]; then IP=$CANDIDATE; break; fi ;;
+            esac
+        done
+        [ "$IP" != 127.0.0.1 ] || {
+            echo "Cannot detect safe LAN IP on br-lan/br0; use --local or configure /opt/etc/cudy-monitor/bind manually" >&2
+            exit 1
+        }
+    fi
+    printf '%s:8237\n' "$IP" > "$BIND"
+fi
 chmod 600 /opt/etc/cudy-monitor/bind
 cp "$TMP/monitor" /opt/bin/cudy-monitor-pro
 chmod 755 /opt/bin/cudy-monitor-pro
 cp "$TMP/update.sh" /opt/share/cudy-monitor/update.sh
 cp "$TMP/S99cudy-monitor" /opt/etc/init.d/S99cudy-monitor
 chmod 755 /opt/etc/init.d/S99cudy-monitor
+if [ "$OPENWRT" = 1 ]; then
+    [ -f /etc/rc.common ] || { echo "OpenWrt procd integration requires /etc/rc.common" >&2; exit 1; }
+    cp "$TMP/openwrt-procd" "$PROCD"
+    chmod 755 "$PROCD"
+    "$PROCD" enable
+fi
 /opt/etc/init.d/S99cudy-monitor restart
 sleep 2
 HEALTH_BIND=$(cat /opt/etc/cudy-monitor/bind)
@@ -108,4 +154,6 @@ if [ -f "$TMP/backup/binary" ]; then
     cp -p "$TMP/backup/binary" "$PREV"
 fi
 COMMITTED=1
-echo "Cudy Monitor Pro $VER installed at http://$HEALTH_BIND/ (LAN bind requires trusted private network)."
+echo "Cudy Monitor Pro $VER installed on $(if [ "$OPENWRT" = 1 ]; then echo OpenWrt; else echo Entware; fi)."
+echo "Panel: http://$HEALTH_BIND/ (LAN access requires explicit --lan or manual trusted IP)."
+echo "Service: /opt/etc/init.d/S99cudy-monitor {start|stop|restart|status}"
