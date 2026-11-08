@@ -13,6 +13,15 @@
     {name:"nginx",pid:835,mem:7,cpu:0.3},{name:"cudy-monitor-pro",pid:2200,mem:1,cpu:0.1}],
    services:[{name:"D2K",detected:true,installed:true},{name:"DoQ",detected:true,installed:true},{name:"KeenKit",detected:false,installed:true}]
  };
+ if(window.location.search.includes('openwrt=1')){
+   data.platform='OpenWrt';
+   data.model='Generic OpenWrt Test Device';
+   data.network=[{name:'wan',rx:1100000,tx:60000},{name:'br-lan',rx:800000,tx:50000},{name:'wlan0',rx:250000,tx:30000}];
+   data.services=[{name:'D2K',detected:false,installed:false},{name:'DoQ',detected:false,installed:false},{name:'KeenKit',detected:false,installed:false}];
+ }else{
+   data.platform='KeeneticOS';
+   data.model='Cudy WBR3000UAX';
+ }
  const samples=Array.from({length:80},(_,i)=>[i*10,12+7*Math.sin(i/6),40+Math.sin(i/15),49+Math.sin(i/9)]);
  const traffic=Array.from({length:90},(_,i)=>[i*2,400000+500000*(.5+.5*Math.sin(i/8)),50000+130000*(.5+.5*Math.cos(i/11))]);
  const original=window.fetch.bind(window);
