@@ -33,7 +33,7 @@ fn quoted(s:&str)->String {let mut v=String::from("\"");for c in s.chars(){match
 fn cpu()->Cpu {let line=read("/proc/stat");let vals:Vec<u64>=line.lines().next().unwrap_or("").split_whitespace().skip(1).take(10).map(num).collect();Cpu{total:vals.iter().sum(),idle:vals.get(3).copied().unwrap_or(0)+vals.get(4).copied().unwrap_or(0)}}
 fn nets()->HashMap<String,Net>{let mut m=HashMap::new();for l in read("/proc/net/dev").lines().skip(2){if let Some((name,rest))=l.split_once(':'){let a:Vec<_>=rest.split_whitespace().collect();if a.len()>8 && name.trim()!="lo"{m.insert(name.trim().to_string(),Net{rx:num(a[0]),tx:num(a[8])});}}}m}
 fn mem()->(u64,u64,u64){let m=read("/proc/meminfo");let v=|key:&str|->u64{m.lines().find(|l|l.starts_with(key)).and_then(|l|l.split_whitespace().nth(1)).map(num).unwrap_or(0)/1024};let total=v("MemTotal:");(total,total.saturating_sub(v("MemAvailable:")),v("Cached:"))}
-fn disk()->(u64,u64,String){if fs::metadata("/opt/etc").is_err(){return (0,0,"/opt not mounted".into());}for path in ["/opt"]{if let Ok(o)=Command::new("df").args(["-Pk",path]).output(){if o.status.success(){if let Some(l)=String::from_utf8_lossy(&o.stdout).lines().last(){let a:Vec<_>=l.split_whitespace().collect();if a.len()>=6{return (num(a[1])/1024,num(a[2])/1024,path.to_string())}}}}}(0,0,"unknown".into())}
+fn disk()->(u64,u64,String){if std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1") { if let Ok(o)=Command::new("df").args(["-Pk","/overlay"]).output(){if o.status.success(){if let Some(l)=String::from_utf8_lossy(&o.stdout).lines().last(){let a:Vec<_>=l.split_whitespace().collect();if a.len()>=6{return (num(a[1])/1024,num(a[2])/1024,"/overlay".into())}}}} return (0,0,"/overlay unavailable".into());} if fs::metadata("/opt/etc").is_err(){return (0,0,"/opt not mounted".into());}for path in ["/opt"]{if let Ok(o)=Command::new("df").args(["-Pk",path]).output(){if o.status.success(){if let Some(l)=String::from_utf8_lossy(&o.stdout).lines().last(){let a:Vec<_>=l.split_whitespace().collect();if a.len()>=6{return (num(a[1])/1024,num(a[2])/1024,path.to_string())}}}}}(0,0,"unknown".into())}
 fn temps()->Vec<(String,f64)>{let mut out=Vec::new();if let Ok(entries)=fs::read_dir("/sys/class/thermal"){for e in entries.flatten(){let p=e.path();if !e.file_name().to_string_lossy().starts_with("thermal_zone"){continue}let t=read(&p.join("temp").to_string_lossy()).trim().parse::<f64>().unwrap_or(-1.);if !(0.0..=150000.).contains(&t){continue}let n=read(&p.join("type").to_string_lossy());out.push((n.trim().to_string(),if t>1000.{t/1000.}else{t}));}}out.truncate(12);out}
 fn procs()->Vec<(String,u64,u64)>{let mut p=Vec::new();if let Ok(it)=fs::read_dir("/proc"){for e in it.flatten(){let id=e.file_name().to_string_lossy().to_string();if !id.bytes().all(|x|x.is_ascii_digit()){continue}let n=read(&format!("/proc/{id}/comm"));if n.is_empty(){continue}let status=read(&format!("/proc/{id}/status"));let kb=status.lines().find(|l|l.starts_with("VmRSS:")).and_then(|l|l.split_whitespace().nth(1)).map(num).unwrap_or(0);p.push((n.trim().to_string(),num(&id),kb/1024));}}p.sort_by(|a,b|b.2.cmp(&a.2));p.truncate(32);p}
 fn pid_ticks()->HashMap<u64,u64>{
@@ -203,6 +203,7 @@ fn service_action_json(state:&Arc<Mutex<State>>)->String{
     }
 }
 fn service_actions_enabled()->bool{
+    if std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1") {return false}
     std::env::var("CUDY_MONITOR_SERVICE_ACTIONS").ok().as_deref()==Some("1")
         || read("/opt/etc/cudy-monitor/service-actions").trim()=="1"
 }
@@ -210,6 +211,9 @@ fn data(s:&Arc<Mutex<State>>)->String{let (cpu,network,core_load,pid_load)={let 
 fn respond(s:&mut TcpStream,status:&str,typ:&str,body:&[u8]){let header=format!("HTTP/1.1 {status}\r\nContent-Type: {typ}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nConnection: close\r\n\r\n",body.len());let _=s.write_all(header.as_bytes());let _=s.write_all(body);}
 fn constant_time_match(a:&[u8],b:&[u8])->bool{let mut diff=a.len()^b.len();for i in 0..a.len().max(b.len()){diff|=usize::from(a.get(i).copied().unwrap_or(0)^b.get(i).copied().unwrap_or(0));}diff==0}
 fn update_command(mode:&str)->Result<String,String>{
+    if std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1") {
+        return Err("Native OpenWrt APK: update using apk package manager".into());
+    }
     let script=std::env::var("CUDY_MONITOR_UPDATER").unwrap_or_else(|_|"/opt/share/cudy-monitor/update.sh".into());
     if script!= "/opt/share/cudy-monitor/update.sh" && !cfg!(debug_assertions) {
         return Err("Updater path override forbidden in release builds".into());
@@ -447,6 +451,9 @@ fn handle(mut c:TcpStream,s:Arc<Mutex<State>>,token:String){
         respond(&mut c,"202 Accepted","application/json",if name=="DoQ" && action=="stop"{&b"{\"status\":\"started\",\"auto_restore_sec\":90}"[..]}else{&b"{\"status\":\"started\"}"[..]});return;
     }
     if line.starts_with("POST /api/update/apply HTTP/"){
+        if std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1") {
+            respond(&mut c,"503 Service Unavailable","application/json",b"{\"error\":\"use native OpenWrt apk upgrade\"}");return;
+        }
         // Require a custom header and local host Origin to limit cross-site requests.
         let host=request.lines().find_map(|l|l.split_once(':')
             .filter(|(k,_)|k.eq_ignore_ascii_case("Host")).map(|(_,v)|v.trim())).unwrap_or("");

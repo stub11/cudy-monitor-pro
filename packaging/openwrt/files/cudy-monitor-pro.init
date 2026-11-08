@@ -1,0 +1,21 @@
+#!/bin/sh /etc/rc.common
+# Native OpenWrt package; does not require Entware or touch DNS/firewall.
+START=99
+STOP=10
+USE_PROCD=1
+
+start_service() {
+    [ -x /usr/bin/cudy-monitor-pro ] || return 1
+    BIND=127.0.0.1:8237
+    [ ! -s /etc/cudy-monitor-pro/bind ] || BIND=$(head -n 1 /etc/cudy-monitor-pro/bind)
+    case "$BIND" in
+        *[!0-9.:]*|*:*:*) echo "Invalid bind address" >&2; return 1 ;;
+    esac
+    ACTIONS=0
+    # Administrative service operations are disabled in this native preview.
+    procd_open_instance
+    procd_set_param command /usr/bin/cudy-monitor-pro
+    procd_set_param env "CUDY_MONITOR_BIND=$BIND" "CUDY_MONITOR_SERVICE_ACTIONS=$ACTIONS" "CUDY_MONITOR_NATIVE_APK=1"
+    procd_set_param respawn 3600 5 5
+    procd_close_instance
+}

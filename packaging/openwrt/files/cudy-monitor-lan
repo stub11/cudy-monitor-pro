@@ -1,0 +1,33 @@
+#!/bin/sh
+# Change only this application's listen address; no firewall/network changes.
+set -eu
+DETECT=/usr/share/cudy-monitor-pro/detect-lan.sh
+FILE=/etc/cudy-monitor-pro/bind
+usage() { echo "Usage: cudy-monitor-lan --check | --local | --lan | --bind-ip PRIVATE_ASSIGNED_IPV4"; exit 2; }
+case "${1:-}" in
+  --check)
+    /usr/bin/cudy-monitor-pro --version
+    /bin/sh "$DETECT" detect
+    exit $? ;;
+  --local)
+    [ "$#" -eq 1 ] || usage
+    IP=127.0.0.1 ;;
+  --lan)
+    [ "$#" -eq 1 ] || usage
+    IP=$(/bin/sh "$DETECT" detect) || exit 1 ;;
+  --bind-ip)
+    [ "$#" -eq 2 ] || usage
+    IP=$(/bin/sh "$DETECT" validate "$2") || exit 1 ;;
+  *) usage ;;
+esac
+[ -x /etc/init.d/cudy-monitor-pro ] || { echo "Missing native OpenWrt service" >&2; exit 1; }
+mkdir -p /etc/cudy-monitor-pro
+chmod 700 /etc/cudy-monitor-pro
+TEMP="$FILE.$$"
+trap 'rm -f "$TEMP"' EXIT HUP INT TERM
+printf '%s:8237\n' "$IP" > "$TEMP"
+chmod 600 "$TEMP"
+mv "$TEMP" "$FILE"
+trap - EXIT HUP INT TERM
+/etc/init.d/cudy-monitor-pro restart
+echo "Monitor: http://$IP:8237/"
