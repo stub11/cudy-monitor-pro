@@ -11,6 +11,23 @@ const HISTORY_POINTS:usize=1080; // 3 hours at one sample per 10 seconds
 struct ServiceAction {id:u64,name:String,verb:String,state:String,detail:String}
 struct State {service_action:Option<ServiceAction>,cpu:Cpu,core_ticks:Vec<(usize,Cpu)>,current_cores:Vec<(usize,f64)>,events:VecDeque<(u64,String)>,high_cpu:bool,high_ram:bool,pid_ticks:HashMap<u64,u64>,pid_usage:HashMap<u64,f64>,nets:HashMap<String,Net>,last:Instant,history_at:Instant,boot:Instant,history:VecDeque<Sample>,net_histories:HashMap<String,VecDeque<NetSample>>,current_cpu:f64,current_network:Vec<(String,f64,f64)>}
 fn read(p:&str)->String {fs::read_to_string(p).unwrap_or_default()}
+fn platform()->&'static str {
+    if std::path::Path::new("/etc/openwrt_release").exists() || read("/etc/os-release").contains("OpenWrt") {"OpenWrt"}
+    else if read("/etc/os-release").contains("Keenetic") {"KeeneticOS"}
+    else {"Linux / Entware"}
+}
+fn device_model()->String {
+    for path in ["/tmp/sysinfo/model","/proc/device-tree/model","/sys/firmware/devicetree/base/model"] {
+        let value=read(path);
+        let model=value.trim_matches(|c:char|c=='\0'||c.is_whitespace());
+        if !model.is_empty(){return model.chars().take(120).collect();}
+    }
+    "ARM64 router".into()
+}
+fn valid_iface(name:&str)->bool{
+    !name.is_empty() && name.len()<=32 &&
+    name.bytes().all(|b|b.is_ascii_alphanumeric() || matches!(b,b'-'|b'_'|b'.'|b'@'))
+}
 fn num(s:&str)->u64{s.trim().parse().unwrap_or(0)}
 fn quoted(s:&str)->String {let mut v=String::from("\"");for c in s.chars(){match c {'"'=>v.push_str("\\\""),'\\'=>v.push_str("\\\\"),'\n'=>v.push_str("\\n"),'\r'=>v.push_str("\\r"),'\t'=>v.push_str("\\t"),c if c.is_control()=>{},c=>v.push(c)}}v.push('"');v}
 fn cpu()->Cpu {let line=read("/proc/stat");let vals:Vec<u64>=line.lines().next().unwrap_or("").split_whitespace().skip(1).take(10).map(num).collect();Cpu{total:vals.iter().sum(),idle:vals.get(3).copied().unwrap_or(0)+vals.get(4).copied().unwrap_or(0)}}
@@ -78,9 +95,19 @@ fn sample(state:&Arc<Mutex<State>>){
     if ram_hot!=s.high_ram {notes.push(if ram_hot{"Высокое использование RAM"}else{"Использование RAM восстановилось"});}
     s.high_cpu=cpu_hot;s.high_ram=ram_hot;
     let event_sec=now.duration_since(s.boot).as_secs();for note in notes {if s.events.len()>=80{s.events.pop_front();}s.events.push_back((event_sec,note.to_string()));}
-    // Four useful interfaces, each with at most five minutes of RAM history.
-    let tracked:Vec<_>=s.current_network.iter().filter(|x|matches!(x.0.as_str(),"eth2.4"|"br0"|"ra9"|"ra1"))
-        .map(|x|(x.0.clone(),x.1,x.2)).collect();
+    // Auto-discover OpenWrt/Keenetic network devices with bounded RAM use.
+    let mut available=s.current_network.clone();
+    available.sort_by(|a,b|{
+        let rank=|v:&str| if v=="eth2.4"||v=="wan"||v=="pppoe-wan"{0}
+            else if v=="br-lan"||v=="br0"{1}
+            else if v.starts_with("wlan")||v.starts_with("ra"){2}else{3};
+        rank(&a.0).cmp(&rank(&b.0))
+            .then_with(||(b.1+b.2).total_cmp(&(a.1+a.2)))
+    });
+    let tracked:Vec<_>=available.into_iter().filter(|x|valid_iface(&x.0))
+        .take(16).collect();
+    let allowed:std::collections::HashSet<_>=tracked.iter().map(|x|x.0.clone()).collect();
+    s.net_histories.retain(|k,_|allowed.contains(k));
     let traffic_sec=now.duration_since(s.boot).as_secs();
     for (name,rx,tx) in tracked{
         let list=s.net_histories.entry(name).or_insert_with(||VecDeque::with_capacity(NETWORK_POINTS));
@@ -179,7 +206,7 @@ fn service_actions_enabled()->bool{
     std::env::var("CUDY_MONITOR_SERVICE_ACTIONS").ok().as_deref()==Some("1")
         || read("/opt/etc/cudy-monitor/service-actions").trim()=="1"
 }
-fn data(s:&Arc<Mutex<State>>)->String{let (cpu,network,core_load,pid_load)={let state=s.lock().unwrap_or_else(|e|e.into_inner());(state.current_cpu,state.current_network.clone(),state.current_cores.clone(),state.pid_usage.clone())};let (mt,mu,mc)=mem();let (dt,du,dm)=disk();let (connections,connections_max)=connections();let cpu_mhz=cpu_clock_mhz();let service_actions=service_actions_enabled();let up=read("/proc/uptime").split_whitespace().next().and_then(|x|x.parse::<f64>().ok()).unwrap_or(0.)as u64;let mut o=format!("{{\"model\":\"Cudy WBR3000UAX (KN-3811 EA)\",\"cpu\":{cpu:.1},\"mem_total\":{mt},\"mem_used\":{mu},\"mem_cached\":{mc},\"disk_total\":{dt},\"disk_used\":{du},\"disk_mount\":{},\"uptime\":{up},\"temps\":[",quoted(&dm));for (i,(n,c))in temps().iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"c\":{c:.1}}}",quoted(n)))}o.push_str("],\"network\":[");for(i,(n,rx,tx))in network.iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"rx\":{rx:.0},\"tx\":{tx:.0}}}",quoted(n)))}o.push_str("],\"cores\":[");for(i,(idx,percent))in core_load.iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"id\":{},\"usage\":{:.1}}}",idx,percent))}o.push_str("],\"processes\":[");for(i,(n,pid,rss))in procs().iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"pid\":{pid},\"mem\":{rss},\"cpu\":{:.1}}}",quoted(n),pid_load.get(pid).copied().unwrap_or(0.0)))}o.push_str("],\"services\":[");for(i,n)in["D2K","DoQ","KeenKit"].iter().enumerate(){if i>0{o.push(',')}let found=if *n=="KeenKit"{false}else{service_running(n)};let installed=match *n {"KeenKit"=>std::path::Path::new("/opt/bin/keenkit").exists(),"D2K"=>std::path::Path::new("/opt/etc/init.d/S99d2k").exists(),"DoQ"=>std::path::Path::new("/opt/etc/init.d/S56doqd").exists(),_=>false};o.push_str(&format!("{{\"name\":{},\"detected\":{found},\"installed\":{installed}}}",quoted(n)))}o.push_str(&format!("],\"connections\":{},\"connections_max\":{},\"cpu_mhz\":{},\"service_actions_enabled\":{},\"monitor_rss_mb\":{:.2},\"version\":{}}}",connections,connections_max,cpu_mhz,service_actions,own_rss_mb(),quoted(env!("CARGO_PKG_VERSION"))));o}
+fn data(s:&Arc<Mutex<State>>)->String{let (cpu,network,core_load,pid_load)={let state=s.lock().unwrap_or_else(|e|e.into_inner());(state.current_cpu,state.current_network.clone(),state.current_cores.clone(),state.pid_usage.clone())};let (mt,mu,mc)=mem();let (dt,du,dm)=disk();let (connections,connections_max)=connections();let cpu_mhz=cpu_clock_mhz();let service_actions=service_actions_enabled();let up=read("/proc/uptime").split_whitespace().next().and_then(|x|x.parse::<f64>().ok()).unwrap_or(0.)as u64;let mut o=format!("{{\"model\":{},\"platform\":{},\"cpu\":{cpu:.1},\"mem_total\":{mt},\"mem_used\":{mu},\"mem_cached\":{mc},\"disk_total\":{dt},\"disk_used\":{du},\"disk_mount\":{},\"uptime\":{up},\"temps\":[",quoted(&device_model()),quoted(platform()),quoted(&dm));for (i,(n,c))in temps().iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"c\":{c:.1}}}",quoted(n)))}o.push_str("],\"network\":[");for(i,(n,rx,tx))in network.iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"rx\":{rx:.0},\"tx\":{tx:.0}}}",quoted(n)))}o.push_str("],\"cores\":[");for(i,(idx,percent))in core_load.iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"id\":{},\"usage\":{:.1}}}",idx,percent))}o.push_str("],\"processes\":[");for(i,(n,pid,rss))in procs().iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"pid\":{pid},\"mem\":{rss},\"cpu\":{:.1}}}",quoted(n),pid_load.get(pid).copied().unwrap_or(0.0)))}o.push_str("],\"services\":[");for(i,n)in["D2K","DoQ","KeenKit"].iter().enumerate(){if i>0{o.push(',')}let found=if *n=="KeenKit"{false}else{service_running(n)};let installed=match *n {"KeenKit"=>std::path::Path::new("/opt/bin/keenkit").exists(),"D2K"=>std::path::Path::new("/opt/etc/init.d/S99d2k").exists(),"DoQ"=>std::path::Path::new("/opt/etc/init.d/S56doqd").exists(),_=>false};o.push_str(&format!("{{\"name\":{},\"detected\":{found},\"installed\":{installed}}}",quoted(n)))}o.push_str(&format!("],\"connections\":{},\"connections_max\":{},\"cpu_mhz\":{},\"service_actions_enabled\":{},\"monitor_rss_mb\":{:.2},\"version\":{}}}",connections,connections_max,cpu_mhz,service_actions,own_rss_mb(),quoted(env!("CARGO_PKG_VERSION"))));o}
 fn respond(s:&mut TcpStream,status:&str,typ:&str,body:&[u8]){let header=format!("HTTP/1.1 {status}\r\nContent-Type: {typ}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nConnection: close\r\n\r\n",body.len());let _=s.write_all(header.as_bytes());let _=s.write_all(body);}
 fn constant_time_match(a:&[u8],b:&[u8])->bool{let mut diff=a.len()^b.len();for i in 0..a.len().max(b.len()){diff|=usize::from(a.get(i).copied().unwrap_or(0)^b.get(i).copied().unwrap_or(0));}diff==0}
 fn update_command(mode:&str)->Result<String,String>{
@@ -270,7 +297,7 @@ fn handle(mut c:TcpStream,s:Arc<Mutex<State>>,token:String){
     }
     if line.starts_with("GET /api/network-history HTTP/") || line.starts_with("GET /api/network-history?iface="){
         let iface=line.split_whitespace().nth(1).unwrap_or("").strip_prefix("/api/network-history?iface=").unwrap_or("eth2.4");
-        if !matches!(iface,"eth2.4"|"br0"|"ra9"|"ra1"){respond(&mut c,"400 Bad Request","application/json",b"{\"error\":\"unsupported interface\"}");return;}
+        if !valid_iface(iface) || !(matches!(iface,"eth2.4"|"br0"|"ra9"|"ra1") || nets().contains_key(iface)){respond(&mut c,"400 Bad Request","application/json",b"{\"error\":\"unsupported interface\"}");return;}
         let body=network_history_json(&s,iface);
         respond(&mut c,"200 OK","application/json",body.as_bytes());return;
     }
@@ -494,6 +521,7 @@ mod tests {
     use super::*;
     #[test] fn history_size(){let mut v=VecDeque::with_capacity(HISTORY_POINTS);for i in 0..3000 {if v.len()==HISTORY_POINTS{v.pop_front();}v.push_back(i)}assert_eq!(v.len(),1080);assert_eq!(v.front(),Some(&1920));}
     #[test] fn restart_identity(){assert!(service_restarted(&[12],&[13]));assert!(service_restarted(&[],&[13]));assert!(!service_restarted(&[12],&[12]));assert!(!service_restarted(&[12],&[]));assert!(!service_restarted(&[12,13],&[13,14]));}
+    #[test] fn iface_validation(){assert!(valid_iface("br-lan"));assert!(valid_iface("pppoe-wan"));assert!(valid_iface("wlan0"));assert!(valid_iface("eth0.2"));assert!(!valid_iface("../etc/passwd"));assert!(!valid_iface("bad?iface"));assert!(!valid_iface(""));}
     #[test] fn cpu_math(){assert_eq!(cpu_percent(0,0),0.0);assert_eq!(cpu_percent(100,20),80.0);assert_eq!(cpu_percent(10,100),0.0);}
     #[test] fn json_quote(){assert_eq!(quoted("a\"b"),"\"a\\\"b\"");assert_eq!(quoted("test\n"),"\"test\\n\"");}
     #[test] fn token_match(){assert!(constant_time_match(b"abc",b"abc"));assert!(!constant_time_match(b"abc",b"abd"));assert!(!constant_time_match(b"abc",b"abc0"));}
