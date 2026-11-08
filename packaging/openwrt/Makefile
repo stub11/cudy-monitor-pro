@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=cudy-monitor-pro
-PKG_VERSION:=1.2.2
+PKG_VERSION:=1.2.3
 PKG_RELEASE:=1
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=Cudy Monitor Contributors
@@ -47,6 +47,15 @@ if [ ! -e /etc/cudy-monitor-pro/bind ]; then
   printf '%s\n' '127.0.0.1:8237' > /etc/cudy-monitor-pro/bind
 fi
 chmod 600 /etc/cudy-monitor-pro/bind
+# Default to the unique assigned trusted LAN IPv4; leave existing custom binds unchanged.
+# Ambiguous LAN addresses fall back to loopback instead of guessing.
+if grep -qx "127.0.0.1:8237" /etc/cudy-monitor-pro/bind; then
+  LAN_IP=$$$$(/bin/sh /usr/share/cudy-monitor-pro/detect-lan.sh detect 2>/dev/null) || LAN_IP=
+  if [ -n "$$$$LAN_IP" ]; then
+    printf '%s:8237\n' "$$$$LAN_IP" > /etc/cudy-monitor-pro/bind
+    chmod 600 /etc/cudy-monitor-pro/bind
+  fi
+fi
 if [ -x /opt/bin/cudy-monitor-pro ]; then
   echo "Existing Entware monitor detected; native service not enabled to avoid duplicate port binding." >&2
   exit 0

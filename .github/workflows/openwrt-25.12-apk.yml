@@ -25,6 +25,7 @@ jobs:
           set -euo pipefail
           sh -n packaging/openwrt/files/cudy-monitor-pro.init
           sh -n packaging/openwrt/files/cudy-monitor-lan
+          sh -n packaging/openwrt/install-openwrt.sh
           sh -n cudy-monitor/scripts/detect-lan.sh
           python3 - <<'PY'
           from pathlib import Path
@@ -36,6 +37,9 @@ jobs:
           sh=Path('packaging/openwrt/files/cudy-monitor-pro.init').read_text()
           assert 'USE_PROCD=1' in sh and 'CUDY_MONITOR_SERVICE_ACTIONS=$ACTIONS' in sh
           assert 'ACTIONS=0' in sh and 'CUDY_MONITOR_NATIVE_APK=1' in sh
+          install=Path('packaging/openwrt/install-openwrt.sh').read_text()
+          assert 'apk add --allow-untrusted' in install and 'sha256sum -c -' in install and 'cudy-monitor-lan --lan' in install
+          assert 'PKG_VERSION:=1.2.3' in p and 'VERSION=1.2.3' in install
           PY
       - name: Build static Linux ARM64 binary
         working-directory: cudy-monitor
@@ -98,4 +102,4 @@ jobs:
           gh release create "$TAG" openwrt-apk-artifacts/* \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
             --title "Cudy Monitor Pro $VERSION — OpenWrt 25.12 APK v3" \
-            --notes "Experimental native OpenWrt 25.12.6 mediatek/filogic build (ARM64). No Entware needed. Unsigned package: install from a trusted source using apk add --allow-untrusted. Default listen: loopback only; run cudy-monitor-lan --lan after installation. Never expose to WAN. Physical Netis N6 v2 testing pending."
+            --notes "Experimental OpenWrt 25.12.6 ARM64 package. One-command install: wget -qO /tmp/cudy-monitor-install.sh https://raw.githubusercontent.com/stub11/cudy-monitor-pro/main/packaging/openwrt/install-openwrt.sh && sh /tmp/cudy-monitor-install.sh . Auto-detects trusted LAN and opens dashboard port 8237; ambiguous LAN falls back safely to loopback. Unsigned APK; verify checksum. No WAN exposure. Hardware Netis N6 v2 testing pending."
