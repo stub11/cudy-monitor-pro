@@ -15,7 +15,7 @@ case "$*" in
   "-4 -o addr show")
     case "${TEST_CASE:-}" in
       uci) echo '3: custom-bridge inet 192.168.1.1/24 scope global custom-bridge' ;;
-      fallback) printf '%s\n' '2: eth0 inet 203.0.113.2/24 scope global eth0' '8: weirdlan inet 10.0.0.1/24 scope global weirdlan' ;;
+      fallback) printf '%s\n' '2: eth0 inet 8.8.8.8/24 scope global eth0' '8: weirdlan inet 10.0.0.1/24 scope global weirdlan' ;;
       ambiguous) printf '%s\n' '4: inside1 inet 192.168.1.1/24 scope global inside1' '5: inside2 inet 10.0.0.1/24 scope global inside2' ;;
       wan) echo '4: eth0 inet 192.168.1.1/24 scope global eth0' ;;
     esac ;;
@@ -46,7 +46,7 @@ fi
 grep -q "Cannot uniquely identify" "$DIR/err"
 [ "$(sh "$ROOT/scripts/detect-lan.sh" validate 10.0.0.1)" = 10.0.0.1 ]
 if sh "$ROOT/scripts/detect-lan.sh" validate 8.8.8.8 >"$DIR/out" 2>"$DIR/err"; then exit 1; fi
-if sh "$ROOT/scripts/detect-lan.sh" validate 203.0.113.9 >"$DIR/out" 2>"$DIR/err"; then exit 1; fi
+if sh "$ROOT/scripts/detect-lan.sh" validate 8.8.4.4 >"$DIR/out" 2>"$DIR/err"; then exit 1; fi
 TEST_CASE=wan
 export TEST_CASE
 if sh "$ROOT/scripts/detect-lan.sh" detect >"$DIR/out" 2>"$DIR/err"; then
