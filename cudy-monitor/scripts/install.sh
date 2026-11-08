@@ -119,7 +119,8 @@ finish() {
 trap finish EXIT
 chmod 700 /opt/etc/cudy-monitor
 # Version 0.4.4+ runs without a login token; preserve any legacy token file but do not use it.
-if [ ! -f "$BIND" ]; then
+# Explicit --lan/--bind-ip refresh an existing stale bind; --local preserves it.
+if [ ! -f "$BIND" ] || [ "$MODE" = --lan ] || [ "$MODE" = --bind-ip ]; then
     IP=127.0.0.1
     if [ "$MODE" = --lan ]; then
         IP=$(/bin/sh "$TMP/detect-lan.sh" detect) || exit 1
