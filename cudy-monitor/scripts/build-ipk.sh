@@ -17,9 +17,11 @@ mkdir -p "$WORK/control" "$WORK/data/opt/bin" "$WORK/data/opt/etc/init.d" "$WORK
 cp "$BINARY" "$WORK/data/opt/bin/cudy-monitor-pro"
 cp scripts/S99cudy-monitor "$WORK/data/opt/etc/init.d/S99cudy-monitor"
 cp scripts/update.sh "$WORK/data/opt/share/cudy-monitor/update.sh"
+cp scripts/detect-lan.sh "$WORK/data/opt/share/cudy-monitor/detect-lan.sh"
 cp scripts/openwrt-procd "$WORK/data/opt/share/cudy-monitor/openwrt-procd"
 printf '%s\n' "$VERSION" > "$WORK/data/opt/share/cudy-monitor/VERSION"
 chmod 755 "$WORK/data/opt/bin/cudy-monitor-pro" "$WORK/data/opt/etc/init.d/S99cudy-monitor" "$WORK/data/opt/share/cudy-monitor/update.sh"
+chmod 755 "$WORK/data/opt/share/cudy-monitor/detect-lan.sh"
 cat > "$WORK/control/control" <<EOF
 Package: cudy-monitor-pro
 Version: $VERSION-1
