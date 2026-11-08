@@ -189,40 +189,9 @@ jobs:
           VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)"
           mkdir -p /tmp/cudy-package
           sh scripts/build-ipk.sh target/aarch64-unknown-linux-musl/release/cudy-monitor-pro "$VERSION" /tmp/cudy-package
-          IPK="/tmp/cudy-package/cudy-monitor-pro_${VERSION}-1_aarch64-3.10.ipk"
+          IPK="/tmp/cudy-package/cudy-monitor-pro_$VERSION-1_aarch64-3.10.ipk"
           test -s "$IPK"
-          ar t "$IPK" | grep -q '^control.tar.gz
-        run: file target/aarch64-unknown-linux-musl/release/cudy-monitor-pro
-      - name: Upload executable
-        uses: actions/upload-artifact@v4
-        with:
-          name: cudy-monitor-pro-aarch64-musl
-          path: cudy-monitor/target/aarch64-unknown-linux-musl/release/cudy-monitor-pro
-          if-no-files-found: error
-          retention-days: 7
-      - name: Publish verified GitHub Release for panel OTA
-        if: github.ref == 'refs/heads/main'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)"
-          test -n "$VERSION"
-          TAG="cudy-monitor-v$VERSION"
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release $TAG exists; not replacing previously published version"
-            exit 0
-          fi
-          BIN=target/aarch64-unknown-linux-musl/release/cudy-monitor-pro
-          cp "$BIN" /tmp/cudy-monitor-pro-aarch64
-          HASH="$(sha256sum "$BIN" | cut -d ' ' -f 1)"
-          printf '%s\n%s\n' "$VERSION" "$HASH" > /tmp/latest.txt
-          gh release create "$TAG" /tmp/cudy-monitor-pro-aarch64 /tmp/latest.txt /tmp/cudy-package/*.ipk \
-            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Cudy Monitor Pro $VERSION" \
-            --notes "Standalone Rust ARM64 monitor with verified in-panel OTA and rollback. Router hardware testing is still required." \
-            --latest
-
+          ar t "$IPK" | grep -q '^control.tar.gz$'
           ar p "$IPK" control.tar.gz | tar -xzOf - ./control | grep -q 'Architecture: aarch64-3.10'
           ar p "$IPK" data.tar.gz | tar -tzf - | grep -q 'opt/share/cudy-monitor/openwrt-procd'
           ar p "$IPK" control.tar.gz | tar -xzOf - ./postinst | sh -n
@@ -261,7 +230,7 @@ jobs:
           cp "$BIN" /tmp/cudy-monitor-pro-aarch64
           HASH="$(sha256sum "$BIN" | cut -d ' ' -f 1)"
           printf '%s\n%s\n' "$VERSION" "$HASH" > /tmp/latest.txt
-          gh release create "$TAG" /tmp/cudy-monitor-pro-aarch64 /tmp/latest.txt \
+          gh release create "$TAG" /tmp/cudy-monitor-pro-aarch64 /tmp/latest.txt /tmp/cudy-package/*.ipk \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Cudy Monitor Pro $VERSION" \
-            --notes "Standalone Rust ARM64 monitor with verified in-panel OTA and rollback. Router hardware testing is still required." \
+            --notes "Standalone ARM64 monitor for OpenWrt/Entware and KeeneticOS. Hardware validation still required." \
             --latest
