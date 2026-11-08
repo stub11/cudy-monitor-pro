@@ -170,6 +170,11 @@ jobs:
             "$BROWSER" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage --window-size="$w,$h" --virtual-time-budget=1500 --screenshot="/tmp/cudy-$w.png" "http://127.0.0.1:18238/" >/dev/null 2>&1
             test "$(wc -c < "/tmp/cudy-$w.png")" -gt 10000
           done
+          # OpenWrt uses wan/br-lan/wlan0 instead of Cudy-specific eth2.4/ra*.
+          "$BROWSER" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage --window-size="390,844" --virtual-time-budget=1600 --dump-dom "http://127.0.0.1:18238/?openwrt=1" > /tmp/cudy-openwrt-dom.html 2>/dev/null
+          grep -q 'data-iface="br-lan"' /tmp/cudy-openwrt-dom.html
+          grep -q 'data-iface="wan"' /tmp/cudy-openwrt-dom.html
+          grep -q 'Generic OpenWrt Test Device' /tmp/cudy-openwrt-dom.html
       - uses: actions/upload-artifact@v4
         with:
           name: dashboard-design-audit
