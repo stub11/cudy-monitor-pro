@@ -4,7 +4,12 @@
 set -eu
 ROOT=/opt
 MODE="${1:---local}"
-case "$MODE" in --local|--lan|--check) ;; *) echo "Usage: sh install.sh [--local|--lan|--check]" >&2; exit 2;; esac
+EXPLICIT_IP=""
+case "$MODE" in
+  --local|--lan|--check) [ "$#" -eq 0 ] || [ "$#" -eq 1 ] || exit 2 ;;
+  --bind-ip) [ "$#" -eq 2 ] || { echo "Usage: sh install.sh --bind-ip PRIVATE_ASSIGNED_IPV4" >&2; exit 2; }; EXPLICIT_IP=$2 ;;
+  *) echo "Usage: sh install.sh [--local|--lan|--check|--bind-ip PRIVATE_ASSIGNED_IPV4]" >&2; exit 2;;
+esac
 OPENWRT=0
 [ ! -f /etc/openwrt_release ] || OPENWRT=1
 if [ "$MODE" = --check ]; then
@@ -37,7 +42,7 @@ printf '%s\n' "$VER" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || exit 1
 printf '%s\n' "$SUM" | grep -Eq '^[a-f0-9]{64}$' || exit 1
 "$CURL" --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 120 "$REPO/releases/download/cudy-monitor-v$VER/cudy-monitor-pro-aarch64" -o "$TMP/monitor"
 [ "$("$SHASUM" "$TMP/monitor" | awk '{print $1}')" = "$SUM" ] || { echo "Checksum mismatch" >&2; exit 1; }
-for script in update.sh S99cudy-monitor $(if [ "$OPENWRT" = 1 ]; then echo openwrt-procd; fi); do
+for script in update.sh S99cudy-monitor detect-lan.sh $(if [ "$OPENWRT" = 1 ]; then echo openwrt-procd; fi); do
     "$CURL" --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 20 "$BASE/cudy-monitor-v$VER/cudy-monitor/scripts/$script" -o "$TMP/$script"
     # Some BusyBox ash builds reject "sh -n", so do not require it on the router.
     case "$script" in openwrt-procd) expected_header='#!/bin/sh /etc/rc.common' ;; *) expected_header='#!/bin/sh' ;; esac
@@ -45,6 +50,10 @@ for script in update.sh S99cudy-monitor $(if [ "$OPENWRT" = 1 ]; then echo openw
         echo "Unexpected $script header" >&2; exit 1;
     }
     case "$script" in
+      detect-lan.sh)
+        grep -q 'Cannot uniquely identify a trusted LAN IPv4' "$TMP/$script" || {
+            echo "Unexpected address-detection helper" >&2; exit 1;
+        } ;;
       update.sh)
         grep -q 'stub11/cudy-monitor-pro/releases' "$TMP/$script" || {
             echo "Unexpected OTA source" >&2; exit 1;
@@ -113,20 +122,9 @@ chmod 700 /opt/etc/cudy-monitor
 if [ ! -f "$BIND" ]; then
     IP=127.0.0.1
     if [ "$MODE" = --lan ]; then
-        for IFACE in br-lan br0; do
-            IP_CMD=/sbin/ip
-            [ -x "$IP_CMD" ] || IP_CMD=ip
-            CANDIDATE=$("$IP_CMD" -4 addr show dev "$IFACE" 2>/dev/null | awk '/inet / {split($2,a,"/"); print a[1]; exit}')
-            case "$CANDIDATE" in
-                10.*|192.168.*) IP=$CANDIDATE; break ;;
-                172.*) SECOND=$(printf '%s' "$CANDIDATE" | cut -d. -f2);
-                    if [ "$SECOND" -ge 16 ] && [ "$SECOND" -le 31 ]; then IP=$CANDIDATE; break; fi ;;
-            esac
-        done
-        [ "$IP" != 127.0.0.1 ] || {
-            echo "Cannot detect safe LAN IP on br-lan/br0; use --local or configure /opt/etc/cudy-monitor/bind manually" >&2
-            exit 1
-        }
+        IP=$(/bin/sh "$TMP/detect-lan.sh" detect) || exit 1
+    elif [ "$MODE" = --bind-ip ]; then
+        IP=$(/bin/sh "$TMP/detect-lan.sh" validate "$EXPLICIT_IP") || exit 1
     fi
     printf '%s:8237\n' "$IP" > "$BIND"
 fi
