@@ -76,7 +76,7 @@ jobs:
           find bin -name 'cudy-monitor-pro-*.apk' -type f -exec cp -v {} "$GITHUB_WORKSPACE/openwrt-apk-artifacts/" \;
           test "$(find "$GITHUB_WORKSPACE/openwrt-apk-artifacts" -maxdepth 1 -type f -name '*.apk' | wc -l)" -eq 1
           file "$GITHUB_WORKSPACE"/openwrt-apk-artifacts/*.apk
-          sha256sum "$GITHUB_WORKSPACE"/openwrt-apk-artifacts/*.apk | tee "$GITHUB_WORKSPACE/openwrt-apk-artifacts/SHA256SUMS"
+          (cd "$GITHUB_WORKSPACE/openwrt-apk-artifacts" && sha256sum ./*.apk | tee SHA256SUMS)
           # Check packaging tools' own metadata, not tar/ar: APK v3 is an ADB container.
           APK_BIN="$(find "$SDK/staging_dir" -type f -path '*/bin/apk' | head -n1 || true)"
           if [ -n "$APK_BIN" ]; then "$APK_BIN" info --help >/dev/null || true; fi

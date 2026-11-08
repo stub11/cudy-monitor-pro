@@ -24,7 +24,7 @@ echo "Cudy Monitor Pro $VERSION — native OpenWrt APK"
 echo "Downloading package and checksum..."
 wget -q -O "$TMPDIR/$PACKAGE" "$BASE/$PACKAGE" || die "Cannot download APK from GitHub."
 wget -q -O "$TMPDIR/SHA256SUMS" "$BASE/SHA256SUMS" || die "Cannot download checksum manifest."
-HASH=$(awk -v file="$PACKAGE" '$2==file {print $1}' "$TMPDIR/SHA256SUMS")
+HASH=$(awk -v file="$PACKAGE" '{name=$2; sub(/^.*\//,"",name); if(name==file)print $1}' "$TMPDIR/SHA256SUMS")
 [ "$(printf '%s' "$HASH" | wc -c | tr -d ' ')" -eq 64 ] || die "Invalid or missing SHA256 for package."
 case "$HASH" in *[!0-9a-f]*|'') die "Invalid SHA256 encoding." ;; esac
 printf '%s  %s\n' "$HASH" "$TMPDIR/$PACKAGE" | sha256sum -c - || die "APK checksum mismatch, refusing installation."
