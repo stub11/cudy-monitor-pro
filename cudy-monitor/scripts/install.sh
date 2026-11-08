@@ -64,6 +64,14 @@ for script in update.sh S99cudy-monitor detect-lan.sh $(if [ "$OPENWRT" = 1 ]; t
         } ;;
     esac
 done
+# Resolve the requested LAN address BEFORE touching any installed files.
+# Detection failure must never stop an already running monitor.
+SELECTED_IP=127.0.0.1
+if [ "$MODE" = --lan ]; then
+    SELECTED_IP=$(/bin/sh "$TMP/detect-lan.sh" detect) || exit 1
+elif [ "$MODE" = --bind-ip ]; then
+    SELECTED_IP=$(/bin/sh "$TMP/detect-lan.sh" validate "$EXPLICIT_IP") || exit 1
+fi
 mkdir -p /opt/etc/cudy-monitor /opt/share/cudy-monitor /opt/var/run "$TMP/backup"
 BIN=/opt/bin/cudy-monitor-pro
 INIT=/opt/etc/init.d/S99cudy-monitor
@@ -121,13 +129,7 @@ chmod 700 /opt/etc/cudy-monitor
 # Version 0.4.4+ runs without a login token; preserve any legacy token file but do not use it.
 # Explicit --lan/--bind-ip refresh an existing stale bind; --local preserves it.
 if [ ! -f "$BIND" ] || [ "$MODE" = --lan ] || [ "$MODE" = --bind-ip ]; then
-    IP=127.0.0.1
-    if [ "$MODE" = --lan ]; then
-        IP=$(/bin/sh "$TMP/detect-lan.sh" detect) || exit 1
-    elif [ "$MODE" = --bind-ip ]; then
-        IP=$(/bin/sh "$TMP/detect-lan.sh" validate "$EXPLICIT_IP") || exit 1
-    fi
-    printf '%s:8237\n' "$IP" > "$BIND"
+    printf '%s:8237\n' "$SELECTED_IP" > "$BIND"
 fi
 chmod 600 /opt/etc/cudy-monitor/bind
 cp "$TMP/monitor" /opt/bin/cudy-monitor-pro
