@@ -1,5 +1,11 @@
 # Cudy Monitor Pro — Release notes
 
+## 1.2.8 — In-panel native OpenWrt updates and optional access key
+- Adds browser-initiated updates of the Cudy Monitor Pro native APK, restricted to GitHub Releases and verified SHA-256 digests, with a best-effort rollback and health check.
+- Adds optional key-based authorization for all API endpoints; defaults to OFF and is configurable from the Settings page.
+- Keeps the panel LAN-bound; requires same-origin confirmation before privileged operations.
+- Retains the SSH one-command installer and prevents general OpenWrt package upgrades.
+
 ## 1.2.7 — OpenWrt update guidance
 - Native OpenWrt APK now identifies itself to the browser as a separate update mode.
 - Replaces the misleading generic updater failure with a clear copyable SSH command and GitHub releases link.

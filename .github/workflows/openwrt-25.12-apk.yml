@@ -25,6 +25,10 @@ jobs:
         run: |
           set -euo pipefail
           sh -n packaging/openwrt/files/cudy-monitor-pro.init
+          sh -n packaging/openwrt/files/update-native.sh
+          grep -q 'apk add --allow-untrusted' packaging/openwrt/files/update-native.sh
+          grep -q 'sha256sum' packaging/openwrt/files/update-native.sh
+          grep -q 'package_digest' packaging/openwrt/files/update-native.sh
           sh -n packaging/openwrt/files/cudy-monitor-lan
           sh -n packaging/openwrt/install-openwrt.sh
           # Offline fallback must not bypass integrity verification.
@@ -40,13 +44,14 @@ jobs:
           assert '$(eval $(call BuildPackage,cudy-monitor-pro))' in p
           assert '/usr/bin/cudy-monitor-pro' in p
           assert '/etc/init.d/cudy-monitor-pro' in p
+          assert 'update-native.sh' in p
           assert 'IPKG_INSTROOT' in p
           sh=Path('packaging/openwrt/files/cudy-monitor-pro.init').read_text()
           assert 'USE_PROCD=1' in sh and 'CUDY_MONITOR_SERVICE_ACTIONS=$ACTIONS' in sh
           assert 'ACTIONS=0' in sh and 'CUDY_MONITOR_NATIVE_APK=1' in sh
           install=Path('packaging/openwrt/install-openwrt.sh').read_text()
           assert 'apk add --allow-untrusted' in install and 'ACTUAL_SHA256=$(sha256sum' in install and 'EXPECTED_SHA256=' in install and 'cudy-monitor-lan --lan' in install
-          assert 'PKG_VERSION:=1.2.7' in p and 'VERSION=1.2.7' in install
+          assert 'PKG_VERSION:=1.2.8' in p and 'VERSION=1.2.7' in install
           easy=Path('scripts/easy-install.sh').read_text()
           assert 'if [ -f /etc/openwrt_release ]; then' in easy
           assert 'elif [ -d /opt/etc/init.d ] && [ -x /opt/bin/opkg ]; then' in easy

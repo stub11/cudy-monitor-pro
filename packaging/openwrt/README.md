@@ -8,7 +8,7 @@ The native OpenWrt package:
 - automatically selects a uniquely identified private LAN IPv4 on first install; if ambiguous, listens on 127.0.0.1:8237 until an explicit IP is selected. Saved custom bind values are preserved;
 - includes `cudy-monitor-lan`, which safely selects the router's LAN IP;
 - does not use Entware `opkg`, modify DNS/firewall, or change routing;
-- does not yet support native APK-integrated in-panel OTA; use `apk upgrade` for signed repository upgrades and do not apply the Entware binary updater here.
+- since v1.2.8 supports in-dashboard native APK updates, limited to verified Cudy Monitor Pro GitHub Releases and best-effort rollback; never use system-wide `apk upgrade`. For older releases use the SSH one-command installer; do not apply the Entware binary updater here.
 
 ## Инструкция для тестера (русский язык)
 

@@ -76,7 +76,7 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:18237/api/network-history?iface=untrusted')" = 400
           curl --fail --silent http://127.0.0.1:18237/api/logs | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["source"]=="monitor" and len(x["events"])<=80'
           curl --fail --silent http://127.0.0.1:18237/api/service/action-status | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["action"] is None'
-          curl --fail --silent http://127.0.0.1:18237/api/status | python3 -c 'import json,sys; x=json.load(sys.stdin); assert isinstance(x["cores"],list) and "connections" in x and "cpu_mhz" in x and all("cpu" in p for p in x["processes"]) and "mem_htop_used" in x and "mem_available" in x and (x["wan_iface"] is None or isinstance(x["wan_iface"],str)) and x["wan_route_status"] in ("missing","ambiguous","main_ipv4_route") and x["update_mode"]=="entware"'
+          curl --fail --silent http://127.0.0.1:18237/api/status | python3 -c 'import json,sys; x=json.load(sys.stdin); assert isinstance(x["cores"],list) and "connections" in x and "cpu_mhz" in x and all("cpu" in p for p in x["processes"]) and "mem_htop_used" in x and "mem_available" in x and (x["wan_iface"] is None or isinstance(x["wan_iface"],str)) and x["wan_route_status"] in ("missing","ambiguous","main_ipv4_route") and x["update_mode"]=="entware" and x["auth_enabled"] is False'
           for _ in $(seq 1 25); do curl --fail --silent http://127.0.0.1:18237/health >/dev/null; done
           # Updater must be unavailable unless its verified Entware helper is installed.
           test "$(curl --silent -o /dev/null -w '%{http_code}' http://127.0.0.1:18237/api/update/check)" = 503
@@ -131,6 +131,31 @@ jobs:
           curl -fsS http://127.0.0.1:18244/api/status | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["update_mode"]=="native_apk" and x["service_actions_enabled"] is False'
           test "$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:18244/api/update/check')" = 503
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'X-Monitor-Action: apply' -H 'Origin: http://127.0.0.1:18244' 'http://127.0.0.1:18244/api/update/apply')" = 503
+      - name: Optional authorization access-key lifecycle (default OFF)
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYFILE="$(mktemp -u /tmp/cm-auth-test.XXXXXX)"
+          CUDY_MONITOR_AUTH_FILE="$KEYFILE" CUDY_MONITOR_BIND=127.0.0.1:18245 target/debug/cudy-monitor-pro &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; rm -f "$KEYFILE"' EXIT
+          for _ in {1..30}; do curl -fsS http://127.0.0.1:18245/health >/dev/null && break || sleep 0.2; done
+          URL=http://127.0.0.1:18245
+          curl -fsS "$URL/api/auth/status" | python3 -c 'import json,sys;assert json.load(sys.stdin)["enabled"] is False'
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'X-Monitor-Action: auth-enable' -H 'Origin: http://evil.invalid' "$URL/api/auth/enable")" = 403
+          test ! -e "$KEYFILE"
+          curl -fsS -X POST -H 'X-Monitor-Action: auth-enable' -H "Origin: $URL" "$URL/api/auth/enable" > /tmp/cm-auth-response.json
+          KEY="$(python3 -c 'import json;print(json.load(open("/tmp/cm-auth-response.json"))["key"])')"
+          test "$(printf %s "$KEY" | wc -c)" -eq 64
+          test "$(stat -c '%a' "$KEYFILE")" = 600
+          curl -fsS "$URL/api/auth/status" | python3 -c 'import json,sys;assert json.load(sys.stdin)["enabled"] is True'
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/api/status")" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H "X-Monitor-Token: $KEY" "$URL/api/status")" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'X-Monitor-Action: auth-disable' -H "Origin: $URL" "$URL/api/auth/disable")" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'X-Monitor-Action: auth-disable' -H "Origin: $URL" -H "X-Monitor-Token: $KEY" "$URL/api/auth/disable")" = 200
+          test ! -e "$KEYFILE"
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/api/status")" = 200
+          rm -f /tmp/cm-auth-response.json
       - name: Frontend JavaScript syntax and accessibility smoke
         shell: bash
         run: |
@@ -140,7 +165,7 @@ jobs:
           html=Path('web/index.html').read_text()
           assert '<html lang="ru">' in html
           assert 'id="auth"' not in html and 'id="login"' not in html
-          assert 'id="monitorrss"' in html and 'id="nativeupdatehelp"' in html and 'id="copyupdatecmd"' in html
+          assert 'id="monitorrss"' in html and 'id="nativeupdatehelp"' in html and 'id="copyupdatecmd"' in html and 'id="authenable"' in html and 'id="authdisable"' in html
           for control in ('cpubar','membar','memcomparison','diskbar','storagebar','viewtitle','viewsubtitle','healthsummary','processfilter','processcount','lastseen'):
               assert 'id="'+control+'"' in html, control
           assert 'data-go="network"' in html

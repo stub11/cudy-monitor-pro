@@ -1,4 +1,4 @@
-use std::{collections::{HashMap,VecDeque},fs,io::{Read,Write},net::{TcpListener,TcpStream},process::Command,sync::{mpsc::{sync_channel,TrySendError},Arc,Mutex},thread,time::{Duration,Instant}};
+use std::{collections::{HashMap,VecDeque},fs,io::{Read,Write},os::unix::fs::{OpenOptionsExt,PermissionsExt},net::{TcpListener,TcpStream},process::Command,sync::{mpsc::{sync_channel,TrySendError},Arc,Mutex},thread,time::{Duration,Instant}};
 const PAGE:&str=include_str!("../web/index.html");
 static SERVICE_BUSY:std::sync::atomic::AtomicBool=std::sync::atomic::AtomicBool::new(false);
 #[derive(Clone,Default)] struct Cpu { total:u64,idle:u64 }
@@ -260,12 +260,16 @@ fn service_actions_enabled()->bool{
     std::env::var("CUDY_MONITOR_SERVICE_ACTIONS").ok().as_deref()==Some("1")
         || read("/opt/etc/cudy-monitor/service-actions").trim()=="1"
 }
-fn data(s:&Arc<Mutex<State>>)->String{let (cpu,network,core_load,pid_load)={let state=s.lock().unwrap_or_else(|e|e.into_inner());(state.current_cpu,state.current_network.clone(),state.current_cores.clone(),state.pid_usage.clone())};let (mt,mu,mc,htop_used,available)=mem_detail();let htop_json=htop_used.map(|v|v.to_string()).unwrap_or_else(||"null".into());let available_json=available.map(|v|v.to_string()).unwrap_or_else(||"null".into());let (dt,du,dm)=disk();let (wan_iface,wan_route_status)=default_wan();let wan_json=wan_iface.as_deref().map(quoted).unwrap_or_else(||"null".into());let (connections,connections_max)=connections();let cpu_mhz=cpu_clock_mhz();let service_actions=service_actions_enabled();let up=read("/proc/uptime").split_whitespace().next().and_then(|x|x.parse::<f64>().ok()).unwrap_or(0.)as u64;let mut o=format!("{{\"model\":{},\"platform\":{},\"cpu\":{cpu:.1},\"mem_total\":{mt},\"mem_used\":{mu},\"mem_cached\":{mc},\"mem_htop_used\":{htop_json},\"mem_available\":{available_json},\"disk_total\":{dt},\"disk_used\":{du},\"disk_mount\":{},\"uptime\":{up},\"wan_iface\":{wan_json},\"wan_route_status\":{},\"temps\":[",quoted(&device_model()),quoted(platform()),quoted(&dm),quoted(wan_route_status));for (i,(n,c))in temps().iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"c\":{c:.1}}}",quoted(n)))}o.push_str("],\"network\":[");for(i,(n,rx,tx))in network.iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"rx\":{rx:.0},\"tx\":{tx:.0}}}",quoted(n)))}o.push_str("],\"cores\":[");for(i,(idx,percent))in core_load.iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"id\":{},\"usage\":{:.1}}}",idx,percent))}o.push_str("],\"processes\":[");for(i,(n,pid,rss))in procs().iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"pid\":{pid},\"mem\":{rss},\"cpu\":{:.1}}}",quoted(n),pid_load.get(pid).copied().unwrap_or(0.0)))}o.push_str("],\"services\":[");for(i,n)in["D2K","DoQ","KeenKit"].iter().enumerate(){if i>0{o.push(',')}let found=if *n=="KeenKit"{false}else{service_running(n)};let installed=match *n {"KeenKit"=>std::path::Path::new("/opt/bin/keenkit").exists(),"D2K"=>std::path::Path::new("/opt/etc/init.d/S99d2k").exists(),"DoQ"=>std::path::Path::new("/opt/etc/init.d/S56doqd").exists(),_=>false};o.push_str(&format!("{{\"name\":{},\"detected\":{found},\"installed\":{installed}}}",quoted(n)))}o.push_str(&format!("],\"connections\":{},\"connections_max\":{},\"cpu_mhz\":{},\"service_actions_enabled\":{},\"update_mode\":{},\"monitor_rss_mb\":{:.2},\"version\":{}}}",connections,connections_max,cpu_mhz,service_actions,quoted(if std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1"){"native_apk"}else{"entware"}),own_rss_mb(),quoted(env!("CARGO_PKG_VERSION"))));o}
+fn data(s:&Arc<Mutex<State>>)->String{let (cpu,network,core_load,pid_load)={let state=s.lock().unwrap_or_else(|e|e.into_inner());(state.current_cpu,state.current_network.clone(),state.current_cores.clone(),state.pid_usage.clone())};let (mt,mu,mc,htop_used,available)=mem_detail();let htop_json=htop_used.map(|v|v.to_string()).unwrap_or_else(||"null".into());let available_json=available.map(|v|v.to_string()).unwrap_or_else(||"null".into());let (dt,du,dm)=disk();let (wan_iface,wan_route_status)=default_wan();let wan_json=wan_iface.as_deref().map(quoted).unwrap_or_else(||"null".into());let (connections,connections_max)=connections();let cpu_mhz=cpu_clock_mhz();let service_actions=service_actions_enabled();let up=read("/proc/uptime").split_whitespace().next().and_then(|x|x.parse::<f64>().ok()).unwrap_or(0.)as u64;let mut o=format!("{{\"model\":{},\"platform\":{},\"cpu\":{cpu:.1},\"mem_total\":{mt},\"mem_used\":{mu},\"mem_cached\":{mc},\"mem_htop_used\":{htop_json},\"mem_available\":{available_json},\"disk_total\":{dt},\"disk_used\":{du},\"disk_mount\":{},\"uptime\":{up},\"wan_iface\":{wan_json},\"wan_route_status\":{},\"temps\":[",quoted(&device_model()),quoted(platform()),quoted(&dm),quoted(wan_route_status));for (i,(n,c))in temps().iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"c\":{c:.1}}}",quoted(n)))}o.push_str("],\"network\":[");for(i,(n,rx,tx))in network.iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"rx\":{rx:.0},\"tx\":{tx:.0}}}",quoted(n)))}o.push_str("],\"cores\":[");for(i,(idx,percent))in core_load.iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"id\":{},\"usage\":{:.1}}}",idx,percent))}o.push_str("],\"processes\":[");for(i,(n,pid,rss))in procs().iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"pid\":{pid},\"mem\":{rss},\"cpu\":{:.1}}}",quoted(n),pid_load.get(pid).copied().unwrap_or(0.0)))}o.push_str("],\"services\":[");for(i,n)in["D2K","DoQ","KeenKit"].iter().enumerate(){if i>0{o.push(',')}let found=if *n=="KeenKit"{false}else{service_running(n)};let installed=match *n {"KeenKit"=>std::path::Path::new("/opt/bin/keenkit").exists(),"D2K"=>std::path::Path::new("/opt/etc/init.d/S99d2k").exists(),"DoQ"=>std::path::Path::new("/opt/etc/init.d/S56doqd").exists(),_=>false};o.push_str(&format!("{{\"name\":{},\"detected\":{found},\"installed\":{installed}}}",quoted(n)))}o.push_str(&format!("],\"connections\":{},\"connections_max\":{},\"cpu_mhz\":{},\"service_actions_enabled\":{},\"update_mode\":{},\"auth_enabled\":{},\"monitor_rss_mb\":{:.2},\"version\":{}}}",connections,connections_max,cpu_mhz,service_actions,quoted(if std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1"){"native_apk"}else{"entware"}),!auth_token().is_empty(),own_rss_mb(),quoted(env!("CARGO_PKG_VERSION"))));o}
 fn respond(s:&mut TcpStream,status:&str,typ:&str,body:&[u8]){let header=format!("HTTP/1.1 {status}\r\nContent-Type: {typ}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nConnection: close\r\n\r\n",body.len());let _=s.write_all(header.as_bytes());let _=s.write_all(body);}
 fn constant_time_match(a:&[u8],b:&[u8])->bool{let mut diff=a.len()^b.len();for i in 0..a.len().max(b.len()){diff|=usize::from(a.get(i).copied().unwrap_or(0)^b.get(i).copied().unwrap_or(0));}diff==0}
 fn update_command(mode:&str)->Result<String,String>{
-    if std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1") {
-        return Err("Native OpenWrt APK: update using apk package manager".into());
+    if std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1"){
+        let script="/usr/share/cudy-monitor-pro/update-native.sh";
+        if !std::path::Path::new(script).is_file(){return Err("Native updater is not installed".into());}
+        let output=Command::new("/bin/sh").arg(script).arg(mode).output().map_err(|e|e.to_string())?;
+        if !output.status.success(){return Err(String::from_utf8_lossy(&output.stderr).trim().chars().take(250).collect());}
+        return Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned());
     }
     let script=std::env::var("CUDY_MONITOR_UPDATER").unwrap_or_else(|_|"/opt/share/cudy-monitor/update.sh".into());
     if script!= "/opt/share/cudy-monitor/update.sh" && !cfg!(debug_assertions) {
@@ -275,6 +279,40 @@ fn update_command(mode:&str)->Result<String,String>{
     let output=Command::new("/bin/sh").arg(&script).arg(mode).output().map_err(|e|e.to_string())?;
     if !output.status.success(){return Err(String::from_utf8_lossy(&output.stderr).trim().chars().take(250).collect());}
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+fn auth_path()->String{
+    if cfg!(debug_assertions){if let Ok(path)=std::env::var("CUDY_MONITOR_AUTH_FILE"){return path;}}
+    if std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1"){
+        "/etc/cudy-monitor-pro/access-token".into()
+    }else{"/opt/etc/cudy-monitor/access-token".into()}
+}
+fn auth_token()->String{
+    let value=read(&auth_path());
+    let token=value.trim();
+    if token.len()==64 && token.bytes().all(|c|c.is_ascii_hexdigit()){token.to_owned()}else{String::new()}
+}
+fn create_auth_token()->std::io::Result<String>{
+    let path=auth_path();
+    if let Some(parent)=std::path::Path::new(&path).parent(){
+        fs::create_dir_all(parent)?;
+        fs::set_permissions(parent,fs::Permissions::from_mode(0o700))?;
+    }
+    let mut raw=[0u8;32];
+    fs::File::open("/dev/urandom")?.read_exact(&mut raw)?;
+    let value=raw.iter().map(|b|format!("{b:02x}")).collect::<String>();
+    let mut file=fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(path)?;
+    file.write_all(value.as_bytes())?;
+    file.write_all(b"\n")?;
+    file.sync_all()?;
+    Ok(value)
+}
+fn same_origin(req:&str,c:&TcpStream,action:&str)->bool{
+    let header=|key:&str|->String{req.lines().find_map(|l|l.split_once(':')
+        .filter(|(k,_)|k.eq_ignore_ascii_case(key))
+        .map(|(_,v)|v.trim().to_owned())).unwrap_or_default()};
+    let host=header("Host");
+    !host.is_empty() && host==addr_for_host(c) && header("Origin")==format!("http://{host}")
+        && header("X-Monitor-Action")==action
 }
 fn authorized(req:&str,token:&str)->bool{
     let candidate=req.lines().find_map(|l|l.split_once(':')
@@ -342,8 +380,40 @@ fn handle(mut c:TcpStream,s:Arc<Mutex<State>>,token:String){
     if line.starts_with("GET /health HTTP/") {
         respond(&mut c,"200 OK","text/plain",b"ok");return;
     }
+    if line.starts_with("GET /api/auth/status HTTP/"){
+        let body=format!("{{\"enabled\":{}}}",!auth_token().is_empty());
+        respond(&mut c,"200 OK","application/json",body.as_bytes());return;
+    }
+    if line.starts_with("POST /api/auth/enable HTTP/"){
+        if !same_origin(&request,&c,"auth-enable"){
+            respond(&mut c,"403 Forbidden","application/json",b"{\"error\":\"same-origin confirmation required\"}");return;
+        }
+        if !auth_token().is_empty(){
+            respond(&mut c,"409 Conflict","application/json",b"{\"error\":\"authorization already enabled\"}");return;
+        }
+        match create_auth_token(){
+            Ok(key)=>{let body=format!("{{\"enabled\":true,\"key\":{}}}",quoted(&key));
+                respond(&mut c,"200 OK","application/json",body.as_bytes());},
+            Err(_)=>respond(&mut c,"503 Service Unavailable","application/json",b"{\"error\":\"cannot create secure key\"}"),
+        }
+        return;
+    }
+    let token=auth_token();
     if !token.is_empty() && !authorized(&request,&token){
         respond(&mut c,"401 Unauthorized","application/json",b"{\"error\":\"unauthorized\"}");return;
+    }
+    if line.starts_with("POST /api/auth/disable HTTP/"){
+        if !same_origin(&request,&c,"auth-disable"){
+            respond(&mut c,"403 Forbidden","application/json",b"{\"error\":\"same-origin confirmation required\"}");return;
+        }
+        if token.is_empty(){
+            respond(&mut c,"409 Conflict","application/json",b"{\"error\":\"authorization already disabled\"}");return;
+        }
+        match fs::remove_file(auth_path()){
+            Ok(())=>respond(&mut c,"200 OK","application/json",b"{\"enabled\":false}"),
+            Err(_)=>respond(&mut c,"503 Service Unavailable","application/json",b"{\"error\":\"could not disable authorization\"}"),
+        }
+        return;
     }
     if line.starts_with("GET /api/service/action-status HTTP/"){
         let body=service_action_json(&s);
@@ -504,9 +574,6 @@ fn handle(mut c:TcpStream,s:Arc<Mutex<State>>,token:String){
         respond(&mut c,"202 Accepted","application/json",if name=="DoQ" && action=="stop"{&b"{\"status\":\"started\",\"auto_restore_sec\":90}"[..]}else{&b"{\"status\":\"started\"}"[..]});return;
     }
     if line.starts_with("POST /api/update/apply HTTP/"){
-        if std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1") {
-            respond(&mut c,"503 Service Unavailable","application/json",b"{\"error\":\"use native OpenWrt apk upgrade\"}");return;
-        }
         // Require a custom header and local host Origin to limit cross-site requests.
         let host=request.lines().find_map(|l|l.split_once(':')
             .filter(|(k,_)|k.eq_ignore_ascii_case("Host")).map(|(_,v)|v.trim())).unwrap_or("");
@@ -517,13 +584,17 @@ fn handle(mut c:TcpStream,s:Arc<Mutex<State>>,token:String){
         if action_header!="apply" || origin.is_empty() || origin!=format!("http://{host}") || host != addr_for_host(&c) {
             respond(&mut c,"403 Forbidden","application/json",b"{\"error\":\"origin mismatch\"}");return;
         }
-        let script="/opt/share/cudy-monitor/update.sh";
+        let is_native=std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1");
+        let script=if is_native{"/usr/share/cudy-monitor-pro/update-native.sh"}else{"/opt/share/cudy-monitor/update.sh"};
         if !std::path::Path::new(script).is_file(){
             respond(&mut c,"503 Service Unavailable","application/json",b"{\"error\":\"updater not installed\"}");return;
         }
         // Detached updater survives a restart of this web daemon.
+        let command=if is_native{
+            "umask 077; f=/tmp/cudy-monitor-updater-$$.sh; cp /usr/share/cudy-monitor-pro/update-native.sh \"$f\" || exit 1; sleep 2; /bin/sh \"$f\" --apply >/tmp/cudy-monitor-update.log 2>&1; rm -f \"$f\""
+        }else{"sleep 2; exec /bin/sh /opt/share/cudy-monitor/update.sh --apply >/dev/null 2>&1"};
         match Command::new("/bin/sh").arg("-c")
-            .arg("sleep 2; exec /bin/sh /opt/share/cudy-monitor/update.sh --apply >/dev/null 2>&1")
+            .arg(command)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null()).spawn(){
@@ -539,7 +610,7 @@ fn main()->std::io::Result<()>{
         println!("cudy-monitor-pro {}",env!("CARGO_PKG_VERSION"));return Ok(());
     }
     let addr=std::env::var("CUDY_MONITOR_BIND").unwrap_or_else(|_|"127.0.0.1:8237".into());
-    let token=String::new(); // LAN-only, no login token required.
+    let token=String::new(); // token is read dynamically per request from root-only configuration.
     let bind_ip:std::net::IpAddr=addr.rsplit_once(':').and_then(|(ip,_)|ip.parse().ok())
         .ok_or_else(||std::io::Error::new(std::io::ErrorKind::InvalidInput,"Invalid bind address"))?;
     if !(bind_ip.is_loopback() || match bind_ip {std::net::IpAddr::V4(v)=>v.is_private() && !v.is_unspecified(),std::net::IpAddr::V6(_)=>false}) {

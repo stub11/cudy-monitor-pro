@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=cudy-monitor-pro
-PKG_VERSION:=1.2.7
+PKG_VERSION:=1.2.8
 PKG_RELEASE:=1
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=Cudy Monitor Contributors
@@ -36,6 +36,7 @@ define Package/cudy-monitor-pro/install
 	$(INSTALL_BIN) $(CURDIR)/files/cudy-monitor-pro.init $(1)/etc/init.d/cudy-monitor-pro
 	$(INSTALL_BIN) $(CURDIR)/files/cudy-monitor-lan $(1)/usr/bin/cudy-monitor-lan
 	$(INSTALL_BIN) $(CURDIR)/files/detect-lan.sh $(1)/usr/share/cudy-monitor-pro/detect-lan.sh
+	$(INSTALL_BIN) $(CURDIR)/files/update-native.sh $(1)/usr/share/cudy-monitor-pro/update-native.sh
 endef
 
 define Package/cudy-monitor-pro/postinst
