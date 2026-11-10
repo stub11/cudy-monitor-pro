@@ -33,25 +33,51 @@ function prompt(step) {
  if(step==='tried')return '3/3. Что уже пробовали? /cudy_tried docs (прочитал README), /cudy_tried restart (повторил запуск), /cudy_tried nothing (ещё нет), /cudy_tried other (другое).';
  return '';
 }
+function scrubDescription(raw) {
+ if (typeof raw !== 'string' || raw.length > 1500) return null;
+ let s = raw.normalize('NFKC').replace(/[\u0000-\u001f\u007f]/g,' ').trim();
+ if (s.length < 10) return null;
+ s=s.replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{15,}|github_pat_[A-Za-z0-9_]{15,}|\d{7,12}:[A-Za-z0-9_-]{24,})\b/giu,'[токен скрыт]');
+ s=s.replace(/(?:^|[\s,;])(?:token|пароль|password|passwd|secret|api[_ -]?key)\s*[:=]\s*["']?[^\s,;]{3,}/giu,' [секрет скрыт]');
+ s=s.replace(/https?:\/\/\S+/giu,'[ссылка скрыта]');
+ s=s.replace(/\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b/giu,'[домен скрыт]');
+ s=s.replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/gu,'[IP скрыт]');
+ s=s.replace(/\b(?:[a-f0-9]{0,4}:){2,}[a-f0-9:]{2,}\b/giu,'[IPv6 скрыт]');
+ s=s.replace(/\b(?:[a-f0-9]{2}[:-]){5}[a-f0-9]{2}\b/giu,'[MAC скрыт]');
+ s=s.replace(/\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/giu,'[email скрыт]');
+ s=s.replace(/(?:^|\s)@[a-z][a-z0-9_]{3,}/giu,' [ник скрыт]');
+ s=s.replace(/(?:[A-Za-z]:\\|\/(?:home|users|root|opt|etc)\/)[^\s]+/giu,'[путь скрыт]');
+ s=s.replace(/\b(?:\+?\d[\d\s()-]{9,}\d)\b/gu,'[номер скрыт]');
+ s=s.replace(/[@#<>\[\]()*_!~|{}\\]/gu,' ').replace(/\s+/gu,' ').trim().slice(0,400);
+ return s.length>=10?s:null;
+}
+function descriptionPrompt() {
+ return '✍️ Чтобы дополнить отчёт, отправьте одним сообщением /cudy_describe и описание. '+
+ 'Например: /cudy_describe При открытии вкладки Сеть график остаётся пустым, хотя трафик идёт. '+
+ 'Не присылайте пароли, адреса, токены и журналы. '+
+ 'Перед отправкой в публичный GitHub проверьте показанный очищенный текст.';
+}
 function summarize(state) {
  return '📋 Параметры проблемы:\n• Система: '+LABELS.platform[state.platform]+
  '\n• Симптом: '+LABELS.symptom[state.symptom]+
  '\n• Проверка: '+LABELS.tried[state.tried]+
  '\n\nСначала ознакомьтесь с инструкцией: '+GUIDE+
- '\nЕсли проблема осталась, команда /cudy_report даст согласие опубликовать **только эти три технических параметра** в общедоступном GitHub Issues. Личные данные, имена, Telegram ID и тексты сообщений туда не передаются. /cudy_cancel — отменить.';
+ '\nЕсли проблема осталась, команда /cudy_report даст согласие опубликовать указанные параметры и, если добавлено, ваше проверенное описание в общедоступном GitHub Issues. Необработанные сообщения, Telegram ID и данные профиля не передаются; очищенное описание публикуется только после вашей проверки. /cudy_cancel — отменить.';
 }
 function buildIssue(state) {
  if(!state || !steps.every(k=>OPTIONS[k].includes(state[k]))) return null;
+ const description=typeof state.description==='string' ? scrubDescription(state.description) : null;
  return {
   title:'[Cudyapp report] '+LABELS.symptom[state.symptom]+' — '+LABELS.platform[state.platform],
   body:'## Обезличённый отчёт диагностики\n\n'+
    '- Система: '+LABELS.platform[state.platform]+'\n'+
    '- Категория: '+LABELS.symptom[state.symptom]+'\n'+
    '- Ранее проверено: '+LABELS.tried[state.tried]+'\n\n'+
+   (description ? '### Описание участника (проверено перед отправкой)\n\n'+description+'\n\n' : '')+
    'Данные получены через опрос @Cudyapp после согласия на публикацию. '+
-   'Тексты сообщений, Telegram IDs, IP, пароли, токены и журналы не включены. '+
-   'Проблема пока не подтверждена разработчиком.\n',
+   'Автоматическая очистка описания не гарантирует обнаружения всех секретов; '+
+   'автор проверил итоговый текст перед публикацией.\n',
  };
 }
 function nextStep(state) {return steps.find(k=>!state[k])||null;}
-module.exports={OPTIONS, LABELS, startsProblem, option, prompt, summarize, buildIssue, nextStep};
+module.exports={OPTIONS, LABELS, startsProblem, option, prompt, summarize, buildIssue, nextStep, scrubDescription, descriptionPrompt};
