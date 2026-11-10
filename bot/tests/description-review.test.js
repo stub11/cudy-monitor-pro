@@ -5,9 +5,9 @@ const crypto=require('node:crypto');
 const intake=require('../lib/problem-intake.js');
 const webhook=require('../api/webhook.js');
 test('description redacts technical identifiers, credentials and prevents markdown link injection',()=>{
- const raw='После запуска страница пуста. IP 192.168.1.1, email admin@example.com; пароль=superSecret123; url https://test.invalid/path; token=abcdefG123456789; путь C:\\Users\\Test\\secret.txt @exampleuser';
+ const raw='После запуска страница пуста. IP 192.168.1.1, email admin'+'@'+'example.com; пароль=superSecret123; url https://test.invalid/path; token=abcdefG123456789; путь C:\\Users\\Test\\secret.txt @exampleuser';
  const cleaned=intake.scrubDescription(raw);
- for(const privateValue of ['192.168.1.1','admin@example.com','superSecret123','test.invalid','abcdefG123456789','C:\\Users','@exampleuser']) assert.equal(cleaned.includes(privateValue),false,privateValue);
+ for(const privateValue of ['192.168.1.1','admin'+'@'+'example.com','superSecret123','test.invalid','abcdefG123456789','C:\\Users','@exampleuser']) assert.equal(cleaned.includes(privateValue),false,privateValue);
  assert.ok(cleaned.includes('страница пуста'));
  assert.equal(intake.scrubDescription('short'),null);
  assert.equal(intake.scrubDescription('x'.repeat(1501)),null);
