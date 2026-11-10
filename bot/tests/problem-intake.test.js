@@ -26,7 +26,7 @@ test('public issue is enum-only: no identities, IPs, or free-form messages',()=>
  }
  assert.equal(intake.buildIssue({platform:'openwrt',symptom:'private',tried:'docs'}),null);
  assert.match(intake.prompt('platform'),/согласия/u);
- assert.match(intake.summarize(state),/публичн/u);
+ assert.match(intake.summarize(state),/общедоступном/u);
 });
 test('no unauthorized report or reply outside CM Aurora topic',async()=>{
  const crypto=require('node:crypto');
