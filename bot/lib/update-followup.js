@@ -66,17 +66,17 @@ function partialTechnicalFields(raw) {
   const source=raw.normalize('NFKC').replace(/\r/g,'').replace(/\x60/g,'');
   const fields={};
   const numeric = {
-    running:/\b(?:version|running|запущен(?:о|ная)?|работающ(?:ая|ий))\s*[:=]\s*(\d{1,5}\.\d{1,5}\.\d{1,5})\b/iu,
-    installed:/\b(?:installed|file_version|binary|current|файл|установлен(?:о|ная)?)\s*[:=]\s*(\d{1,5}\.\d{1,5}\.\d{1,5})\b/iu,
-    latest:/\b(?:latest|github|релиз|новая\s+версия)\s*[:=]\s*(\d{1,5}\.\d{1,5}\.\d{1,5})\b/iu
+    running:/(?:^|[\s,;])(?:version|версия(?:\s+монитора)?|running|запущен(?:о|ная)?|работающ(?:ая|ий))\s*[:=]\s*(\d{1,5}\.\d{1,5}\.\d{1,5})\b/iu,
+    installed:/(?:^|[\s,;])(?:installed|file_version|binary|current|файл|установлен(?:о|ная)?)\s*[:=]\s*(\d{1,5}\.\d{1,5}\.\d{1,5})\b/iu,
+    latest:/(?:^|[\s,;])(?:latest|github|релиз|новая\s+версия)\s*[:=]\s*(\d{1,5}\.\d{1,5}\.\d{1,5})\b/iu
   };
   for(const [name,pattern] of Object.entries(numeric)){
     const found=pattern.exec(source);
     if(found)fields[name]=found[1];
   }
-  const mode=/\b(?:update_mode|mode|режим)\s*[:=]\s*(native_apk|entware)\b/iu.exec(source);
+  const mode=/(?:^|[\s,;])(?:update_mode|mode|режим)\s*[:=]\s*(native_apk|entware)\b/iu.exec(source);
   if(mode)fields.mode=mode[1].toLowerCase();
-  const available=/\bavailable\s*[:=]\s*(true|false|yes|no|1|0|да|нет)\b/iu.exec(source);
+  const available=/(?:^|[\s,;])available\s*[:=]\s*(true|false|yes|no|1|0|да|нет)\b/iu.exec(source);
   if(available)fields.available=/^(true|yes|1|да)$/iu.test(available[1]);
   // A command's version output is only the installed binary version.
   const binary=/^\s*cudy-monitor-pro\s+(\d{1,5}\.\d{1,5}\.\d{1,5})\s*$/iu.exec(source);
