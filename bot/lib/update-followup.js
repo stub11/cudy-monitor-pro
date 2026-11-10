@@ -58,6 +58,52 @@ function summarizeStructuredStatus(values) {
     'Если интерфейс показывает другое, сообщите разработчику номера версий.';
 }
 
+
+// Parse only short, explicitly labelled technical fields. Never preserve free text.
+function partialTechnicalFields(raw) {
+  if(typeof raw!=='string' || raw.length>500 || /^\/(?!cudy_ota_check)/u.test(raw.trim()))return null;
+  if(/https?:\/\/|(?:^|\s)(?:пароль|password|token|secret)\s*[:=]/iu.test(raw))return null;
+  const source=raw.normalize('NFKC').replace(/\r/g,'').replace(/\x60/g,'');
+  const fields={};
+  const numeric = {
+    running:/\b(?:version|running|запущен(?:о|ная)?|работающ(?:ая|ий))\s*[:=]\s*(\d{1,5}\.\d{1,5}\.\d{1,5})\b/iu,
+    installed:/\b(?:installed|file_version|binary|current|файл|установлен(?:о|ная)?)\s*[:=]\s*(\d{1,5}\.\d{1,5}\.\d{1,5})\b/iu,
+    latest:/\b(?:latest|github|релиз|новая\s+версия)\s*[:=]\s*(\d{1,5}\.\d{1,5}\.\d{1,5})\b/iu
+  };
+  for(const [name,pattern] of Object.entries(numeric)){
+    const found=pattern.exec(source);
+    if(found)fields[name]=found[1];
+  }
+  const mode=/\b(?:update_mode|mode|режим)\s*[:=]\s*(native_apk|entware)\b/iu.exec(source);
+  if(mode)fields.mode=mode[1].toLowerCase();
+  const available=/\bavailable\s*[:=]\s*(true|false|yes|no|1|0|да|нет)\b/iu.exec(source);
+  if(available)fields.available=/^(true|yes|1|да)$/iu.test(available[1]);
+  // A command's version output is only the installed binary version.
+  const binary=/^\s*cudy-monitor-pro\s+(\d{1,5}\.\d{1,5}\.\d{1,5})\s*$/iu.exec(source);
+  if(binary)fields.installed=binary[1];
+  return Object.keys(fields).length?fields:null;
+}
+const FIELD_NAMES=Object.freeze(['mode','running','installed','latest','available']);
+function nextDiagnosticQuestion(values={}) {
+  const p=Object.assign({},values);
+  if(!p.mode)return 'Подскажите, какой режим указан в статусе: update_mode: native_apk или update_mode: entware? Для Cudy с OpenWrt ожидается native_apk.';
+  if(!p.running)return 'Какая версия *работающего* монитора? Пришлите только строку version: 1.2.10 (замените на вашу).';
+  if(!p.installed)return 'Какая версия *установленного файла*? На OpenWrt команда только для чтения: /usr/bin/cudy-monitor-pro --version. Ответьте одной строкой вида cudy-monitor-pro 1.2.10.';
+  if(!p.latest)return 'Какое значение latest показывает проверка обновлений? Ответьте latest: 1.2.11 (замените на ваше).';
+  if(typeof p.available!=='boolean')return 'Что показывает available в проверке обновления? Ответьте available: true либо available: false.';
+  return null;
+}
+function explainPartial(values) {
+  if(!values || typeof values!=='object')return null;
+  const need=nextDiagnosticQuestion(values);
+  if(need)return '🔎 Записал только предоставленные технические значения, без текста сообщения.\n\n'+need+
+    '\n\nНе присылайте IP, пароли, токены и необработанные журналы.';
+  return summarizeStructuredStatus(values)+
+    '\n\nЭто предварительная диагностика по указанным данным, а не подтверждённая причина. '+
+    'Если проблему не удалось решить, опишите, какая именно кнопка не работает, без личных сведений. '+
+    'Бот не будет сам перезапускать службу или менять настройки.';
+}
+
 const QUESTION=[
   '🛠 Уточнение по обновлению Cudy Monitor Pro на OpenWrt.',
   'Вижу сообщение о проблеме с обновлением. Чтобы выяснить причину, ответьте, пожалуйста, *на это сообщение*:',
@@ -70,4 +116,4 @@ const QUESTION=[
   'Пока ничего не переустанавливайте и не перезапускайте. Описание проблемы: https://github.com/stub11/cudy-monitor-pro/issues/25'
 ].join('\n\n');
 
-module.exports={ADMIN_COMMAND,STRUCTURED_COMMAND,looksLikeOtaProblem,QUESTION,parseStructuredStatus,summarizeStructuredStatus,compareVersions};
+module.exports={ADMIN_COMMAND,STRUCTURED_COMMAND,looksLikeOtaProblem,QUESTION,parseStructuredStatus,summarizeStructuredStatus,compareVersions,partialTechnicalFields,nextDiagnosticQuestion,explainPartial,FIELD_NAMES};
