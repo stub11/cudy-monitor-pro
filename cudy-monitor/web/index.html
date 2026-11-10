@@ -682,8 +682,15 @@ document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>openPage(b.datas
 const apiFetch=window.fetch.bind(window);
 window.fetch=(url,options={})=>{
  if(typeof url==='string'&&url.startsWith('/api/')&&!url.startsWith('/api/auth/status')){
+  const headers={...(options.headers||{})};
   const key=sessionStorage.getItem('cm-access-key');
-  if(key){options={...options,headers:{...(options.headers||{}),'X-Monitor-Token':key}};}
+  if(key)headers['X-Monitor-Token']=key;
+  // A custom non-simple header lets the local server validate first-party
+  // actions even if the browser's privacy policy omits the Origin header.
+  if((options.method||'GET').toUpperCase()==='POST'&&headers['X-Monitor-Action']){
+   headers['X-Monitor-Page-Origin']=location.origin;
+  }
+  options={...options,headers};
  }
  return apiFetch(url,options);
 };
