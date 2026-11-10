@@ -160,6 +160,7 @@ async function publishSanitizedIssue(state) {
   if (!token) return false;
   const report = issueIntake.buildIssue(state);
   if (!report) return false;
+  // A public issue is generated solely from whitelisted enums, never user text.
   const response = await fetch('https://api.github.com/repos/stub11/cudy-monitor-pro/issues', {
     method: 'POST',
     headers: {
@@ -212,20 +213,33 @@ async function handleProblem(message, text, token) {
         'Ознакомьтесь с публичным README: https://github.com/stub11/cudy-monitor-pro#readme', token);
       return true;
     }
-    // Distinct reports with identical categories are coalesced within a day.
+    // Deduplicate only successful publications. An in-flight lock prevents
+    // simultaneous submissions but must be released after GitHub rejects a request.
     const digest = crypto.createHash('sha256').update(JSON.stringify(report)).digest('hex');
-    if (!await once('cudy:issue-report:' + digest, 86400)) {
+    const completedKey = 'cudy:issue-report:sent:v2:' + digest;
+    const lockKey = 'cudy:issue-report:lock:v2:' + digest;
+    if (await redis(['GET', completedKey])) {
       await redis(['DEL', key]);
       return true;
     }
-    const published = await publishSanitizedIssue(state);
-    if (published) {
-      await redis(['DEL', key]);
-      // Consent was explicitly obtained via /cudy_report. Avoid chat noise.
-    } else {
+    if (!await once(lockKey, 60)) {
+      // A different consented report of the same category is already processing.
+      return true;
+    }
+    let published = false;
+    try {
+      published = await publishSanitizedIssue(state);
+      if (published) {
+        await redis(['SET', completedKey, '1', 'EX', 86400]);
+        await redis(['DEL', key]);
+      }
+    } finally {
+      await redis(['DEL', lockKey]);
+    }
+    if (!published) {
       await problemReply(message, 'Отправить обезличенный отчёт не получилось. '+
-        'Никаких личных сведений бот не отправлял. При необходимости сообщите об ошибке '+
-        'через https://github.com/stub11/cudy-monitor-pro/issues/new/choose', token);
+        'Попробуйте позднее или сообщите об ошибке через '+
+        'https://github.com/stub11/cudy-monitor-pro/issues/new/choose', token);
     }
     return true;
   }
