@@ -28,7 +28,7 @@ async function checkBrowser(engine, label, options = {}) {
       .textContent.includes('Несогласованные данные обновления'));
     assert.equal(await page.locator('#applyupdate').isDisabled(), true,
       label + ' contradictory updater metadata must never enable installation');
-    assert.match(await page.locator('#updatestatus').textContent(), /1\\.2\\.10.*1\\.2\\.11/u);
+    assert.match(await page.locator('#updatestatus').textContent(), /1\.2\.10.*1\.2\.11/u);
     await page.unroute('**/api/update/check');
 
     // Simulate privacy-focused browsers which omit Origin on same-origin POSTs.
