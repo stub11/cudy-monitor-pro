@@ -18,5 +18,5 @@ jobs:
       - name: Set Telegram webhook to trusted Vercel handler
         env:
           CUDY_TELEGRAM_BOT_TOKEN: ${{ secrets.CUDY_TELEGRAM_BOT_TOKEN }}
-          CUDYAPP_WEBHOOK_URL: ${{ vars.CUDYAPP_WEBHOOK_URL }}
+          CUDYAPP_WEBHOOK_URL: https://cudyapp-community-bot.vercel.app/api/webhook
         run: python bot/scripts/register_webhook.py
