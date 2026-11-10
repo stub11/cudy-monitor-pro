@@ -1,0 +1,27 @@
+name: Cudyapp read-only moderation permission check
+
+on:
+  push:
+    branches: [bot/topic-moderation-hardening-20261110]
+    paths:
+      - '.github/workflows/cudyapp-permissions-check.yml'
+      - 'bot/scripts/check_permissions.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify bot role and delete permission without changing chat
+        env:
+          CUDY_TELEGRAM_BOT_TOKEN: ${{ secrets.CUDY_TELEGRAM_BOT_TOKEN }}
+          CUDY_TELEGRAM_CHAT_ID: '-1003834368989'
+        run: python bot/scripts/check_permissions.py
