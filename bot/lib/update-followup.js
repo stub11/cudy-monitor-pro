@@ -6,9 +6,10 @@ const ADMIN_COMMAND = /^\/cudy_ask_update(?:@cudyapp)?\s*$/iu;
 
 function looksLikeOtaProblem(text) {
   if (typeof text!=='string' || text.length>2000) return false;
-  const s=text.normalize('NFKC').toLowerCase().replace(/ё/g,'е');
+  const s=text.normalize('NFKC').toLowerCase().replace(/ё/g,'е').trim();
+  if(s.startsWith('/'))return false; // never intercept diagnostic, admin or Telegram commands
   const update=/(?:обновлен|обновить|обновля|верси[яию]|update|upgrade|ota)/u.test(s);
-  const failed=/(?:неактивн|недоступн|не работает|не меняет|не меняется|не измени|не обнов|не нажима|не установ|не устанавли|актуальн|завис|ошибк|не доступн|disabled|greyed|не происходит)/u.test(s);
+  const failed=/(?:неактивн|не\s+активн|недоступн|не работает|не меняет|не меняется|не измени|не обнов|не нажима|не установ|не устанавли|актуальн|завис|ошибк|не доступн|disabled|greyed|не происходит)/u.test(s);
   return update&&failed;
 }
 const QUESTION=[
