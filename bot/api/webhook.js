@@ -276,10 +276,8 @@ async function handleOtaDialogue(message,text,token){
   }
   const answer=otaFollowup.explainPartial(collected);
   if(!answer)return false;
-  // Rate-limit explanations separately from general reaction cooldown.
-  const throttle='cudy:ota:dialogue-limit:'+message.chat.id+':'+
-    message.message_thread_id+':'+message.from.id;
-  if(!await once(throttle,5))return true;
+  // Webhook update IDs are already idempotent. Every distinct technical
+  // answer must advance the dialogue rather than being lost to a timer.
   await redis(['SET',key,JSON.stringify(collected),'EX','1800']);
   await api('sendMessage',{
     chat_id:message.chat.id,message_thread_id:message.message_thread_id,
