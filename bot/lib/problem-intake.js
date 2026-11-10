@@ -18,7 +18,7 @@ const steps = ['platform','symptom','tried'];
 function startsProblem(text) {
  const s=String(text||'').normalize('NFKC').toLowerCase();
  if (/^\/cudy_problem(?:@cudyapp)?\s*$/u.test(s)) return true;
- return /(?:монитор|cudy monitor|панель монитора|cudy monitor pro)/u.test(s) &&
+ return /(?:монитор|cudy monitor|панель(?: монитора)?|cudy monitor pro)/u.test(s) &&
    /(?:не открывается|не работает|не запускается|ошибка|вылетает|не устанавливается|не обновляется)/u.test(s);
 }
 function option(text,step) {
