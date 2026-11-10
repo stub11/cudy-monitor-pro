@@ -50,8 +50,8 @@ def register(token: str, url: str):
     payload = json.dumps({
         "url": url,
         "secret_token": secret,
-        "allowed_updates": ["message", "edited_message"],
-        "drop_pending_updates": True,
+        "allowed_updates": ["message", "edited_message", "callback_query"],
+        "drop_pending_updates": False,
         "max_connections": 8,
     }).encode("utf-8")
     request = Request(
