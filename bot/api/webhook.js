@@ -64,9 +64,18 @@ async function once(key, ttl) {
   const value = await redis(['SET', key, '1', 'EX', ttl, 'NX']);
   return value === 'OK';
 }
-async function counter(key, duration) {
-  const script = "local x=redis.call('INCR',KEYS[1]); if x==1 then redis.call('EXPIRE',KEYS[1],ARGV[1]) end; return x";
-  return Number(await redis(['EVAL', script, '1', key, String(duration)]));
+async function rollingCounter(key, windowSeconds, messageId, timestampMs = Date.now()) {
+  // One atomic Redis operation: count only the preceding windowSeconds.
+  // Unique message IDs prevent retries from inflating the user's count.
+  const script = [
+    "redis.call('ZREMRANGEBYSCORE',KEYS[1],'-inf',ARGV[1])",
+    "redis.call('ZADD',KEYS[1],ARGV[2],ARGV[3])",
+    "redis.call('EXPIRE',KEYS[1],ARGV[4])",
+    "return redis.call('ZCARD',KEYS[1])"
+  ].join('; ');
+  const cutoff = timestampMs - windowSeconds * 1000;
+  return Number(await redis(['EVAL', script, '1', key, String(cutoff),
+    String(timestampMs), String(messageId), String(windowSeconds + 2)]));
 }
 function hasRedis() {
   return Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
@@ -113,10 +122,10 @@ async function processUpdate(update, token) {
   if (!bad && hasRedis() && config.moderation.enabled && config.moderation.flood.enabled &&
       update.message) {
     const rule = config.moderation.flood;
-    const key = 'cudy:flood:' + message.chat.id + ':' + message.from.id + ':' +
-      Math.floor(Date.now() / (rule.window_seconds * 1000));
+    const key = 'cudy:flood:v2:' + message.chat.id + ':' +
+      message.message_thread_id + ':' + message.from.id;
     try {
-      const count = await counter(key, rule.window_seconds + 2);
+      const count = await rollingCounter(key, rule.window_seconds, message.message_id);
       if (count > rule.limit) bad = { reason: 'flood' };
     } catch {
       // Fail open on rate-limit store errors to avoid deleting innocent messages.
