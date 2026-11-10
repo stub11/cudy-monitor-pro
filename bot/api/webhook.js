@@ -327,7 +327,12 @@ async function processUpdate(update, token) {
       try {
         const faqKey = 'cudy:public-faq:' + message.chat.id + ':' +
           message.message_thread_id + ':' + message.from.id;
-        if (await once(faqKey, 90)) {
+        // Prevent identical answers flooding the whole topic when several
+        // people ask the same question within a short interval.
+        const faqDigest = crypto.createHash('sha256').update(faqAnswer).digest('hex').slice(0, 24);
+        const sameAnswerKey = 'cudy:public-faq:shared:' +
+          message.chat.id + ':' + message.message_thread_id + ':' + faqDigest;
+        if (await once(faqKey, 90) && await once(sameAnswerKey, 30)) {
           await api('sendMessage', {
             chat_id: message.chat.id,
             message_thread_id: message.message_thread_id,
