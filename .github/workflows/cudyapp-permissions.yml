@@ -1,0 +1,24 @@
+name: Cudyapp moderation readiness check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bot/scripts/check_telegram_permissions.py'
+      - '.github/workflows/cudyapp-permissions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify membership, message deletion rights and webhook state
+        env:
+          CUDY_TELEGRAM_BOT_TOKEN: ${{ secrets.CUDY_TELEGRAM_BOT_TOKEN }}
+          CUDY_TELEGRAM_CHAT_ID: \${{ secrets.CUDY_TELEGRAM_CHAT_ID }}
+        run: python bot/scripts/check_telegram_permissions.py
