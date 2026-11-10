@@ -27,6 +27,11 @@ jobs:
           sh -n packaging/openwrt/files/cudy-monitor-pro.init
           sh -n packaging/openwrt/files/cudy-monitor-lan
           sh -n packaging/openwrt/install-openwrt.sh
+          # Offline fallback must not bypass integrity verification.
+          grep -q 'EXPECTED_SHA256=149c89f2e62e7b44cd194118ee5d8762f2b2b494c661f2b1c782fa96c508c50c' packaging/openwrt/install-openwrt.sh
+          grep -q 'ACTUAL_SHA256' packaging/openwrt/install-openwrt.sh
+          grep -q 'download_file' packaging/openwrt/install-openwrt.sh
+          grep -q '\-\-file' packaging/openwrt/install-openwrt.sh
           sh -n scripts/easy-install.sh
           sh -n cudy-monitor/scripts/detect-lan.sh
           python3 - <<'PY'

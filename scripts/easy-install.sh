@@ -5,8 +5,15 @@ set -eu
 
 BASE=https://raw.githubusercontent.com/stub11/cudy-monitor-pro/main
 ACTION=${1:---install}
-case "$ACTION" in --install|--update|--remove) ;; *) echo "Usage: sh easy-install.sh [--install|--update|--remove]" >&2; exit 2;; esac
 die() { echo "ERROR: $*" >&2; exit 1; }
+case "$ACTION" in --install|--update|--remove) ;; *) echo "Usage: sh easy-install.sh [--install|--update|--remove] [--file /tmp/package.apk]" >&2; exit 2;; esac
+LOCAL_APK=
+if [ "${2:-}" = --file ] && [ -n "${3:-}" ] && [ "$#" -eq 3 ]; then
+  [ "$ACTION" != --remove ] || die "--file is not valid with --remove"
+  LOCAL_APK=$3
+elif [ "$#" -gt 1 ]; then
+  die "Usage: sh easy-install.sh [--install|--update|--remove] [--file /tmp/package.apk]"
+fi
 fetch() {
   url=$1
   dest=$2
@@ -45,8 +52,9 @@ if [ -f /etc/openwrt_release ]; then
   FILE=/tmp/cudy-monitor-openwrt-install.$$.sh
   trap 'rm -f "$FILE"' EXIT HUP INT TERM
   fetch "$BASE/packaging/openwrt/install-openwrt.sh" "$FILE"
-  /bin/sh "$FILE"
+  if [ -n "$LOCAL_APK" ]; then /bin/sh "$FILE" --file "$LOCAL_APK"; else /bin/sh "$FILE"; fi
 elif [ -d /opt/etc/init.d ] && [ -x /opt/bin/opkg ]; then
+  [ -z "$LOCAL_APK" ] || die "--file APK is only for native OpenWrt."
   BIN=/opt/bin/cudy-monitor-pro
   INIT=/opt/etc/init.d/S99cudy-monitor
   META=/opt/share/cudy-monitor

@@ -70,6 +70,18 @@ cudy-monitor-lan --bind-ip 192.168.1.1
 
 Исходник единого установщика доступен для просмотра перед запуском: [scripts/easy-install.sh](scripts/easy-install.sh). Установка предполагает доступ роутера к GitHub; если `wget` отсутствует, скачайте скрипт другим доступным средством. Нативный OpenWrt APK — экспериментальный пакет, который устанавливается с `--allow-untrusted` после проверки SHA-256, а не через доверенный подписанный репозиторий.
 
+### Если GitHub Releases недоступен с роутера
+
+Сообщение `ERROR: Cannot download APK from GitHub` означает ошибку **скачивания**, а не несовместимость маршрутизатора. В обновлённом установщике есть попытка через `curl` после `wget`, а также поддержка установки уже скачанного файла.
+
+Если скачивание не получилось, загрузите APK на телефон/ПК и передайте на роутер в `/tmp/cudy-monitor-pro-1.2.6-r1.apk` через SFTP/SCP. Затем выполните:
+
+```sh
+wget -qO /tmp/cudy-monitor-easy.sh https://raw.githubusercontent.com/stub11/cudy-monitor-pro/main/scripts/easy-install.sh && sh /tmp/cudy-monitor-easy.sh --install --file /tmp/cudy-monitor-pro-1.2.6-r1.apk
+```
+
+Контрольная сумма SHA-256 проверяется перед установкой. [Подробное решение проблемы загрузки](packaging/openwrt/INSTALL-TESTER-RU.md#если-скачивание-apk-с-github-не-работает).
+
 ## Возможности
 
 - CPU: нагрузка, ядра и частота (когда данные доступны).
