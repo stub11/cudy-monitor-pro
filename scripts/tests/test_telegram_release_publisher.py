@@ -129,6 +129,12 @@ class PublisherTests(TestCase):
                 publisher.main()
             send.assert_not_called()
 
+    def test_version_1_2_13_has_reviewed_russian_notes(self):
+        msg = publisher.message("1.2.13")
+        self.assertIn("подтверждает завершение обновления", msg)
+        self.assertIn("автоматического повторного обновления", msg)
+        self.assertIn("OpenWrt", publisher.telegram_keyboard("1.2.13")["inline_keyboard"][0][0]["url"])
+
     def test_version_1_2_12_has_reviewed_russian_notes(self):
         msg = publisher.message("1.2.12")
         self.assertIn("сверяются версии файла", msg)
