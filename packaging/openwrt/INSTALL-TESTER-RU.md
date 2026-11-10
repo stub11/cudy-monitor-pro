@@ -15,8 +15,8 @@ wget -qO /tmp/cudy-monitor-install.sh https://raw.githubusercontent.com/stub11/c
 Скрипт:
 1. проверяет OpenWrt, ARM64 и наличие `apk`;
 2. запрещает конкурирующую установку, если уже работает версия Entware;
-3. скачивает нативный пакет `cudy-monitor-pro-1.2.9-r1.apk` с GitHub Releases; при ошибке `wget` пробует `curl`, если он установлен;
-4. сверяет SHA-256 с закреплённым значением официального релиза 1.2.9 и только после совпадения устанавливает пакет через OpenWrt `apk`;
+3. скачивает нативный пакет `cudy-monitor-pro-1.2.10-r1.apk` с GitHub Releases; при ошибке `wget` пробует `curl`, если он установлен;
+4. сверяет SHA-256 с закреплённым значением официального релиза 1.2.10 и только после совпадения устанавливает пакет через OpenWrt `apk`;
 5. автоматически определяет **уже существующий** LAN-адрес (не меняет IP, DNS, Wi-Fi, firewall), активирует службу и печатает ссылку.
 
 Это экспериментальный, не подписанный ключом репозитория пакет. Поэтому в скрипте используется `apk add --allow-untrusted`, а SHA-256 сверяется с контрольным значением релиза. Исходник скрипта можно просмотреть [здесь](install-openwrt.sh) до запуска.
@@ -38,20 +38,20 @@ OPEN IN BROWSER: http://192.168.1.1:8237/
 
 Обновлённый установщик сначала пробует `wget`, затем `curl` (если имеется), показывает настоящие ошибки HTTPS и не отключает проверку сертификатов.
 
-Если скачивание всё равно не работает, откройте на телефоне или ПК [файл APK 1.2.9](https://github.com/stub11/cudy-monitor-pro/releases/download/cudy-monitor-openwrt-v1.2.9/cudy-monitor-pro-1.2.9-r1.apk). Передайте файл в **`/tmp/cudy-monitor-pro-1.2.9-r1.apk` на роутере** через SFTP/SCP, например через Termius или WinSCP. Важно: файл должен лежать именно на роутере, а не в памяти телефона.
+Если скачивание всё равно не работает, откройте на телефоне или ПК [файл APK 1.2.10](https://github.com/stub11/cudy-monitor-pro/releases/download/cudy-monitor-openwrt-v1.2.10/cudy-monitor-pro-1.2.10-r1.apk). Передайте файл в **`/tmp/cudy-monitor-pro-1.2.10-r1.apk` на роутере** через SFTP/SCP, например через Termius или WinSCP. Важно: файл должен лежать именно на роутере, а не в памяти телефона.
 
 После копирования **одна команда устанавливает локальный APK, проверяет встроенную SHA-256, включает службу и открывает LAN**:
 
 ```sh
-wget -qO /tmp/cudy-monitor-easy.sh https://raw.githubusercontent.com/stub11/cudy-monitor-pro/main/scripts/easy-install.sh && sh /tmp/cudy-monitor-easy.sh --install --file /tmp/cudy-monitor-pro-1.2.9-r1.apk
+wget -qO /tmp/cudy-monitor-easy.sh https://raw.githubusercontent.com/stub11/cudy-monitor-pro/main/scripts/easy-install.sh && sh /tmp/cudy-monitor-easy.sh --install --file /tmp/cudy-monitor-pro-1.2.10-r1.apk
 ```
 
-Правильная SHA-256 для APK 1.2.9: `eb4233d0107db9f8cd49050a823157bfa52f6f8501276deb3c484f62aa022fcb` — проверяется автоматически **перед установкой**, даже при недоступном GitHub Releases. Не выключайте проверку TLS и не используйте непроверенные зеркала.
+Правильная SHA-256 для APK 1.2.10: `5bc7c3299e70d7ae3d12d1c522cfc77ce008d1107572ceb4d82e65b4614e4efd` — проверяется автоматически **перед установкой**, даже при недоступном GitHub Releases. Не выключайте проверку TLS и не используйте непроверенные зеркала.
 
 Для уточнения причины можно отдельно выполнить:
 
 ```sh
-wget -S -O /tmp/cudy-monitor-download-test.apk 'https://github.com/stub11/cudy-monitor-pro/releases/download/cudy-monitor-openwrt-v1.2.9/cudy-monitor-pro-1.2.9-r1.apk'
+wget -S -O /tmp/cudy-monitor-download-test.apk 'https://github.com/stub11/cudy-monitor-pro/releases/download/cudy-monitor-openwrt-v1.2.10/cudy-monitor-pro-1.2.10-r1.apk'
 ```
 
 Если скачивание не получилось, удалите тестовый неполный файл: `rm -f /tmp/cudy-monitor-download-test.apk`. При отправке ошибки автору удалите из вывода приватные адреса и токены.
