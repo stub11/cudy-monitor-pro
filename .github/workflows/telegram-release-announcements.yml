@@ -1,0 +1,45 @@
+name: Announce verified Cudy Monitor release in Telegram
+
+on:
+  # GITHUB_TOKEN-created releases might not trigger downstream workflows.
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/telegram_release_publisher.py'
+      - 'scripts/tests/test_telegram_release_publisher.py'
+      - '.github/workflows/telegram-release-announcements.yml'
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cudy-telegram-releases
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    if: github.repository == 'stub11/cudy-monitor-pro'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Offline publisher regression tests
+        run: python -m unittest discover -s scripts/tests -p 'test_telegram_release_publisher.py' -v
+      - name: Publish only when both release assets are verified
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CUDY_TELEGRAM_BOT_TOKEN: ${{ secrets.CUDY_TELEGRAM_BOT_TOKEN }}
+          CUDY_TELEGRAM_CHAT_ID: ${{ secrets.CUDY_TELEGRAM_CHAT_ID }}
+          CUDY_TELEGRAM_TOPIC_ID: ${{ secrets.CUDY_TELEGRAM_TOPIC_ID }}
+        run: python scripts/telegram_release_publisher.py
