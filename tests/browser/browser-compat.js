@@ -15,6 +15,38 @@ async function checkBrowser(engine, label, options = {}) {
     await page.waitForFunction(() => typeof window.fetch === 'function' &&
       !!document.querySelector('#authenable'), null, { timeout: 10000 });
     assert.equal((await context.request.get(base + '/api/auth/status')).status(), 200);
+    if (options.viewport?.width <= 650) {
+      // Regression from real Cudy Android screenshot: long RAM details must
+      // wrap within each 2-column tile instead of disappearing at card edge.
+      const layout = await page.evaluate(() => {
+        document.querySelector('#mem2').textContent =
+          '241 / 486 МиБ · занято по MemAvailable';
+        document.querySelector('#memcomparison').textContent =
+          'Без кэша (≈htop): 203.0 МиБ · доступно 244.3 МиБ';
+        document.querySelector('#monitorrss').textContent =
+          'Монитор: 0.86 МБ RAM';
+        document.querySelector('#lastseen').textContent =
+          'данные обновлены · текущий замер';
+        const ids = ['mem2','memcomparison','monitorrss','lastseen'];
+        const bounds = ids.map(id => {
+          const e = document.getElementById(id);
+          const outer = id === 'lastseen' ? e.closest('.aurora-header') : e.closest('.kpi');
+          const a = e.getBoundingClientRect(), b = outer.getBoundingClientRect();
+          return { id, right: a.right, outerRight: b.right, left: a.left, outerLeft: b.left };
+        });
+        return { bounds, scroll: document.documentElement.scrollWidth, width: window.innerWidth,
+          headerText: document.querySelector('.aurora-header>div:last-child').textContent,
+          ramHeight: document.getElementById('memcomparison').getBoundingClientRect().height };
+      });
+      assert.ok(layout.scroll <= layout.width + 2, label + ' no horizontal scrolling');
+      for (const b of layout.bounds) {
+        assert.ok(b.right <= b.outerRight + 2 && b.left >= b.outerLeft - 2,
+          label + ' ' + b.id + ' stays inside its tile');
+      }
+      assert.ok(layout.ramHeight > 0, label + ' RAM comparison remains visible');
+      assert.doesNotMatch(layout.headerText, /Работает\\s*·\\s*данные/u,
+        label + ' no stray separator between status and refresh text');
+    }
 
     // Repro from Cudy OTA report: UI must not falsely claim 1.2.10 is
     // up to date when GitHub shows 1.2.11 and API claims unavailable.
