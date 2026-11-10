@@ -101,8 +101,12 @@ restore_old() {
   # Package scripts may restart the service. Verify that the rollback is live.
   retries=0
   while [ "$retries" -lt 12 ]; do
-    if running_matches "$CURRENT"; then
-      echo "ROLLBACK OK: running $CURRENT" >&2
+    # A still-running old daemon is not proof the previous APK was restored.
+    # Require both the installed executable and every monitor process to match.
+    installed=$("$SELF" --version 2>/dev/null || :)
+    if [ "$installed" = "cudy-monitor-pro $CURRENT" ] &&
+       running_matches "$CURRENT"; then
+      echo "ROLLBACK OK: installed and running $CURRENT" >&2
       return 0
     fi
     retries=$((retries+1))
@@ -116,8 +120,8 @@ download_verified "$LATEST" "$DIR/next.apk"
 echo "Upgrading Cudy Monitor Pro $CURRENT -> $LATEST"
 if ! apk add --allow-untrusted "$DIR/next.apk"; then
   echo "Upgrade failed. Attempting verified rollback to $CURRENT." >&2
-  apk add --allow-untrusted "$DIR/previous.apk" || die "ROLLBACK FAILED; manual recovery required"
-  die "Upgrade failed; previous package restored"
+  restore_old
+  die "Upgrade failed; verified previous package restored"
 fi
 BIND=$(head -n 1 /etc/cudy-monitor-pro/bind 2>/dev/null || printf '127.0.0.1:8237')
 case "$BIND" in *[!0-9.:]*|*:*:*) die "Upgrade completed but stored LAN bind invalid";; esac
