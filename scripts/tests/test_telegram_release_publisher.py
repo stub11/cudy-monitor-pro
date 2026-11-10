@@ -66,7 +66,9 @@ class PublisherTests(TestCase):
             if path == "releases/tags/cudy-monitor-v1.2.10": return self.ipk
             if path == "git/ref/heads/main": return {"object": {"sha": "f" * 40}}
             if path == "git/refs":
-                self.assertEqual(kwargs["payload"]["ref"], "refs/tags/telegram-announced-v1.2.10")
+                self.assertIn(kwargs["payload"]["ref"], (
+                    "refs/tags/telegram-attempted-v1.2.10",
+                    "refs/tags/telegram-announced-v1.2.10"))
                 return {"ref": kwargs["payload"]["ref"]}
             raise AssertionError(path)
         with patch.object(publisher, "version_from_source", return_value=self.version), \
@@ -77,6 +79,41 @@ class PublisherTests(TestCase):
             self.assertEqual(send.call_args.args[2], 87621)
             self.assertIn("1.2.10", send.call_args.args[3])
             self.assertEqual(calls[-1], "git/refs")
+            self.assertEqual(calls.count("git/refs"), 2)
+            self.assertLess(calls.index("git/refs"), calls.index("git/refs", calls.index("git/refs")+1))
+
+    def test_ambiguous_v1_2_13_does_not_send_twice(self):
+        with patch.object(publisher, "version_from_source", return_value="1.2.13"), \
+             patch.object(publisher, "github_request", return_value=None), \
+             patch.object(publisher, "telegram_send") as send:
+            self.assertEqual(publisher.main(), 0)
+            send.assert_not_called()
+
+    def test_existing_attempt_marker_blocks_send(self):
+        def fake_api(path, token, **kwargs):
+            if path == "git/ref/tags/telegram-announced-v1.2.10": return None
+            if path == "git/ref/tags/telegram-attempted-v1.2.10": return {"ref":"exists"}
+            raise AssertionError(path)
+        with patch.object(publisher,"version_from_source",return_value="1.2.10"), \
+             patch.object(publisher,"github_request",side_effect=fake_api), \
+             patch.object(publisher,"telegram_send") as send:
+            with self.assertRaisesRegex(publisher.PublisherError,"previous Telegram send"):
+                publisher.main()
+            send.assert_not_called()
+
+    def test_telegram_full_response_larger_than_4096_bytes(self):
+        import json
+        from unittest.mock import MagicMock
+        result = json.dumps({"ok":True,"result":{"message_id":99,
+                "text":"Тест " * 2000}},ensure_ascii=False).encode("utf-8")
+        response=MagicMock()
+        response.read.return_value=result
+        context=MagicMock()
+        context.__enter__.return_value=response
+        with patch.object(publisher,"urlopen",return_value=context):
+            publisher.telegram_send("fake-token","@test-group",87621,
+                                    publisher.message("1.2.10"),version="1.2.10")
+        self.assertGreater(len(result),4096)
 
     def test_russian_message_and_buttons(self):
         body = publisher.message("1.2.11")

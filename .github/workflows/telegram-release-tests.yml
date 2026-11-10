@@ -1,0 +1,22 @@
+name: Telegram publisher offline regressions (pull requests)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/telegram_release_publisher.py'
+      - 'scripts/tests/test_telegram_release_publisher.py'
+      - '.github/workflows/telegram-release-tests.yml'
+permissions:
+  contents: read
+jobs:
+  offline-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Syntax and offline Telegram regressions
+        run: |
+          python -m py_compile scripts/telegram_release_publisher.py
+          python -m unittest discover -s scripts/tests -p 'test_telegram_release_publisher.py' -v
