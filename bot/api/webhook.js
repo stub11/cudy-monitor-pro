@@ -150,7 +150,7 @@ function mediaStoreKey(message, index) {
   return 'cudy:media:v1:' + message.chat.id + ':' + message.message_thread_id + ':' + index;
 }
 function mediaCommand(text) {
-  const m = /^\\/cudy_media(?:@Cudyapp)?(?:\\s+(help|list|add|remove)(?:\\s+(\\d{1,2}))?)?\\s*$/iu.exec(text || '');
+  const m = /^\/cudy_media(?:@Cudyapp)?(?:\s+(help|list|add|remove)(?:\s+(\d{1,2}))?)?\s*$/iu.exec(text || '');
   if (!m) return null;
   const action = (m[1] || 'help').toLowerCase();
   const index = m[2] === undefined ? null : Number(m[2]);
@@ -174,17 +174,17 @@ async function manageMedia(message, text, token) {
     disable_web_page_preview:true
   },token);
   if (cmd.action === 'help') {
-    await reply('🎭 Настройка реакций @Cudyapp (только администраторы).\\n'+
-      '/cudy_media list — список 33 категорий.\\n'+
-      'Ответьте на понравившийся стикер или GIF командой /cudy_media add 1 (номер категории).\\n'+
-      '/cudy_media remove 1 — убрать медиа категории.\\n'+
+    await reply('🎭 Настройка реакций @Cudyapp (только администраторы).\n'+
+      '/cudy_media list — список 33 категорий.\n'+
+      'Ответьте на понравившийся стикер или GIF командой /cudy_media add 1 (номер категории).\n'+
+      '/cudy_media remove 1 — убрать медиа категории.\n'+
       'Слова и ответы из утверждённого словаря остаются без изменений. Медиа появляются редко, не чаще общего лимита 40 секунд.');
     return true;
   }
   if (cmd.action === 'list') {
     const lines = config.reactions.triggers.map((g,i)=>
       (i+1)+'. '+g.words.slice(0,3).join(', '));
-    await reply('🎭 Номера категорий для привязки стикеров и GIF:\\n'+lines.join('\\n'));
+    await reply('🎭 Номера категорий для привязки стикеров и GIF:\n'+lines.join('\n'));
     return true;
   }
   const key=mediaStoreKey(message,cmd.index);
@@ -440,7 +440,7 @@ async function processUpdate(update, token) {
     return;
   }
   // Restrict media administration to group admins, in the monitor topic.
-  if (update.message && /^\\/cudy_media(?:@Cudyapp)?(?:\\s|$)/iu.test(text)) {
+  if (update.message && /^\/cudy_media(?:@Cudyapp)?(?:\s|$)/iu.test(text)) {
     try {await manageMedia(message,text,token);}catch{}
     return;
   }
