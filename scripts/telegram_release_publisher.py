@@ -22,6 +22,11 @@ API = f"https://api.github.com/repos/{REPO}"
 ROOT = Path(__file__).resolve().parents[1]
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 TIMEOUT = 20
+# 1.2.13 sendMessage returned HTTP 200 on 2026-11-10, but its response
+# was truncated by our previous 4096-byte reader. It MAY already be posted.
+# Never send that version again without first inspecting the real Telegram
+# topic and explicitly resolving the ambiguity.
+MANUAL_REVIEW_VERSIONS = frozenset({"1.2.13"})
 
 
 class PublisherError(RuntimeError):
@@ -181,7 +186,15 @@ def telegram_send(bot_token: str, chat_id: str, topic_id: int, body: str,
     )
     try:
         with urlopen(req, timeout=TIMEOUT) as res:
-            value = json.loads(res.read(4096))
+            raw = res.read(65537)
+            if len(raw) > 65536:
+                raise PublisherError("Telegram response exceeded safe size; delivery uncertain")
+            try:
+                value = json.loads(raw)
+            except (ValueError, UnicodeError):
+                raise PublisherError(
+                    "Telegram returned an unreadable response; delivery uncertain, do not retry blindly"
+                ) from None
     except HTTPError as ex:
         raise PublisherError(f"Telegram rejected announcement (HTTP {ex.code}); check bot, chat and topic access") from None
     except (URLError, TimeoutError):
@@ -214,6 +227,14 @@ def main() -> int:
     if github_request(f"git/ref/tags/{quote(marker)}", gh_token) is not None:
         print(f"Already announced Cudy Monitor Pro {version}; no duplicate")
         return 0
+    if version in MANUAL_REVIEW_VERSIONS:
+        print(f"Delivery of Cudy Monitor Pro {version} is ambiguous; manual Telegram topic inspection required. No duplicate sent.")
+        return 0
+    attempt = f"telegram-attempted-v{version}"
+    if github_request(f"git/ref/tags/{quote(attempt)}", gh_token) is not None:
+        raise PublisherError(
+            "A previous Telegram send was attempted for this version; inspect the topic before retrying"
+        )
 
     apk_tag = f"cudy-monitor-openwrt-v{version}"
     ipk_tag = f"cudy-monitor-v{version}"
@@ -228,11 +249,17 @@ def main() -> int:
         print(f"Not ready: verified Entware IPK {version} is missing")
         return 0
 
-    telegram_send(bot, chat, int(topic), message(version), version=version)
     head = github_request("git/ref/heads/main", gh_token)
     sha = (head or {}).get("object", {}).get("sha")
     if not isinstance(sha, str) or not re.fullmatch(r"[a-f0-9]{40}", sha):
-        raise PublisherError("Could not mark announcement; check for duplicates before retry")
+        raise PublisherError("Cannot reserve announcement before sending")
+    # Durable at-most-once reservation: even if Telegram accepts a message and
+    # the response is lost, another workflow run cannot create a duplicate.
+    github_request(
+        "git/refs", gh_token, method="POST",
+        payload={"ref": f"refs/tags/{attempt}", "sha": sha},
+    )
+    telegram_send(bot, chat, int(topic), message(version), version=version)
     github_request(
         "git/refs", gh_token, method="POST",
         payload={"ref": f"refs/tags/{marker}", "sha": sha},
