@@ -15,7 +15,8 @@ concurrency:
 
 jobs:
   pin-guide:
-    if: ${{ startsWith(github.event.head_commit.message, 'chore(bot): pin monitor topic welcome guide once') && github.run_attempt == 1 }}
+    if: >-
+      ${{ startsWith(github.event.head_commit.message, 'chore(bot): pin monitor topic welcome guide once') && github.run_attempt == 1 }}
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     steps:
