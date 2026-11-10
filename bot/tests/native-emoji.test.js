@@ -48,7 +48,7 @@ test('Telegram native reaction uses one allowed emoji and falls back to text on 
   assert.equal(res.statusCode,200);
  };
  try{
-  await invoke(selected,87622);
+  await invoke(selected+500000,87622);
   assert.equal(seen.length,0,'other topics never emit native reactions');
   await invoke(selected);
   const reaction=seen.find(x=>x.method==='setMessageReaction');
