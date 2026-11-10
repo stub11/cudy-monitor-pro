@@ -83,6 +83,11 @@ def validated_release(meta: object, tag: str, expected_asset: str) -> bool:
 # Short human-reviewed Russian summaries. Never publish raw English CHANGELOG
 # lines as Telegram announcements. Add a new entry when preparing each release.
 RELEASE_NOTES_RU = {
+    "1.2.12": [
+        "Исправлена проверка обновления OpenWrt: сверяются версии файла и запущенного монитора.",
+        "Улучшена диагностика, когда монитор показывает разные версии до и после обновления.",
+        "Добавлена проверка успешного запуска и откат при ошибке обновления OpenWrt.",
+    ],
     "1.2.11": [
         "Исправлено обновление OpenWrt APK из веб-панели: устранена ошибка origin mismatch.",
         "Для авторизации и обновлений используется единая проверка запросов браузера.",
@@ -188,8 +193,15 @@ def main() -> int:
     if not gh_token:
         raise PublisherError("Missing GH_TOKEN")
     if not bot or not chat or not topic:
-        print("Telegram auto-publishing not configured: add repository Actions secrets")
-        return 0
+        missing = [name for name, value in (
+            ("CUDY_TELEGRAM_BOT_TOKEN", bot),
+            ("CUDY_TELEGRAM_CHAT_ID", chat),
+            ("CUDY_TELEGRAM_TOPIC_ID", topic),
+        ) if not value]
+        raise PublisherError(
+            "Telegram auto-publishing not configured. Missing GitHub Actions secrets: "
+            + ", ".join(missing)
+        )
     if not topic.isdecimal() or int(topic) <= 0:
         raise PublisherError("Invalid Telegram topic ID")
     version = version_from_source()

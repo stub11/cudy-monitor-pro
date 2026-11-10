@@ -5,6 +5,13 @@ on:
   schedule:
     - cron: '*/30 * * * *'
   workflow_dispatch:
+  # GitHub-created releases do not emit downstream release events.
+  # Trigger directly from successful package build workflow completions.
+  workflow_run:
+    workflows:
+      - 'Build native OpenWrt 25.12 APK v3'
+      - 'Build Cudy Monitor ARM64'
+    types: [completed]
   push:
     branches: [main]
     paths:
@@ -23,7 +30,7 @@ concurrency:
 
 jobs:
   notify:
-    if: github.repository == 'stub11/cudy-monitor-pro'
+    if: github.repository == 'stub11/cudy-monitor-pro' && (github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'))
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
