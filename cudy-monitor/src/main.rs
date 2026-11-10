@@ -745,12 +745,12 @@ pppoe-wan 00000000 00000000 0001 0 0 10 00000000 0 0 0\n";
             "../unsafe 00000000 00000000 0001 0 0 1 00000000 0 0 0\n")),(None,"missing"));
     }
     #[test] fn diagnostic_redaction(){
-        let x="client 203.0.113.24 connected; mac=AA:BB:CC:DD:EE:FF user@host";
+        let x="client 192.168.1.1 connected; mac=AA:BB:CC:DD:EE:FF user@host";
         let safe=sanitize_diag(x);
-        assert!(!safe.contains("203.0.113.24"));
+        assert!(!safe.contains("192.168.1.1"));
         assert!(!safe.contains("AA:BB:CC:DD:EE:FF"));
         assert!(!safe.contains("user@host"));
-        assert!(!sanitize_diag("login from 203.0.113.1:5588").contains("203.0.113.1"));
+        assert!(!sanitize_diag("login from 10.0.0.1:5588").contains("10.0.0.1"));
         assert_eq!(sanitize_diag("password=hello hidden"),"[строка со служебными данными скрыта]");
         assert!(sanitize_diag("service restarted").contains("service restarted"));
     }
