@@ -9,6 +9,7 @@ const config = require('../config.json');
 const { checkMessage, selectReaction } = require('../lib/moderation.js');
 const { answerPublicQuestion } = require('../lib/public-faq.js');
 const issueIntake = require('../lib/problem-intake.js');
+const otaFollowup = require('../lib/update-followup.js');
 
 const SECRET_SALT = '|cudyapp-topic-webhook-v1';
 
@@ -236,6 +237,48 @@ async function mediaReaction(message,text,entropy,token) {
   }
   return null;
 }
+async function handleOtaFollowup(message, text, token) {
+  if(!hasRedis()) return false;
+  const adminCommand=otaFollowup.ADMIN_COMMAND.test(text||'');
+  const auto=otaFollowup.looksLikeOtaProblem(text);
+  if(!adminCommand&&!auto) return false;
+  let original=message;
+  if(adminCommand){
+    // A reply is an explicit selection of a tester's *particular* message.
+    // Telegram Bot API does not provide historic group-message search.
+    let member;
+    try {member=await api('getChatMember',{
+      chat_id:message.chat.id,user_id:message.from.id
+    },token);}catch{return true;}
+    if(!['creator','administrator'].includes(member?.status))return true;
+    const cited=message.reply_to_message;
+    if(!cited || !Number.isSafeInteger(cited.message_id) ||
+        cited.message_id<1 || cited.from?.is_bot ||
+        !cited.from?.id ||
+        (cited.message_thread_id!=null && cited.message_thread_id!==message.message_thread_id)){
+      await problemReply(message,
+        '⚠️ Ответьте командой /cudy_ask_update именно на сообщение тестера с проблемой обновления в этой теме.',token);
+      return true;
+    }
+    original=cited;
+  }
+  if(!Number.isSafeInteger(original.message_id))return true;
+  const key=adminCommand
+    ? 'cudy:ota:manual:v1:'+message.chat.id+':'+message.message_thread_id+':'+original.message_id
+    : 'cudy:ota:auto:v1:'+message.chat.id+':'+message.message_thread_id+':'+message.from.id;
+  // Avoid unsolicited repeated pings; one automatic followup per user/week.
+  if(!await once(key,adminCommand?86400:604800))return true;
+  await api('sendMessage',{
+    chat_id:message.chat.id,
+    message_thread_id:message.message_thread_id,
+    reply_to_message_id:original.message_id,
+    allow_sending_without_reply:false,
+    disable_notification:true,
+    disable_web_page_preview:true,
+    text:otaFollowup.QUESTION
+  },token);
+  return true;
+}
 async function problemReply(message, text, token, keyboard) {
   await api('sendMessage', {
     chat_id: message.chat.id, message_thread_id: message.message_thread_id,
@@ -456,6 +499,15 @@ async function processUpdate(update, token) {
     try {await manageMedia(message,text,token);}catch{}
     return;
   }
+  // Reply directly to the tester's exact message, either when a new OTA
+  // complaint is recognized or via an admin's explicit reply to an old one.
+  if(update.message && hasRedis()){
+    try {
+      if(await handleOtaFollowup(message,text,token))return;
+    }catch{
+      // A failed follow-up must not affect other topic moderation or FAQ.
+    }
+  }
   // Only process diagnostic intake after moderation and within the target topic.
   if (update.message && hasRedis()) {
     try {
@@ -548,4 +600,4 @@ module.exports = async function handler(req, res) {
   }
   res.statusCode = 200; res.end('OK');
 };
-module.exports._test = { webhookSecret, equalSecret, targetChat, targetTopic, processUpdate, allowReaction, diagnosticKeyboard, handleDiagnosticCallback, mediaCommand, mediaStoreKey, mediaReaction, nativeEmojiForText };
+module.exports._test = { webhookSecret, equalSecret, targetChat, targetTopic, processUpdate, allowReaction, diagnosticKeyboard, handleDiagnosticCallback, mediaCommand, mediaStoreKey, mediaReaction, nativeEmojiForText, handleOtaFollowup };
