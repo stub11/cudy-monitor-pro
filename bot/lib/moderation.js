@@ -39,7 +39,8 @@ function selectReaction(text, triggers = [], entropy = 0) {
     const safe = variants.filter(r => r && typeof r === 'object' &&
       ((typeof r.text === 'string' && r.text.length <= 500) ||
        (typeof r.sticker_file_id === 'string' && r.sticker_file_id.length <= 200) ||
-       (typeof r.photo_url === 'string' && /^https:\/\//.test(r.photo_url))));
+       (typeof r.photo_url === 'string' && /^https:\/\//.test(r.photo_url)) ||
+       (typeof r.animation_url === 'string' && /^https:\/\//.test(r.animation_url))));
     if (!safe.length) continue;
     return safe[Math.abs(Number(entropy) || 0) % safe.length];
   }
