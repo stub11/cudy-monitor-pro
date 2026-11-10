@@ -119,12 +119,42 @@ async function react(message, reaction, token) {
       text: String(reaction.text || reaction.emoji || '😄').slice(0, 500) }, token);
   }
 }
+async function adminFunPreview(message, text, token) {
+  // Explicit test command only, never activate normal word triggers.
+  if (!/^\/cudy_fun(?:@Cudyapp)?(?:\s|$)/iu.test(text)) return false;
+  let member;
+  try {
+    member = await api('getChatMember', {
+      chat_id: message.chat.id, user_id: message.from.id
+    }, token);
+  } catch { return true; }
+  if (!member || !['administrator', 'creator'].includes(member.status)) return true;
+  if (!hasRedis()) return true;
+  try {
+    const key = 'cudy:fun-preview:' + message.chat.id + ':' + message.message_thread_id;
+    if (!await once(key, 40)) return true;
+    const variants = [
+      '🦊 Проверка юмора пройдена! Улыбка маршрутизирована 😄',
+      '🤖 Пакет хорошего настроения доставлен без потерь! ✨',
+      '🐱 Мяу! Сеть стабильна, настроение повышается! 🎉'
+    ];
+    await api('sendMessage', {
+      chat_id: message.chat.id,
+      message_thread_id: message.message_thread_id,
+      reply_to_message_id: message.message_id,
+      text: variants[message.message_id % variants.length],
+      disable_notification: true
+    }, token);
+  } catch { /* A preview must not break the chat. */ }
+  return true;
+}
 async function processUpdate(update, token) {
   const message = update.message || update.edited_message;
   if (!message || !targetChat(message.chat) || !targetTopic(message)) return;
   if (!message.from || message.from.is_bot || !config.enabled) return;
   const text = message.text || message.caption || '';
   const named = (message.from.first_name || 'Участник').slice(0, 40);
+  if (update.message && await adminFunPreview(message, text, token)) return;
   // Do not store message contents, only minimal ephemeral counter keys.
   let bad = config.moderation.enabled ? checkMessage(text, config.moderation) : null;
   if (!bad && hasRedis() && config.moderation.enabled && config.moderation.flood.enabled &&
