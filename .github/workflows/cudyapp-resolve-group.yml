@@ -1,0 +1,20 @@
+name: Resolve Cudyapp group permissions
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve chat ID and inspect bot permissions
+        env:
+          CUDY_TELEGRAM_BOT_TOKEN: ${{ secrets.CUDY_TELEGRAM_BOT_TOKEN }}
+          CUDY_TELEGRAM_CHAT_ID: ${{ secrets.CUDY_TELEGRAM_CHAT_ID }}
+          CUDY_TELEGRAM_TOPIC_ID: ${{ secrets.CUDY_TELEGRAM_TOPIC_ID }}
+        run: python bot/scripts/resolve_telegram_group.py
