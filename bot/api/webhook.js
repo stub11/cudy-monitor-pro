@@ -152,6 +152,9 @@ async function publishSanitizedIssue(state) {
 }
 async function handleProblem(message, text, token) {
   if (!hasRedis()) return false;
+  // Do not spend a Redis GET for every ordinary group message.
+  if (!issueIntake.startsProblem(text) &&
+      !/^\/cudy_(?:platform|symptom|tried|report|cancel)/iu.test(String(text).trim())) return false;
   const key = 'cudy:problem:' + message.chat.id + ':' +
     message.message_thread_id + ':' + message.from.id;
   const command = String(text).trim().toLowerCase();
