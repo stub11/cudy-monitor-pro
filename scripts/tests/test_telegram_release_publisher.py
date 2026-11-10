@@ -78,6 +78,46 @@ class PublisherTests(TestCase):
             self.assertIn("1.2.10", send.call_args.args[3])
             self.assertEqual(calls[-1], "git/refs")
 
+    def test_russian_message_and_buttons(self):
+        body = publisher.message("1.2.11")
+        self.assertIn("Что нового", body)
+        self.assertIn("Исправлено обновление", body)
+        self.assertNotIn("Fixes the", body)
+        buttons = publisher.telegram_keyboard("1.2.11")["inline_keyboard"]
+        self.assertEqual(len(buttons), 2)
+        self.assertEqual(len(buttons[0]), 2)
+        self.assertEqual(len(buttons[1]), 1)
+        self.assertIn("openwrt-v1.2.11", buttons[0][0]["url"])
+        self.assertIn("cudy-monitor-v1.2.11", buttons[0][1]["url"])
+        self.assertIn("github.com/stub11/cudy-monitor-pro", buttons[1][0]["url"])
+
+    def test_unreviewed_release_uses_russian_fallback(self):
+        content = publisher.message("9.9.9")
+        self.assertIn("Список изменений", content)
+        self.assertNotIn("Fixes the", content)
+        with self.assertRaises(publisher.PublisherError):
+            publisher.telegram_keyboard("version/unsafe")
+
+    def test_telegram_payload_uses_inline_buttons_and_topic(self):
+        import json
+        from unittest.mock import MagicMock
+        response = MagicMock()
+        response.read.return_value = b'{"ok":true,"result":{"message_id":42}}'
+        context = MagicMock()
+        context.__enter__.return_value = response
+        with patch.object(publisher, "urlopen", return_value=context) as opener:
+            publisher.telegram_send(
+                "test-telegram", "@test-group", 87621,
+                publisher.message("1.2.11"), version="1.2.11"
+            )
+        request = opener.call_args.args[0]
+        payload = json.loads(request.data)
+        self.assertEqual(payload["message_thread_id"], 87621)
+        self.assertTrue(payload["disable_notification"])
+        self.assertEqual(payload["parse_mode"], "HTML")
+        self.assertEqual(len(payload["reply_markup"]["inline_keyboard"]), 2)
+        self.assertIn("github.com", payload["reply_markup"]["inline_keyboard"][0][0]["url"])
+
     def test_invalid_topic_rejected(self):
         with patch.dict(os.environ, {"CUDY_TELEGRAM_TOPIC_ID": "bad"}):
             with self.assertRaises(publisher.PublisherError):
