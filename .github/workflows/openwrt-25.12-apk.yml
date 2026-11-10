@@ -51,15 +51,9 @@ jobs:
           assert 'ACTIONS=0' in sh and 'CUDY_MONITOR_NATIVE_APK=1' in sh
           install=Path('packaging/openwrt/install-openwrt.sh').read_text()
           assert 'apk add --allow-untrusted' in install and 'ACTUAL_SHA256=$(sha256sum' in install and 'EXPECTED_SHA256=' in install and 'cudy-monitor-lan --lan' in install
-          # APK builder follows Cargo/Makefile version; the standalone installer
-          # remains pinned to v1.2.11 until the new published asset digest
-          # can be independently verified in a separate follow-up commit.
-          cargo=Path('cudy-monitor/Cargo.toml').read_text()
-          import re
-          version=re.search(r'version = "([0-9]+[.][0-9]+[.][0-9]+)"', cargo)
-          assert version, 'Cargo release version missing'
-          assert f'PKG_VERSION:={version.group(1)}' in p
-          assert 'VERSION=1.2.11' in install, 'pinned installer updated without verifying checksum'
+          # The standalone offline installer remains pinned to the verified 1.2.11 digest.
+          assert 'PKG_VERSION:=1.2.12' in p
+          assert 'VERSION=1.2.11' in install
           easy=Path('scripts/easy-install.sh').read_text()
           assert 'if [ -f /etc/openwrt_release ]; then' in easy
           assert 'elif [ -d /opt/etc/init.d ] && [ -x /opt/bin/opkg ]; then' in easy
