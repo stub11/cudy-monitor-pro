@@ -46,14 +46,22 @@ Webhook требует специальный заголовок X-Telegram-Bot-
 Никогда не публикуйте токен в README, issue, логах или чате.
 Не подключайте веб-хук до установки токена на Vercel: Telegram будет отправлять все входящие сообщения на новый адрес.
 
+## Статус развёртывания 10.11.2026
+
+Создан отдельный облачный проект Vercel `cudyapp-community-bot`, адрес `https://cudyapp-community-bot.vercel.app/api/webhook`. Первая production-сборка находится в состоянии READY. Проект развёрнут из исходных файлов без связки Vercel↔GitHub, поскольку Vercel запросил дополнительное GitHub Login Connection. Код при изменениях на GitHub не обновляется на Vercel автоматически — требуется новая публикация.
+
+В Vercel уже установлены `CUDY_TELEGRAM_CHAT_ID=@zapret2keenetic` и `CUDY_TELEGRAM_TOPIC_ID=87621`. **Отсутствует только секрет `CUDY_TELEGRAM_BOT_TOKEN`**. Ранее сохранённый GitHub Actions Secret нельзя прочитать и перенести между приложениями. Не публикуйте токен в чате или исходниках.
+
+После того как владелец проекта добавит тот же токен @Cudyapp в Vercel → Project → Settings → Environment Variables как **Sensitive** для Production, потребуется новый production deploy. После проверки доступности приложения запустите GitHub Actions → `Activate Cudyapp Telegram webhook` → `Run workflow`. URL уже указан в workflow, повторно вводить его не требуется. До завершения этих шагов webhook **не подключён**, а публикация релизов GitHub Actions работает как прежде.
+
+Для устойчивого антифлуда и реакций нужен Upstash Redis (`UPSTASH_REDIS_REST_URL` и `UPSTASH_REDIS_REST_TOKEN`). До подключения Redis эти две функции не действуют. Модерация очевидного мата и адресных оскорблений может работать отдельно, когда настроен токен и webhook и у бота есть право удаления сообщений.
+
 ## Подключение через GitHub Actions
 
-После привязки GitHub-репозитория к Vercel и установки токена в Vercel создайте Repository Variable с именем CUDYAPP_WEBHOOK_URL и значением https://<ваш-проект>.vercel.app/api/webhook.
-Затем откройте GitHub Actions → Activate Cudyapp Telegram webhook → Run workflow.
-Этот запуск использует УЖЕ существующий GitHub Actions Secret CUDY_TELEGRAM_BOT_TOKEN и устанавливает Telegram webhook с проверяемым секретным заголовком. Токен в консоль или README не выводится.
-Нельзя активировать webhook до появления работающего URL в Vercel; релизные сообщения из GitHub Actions продолжают работать независимо.
+Telegram webhook регистрируется только вручную, после успешного развёртывания и настройки секрета. Скрипт `bot/scripts/register_webhook.py` использует существующий GitHub Actions Secret и отправляет запрос к Telegram по HTTPS, не печатая токен. Откройте `.github/workflows/cudyapp-activate-webhook.yml` и запустите вручную. Секретный заголовок защищает webhook от посторонних вызовов.
 
-**Чтобы Vercel мог создать связанный с GitHub проект:** в настройках аккаунта Vercel подключите GitHub через Login Connections и предоставьте доступ к stub11/cudy-monitor-pro. Затем проект Vercel можно связать с rootDirectory=bot.
+Важно: **не пересылайте токен Rose Cloner или другим сторонним ботам.** Мы используем только @Cudyapp, GitHub и собственное Vercel-размещение.
+
 ## Приватность и безопасность
 
 Тексты сообщений не сохраняются. Redis содержит только кратковременные счётчики с TTL. При сбое хранилища бот не наказывает за флуд. Автоматические баны и муты выключены.
