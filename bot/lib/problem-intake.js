@@ -14,6 +14,20 @@ const LABELS = {
  tried:{docs:'Изучил README',restart:'Повторил запуск',nothing:'Ещё не проверял',other:'Другое'}
 };
 const GUIDE='https://github.com/stub11/cudy-monitor-pro#readme';
+const { checkMessage } = require('./moderation.js');
+function validDescription(text) {
+  if (typeof text !== 'string' || text.length < 10 || text.length > 400) return false;
+  const s=text.normalize('NFKC').toLowerCase().replace(/ё/g,'е');
+  // Reject obvious abusive/obscene language even when the main chat's
+  // conservative moderation rule did not match morphological variants.
+  if (checkMessage(s,{delete_profanity:true,delete_explicit_insults:true})) return false;
+  if (/(?:^|[^\p{L}])(?:ниху(?:я|е|й)|хер(?:ня|ово|ни)|заеб(?:ало|ал|ись)|бляд(?:ский|ство)|ебан(?:ый|ая|ое)|пиздец)(?=$|[^\p{L}])/iu.test(s)) return false;
+  const words=s.match(/[\p{L}]{2,}/gu)||[];
+  if (words.length < 4) return false;
+  const meaningful = /(?:монитор|панел|экран|вкладк|установ|запуск|график|трафик|сеть|ошиб|обнов|кнопк|интерфейс|страниц|температур|процесс|памят|подключ|завис|устройств|роутер|прошивк|вылет)/iu.test(s);
+  return meaningful && !/^(?:не\s+работает|все\s+сломалось|ничего\s+не\s+работает)[.!?\s]*$/iu.test(s);
+}
+
 const steps = ['platform','symptom','tried'];
 function startsProblem(text) {
  const s=String(text||'').normalize('NFKC').toLowerCase();
@@ -49,7 +63,7 @@ function scrubDescription(raw) {
  s=s.replace(/(?:[A-Za-z]:\\|\/(?:home|users|root|opt|etc)\/)[^\s]+/giu,'[путь скрыт]');
  s=s.replace(/\b(?:\+?\d[\d\s()-]{9,}\d)\b/gu,'[номер скрыт]');
  s=s.replace(/[@#<>\[\]()*_!~|{}\\]/gu,' ').replace(/\s+/gu,' ').trim().slice(0,400);
- return s.length>=10?s:null;
+ return validDescription(s) ? s : null;
 }
 function descriptionPrompt() {
  return '✍️ Чтобы дополнить отчёт, отправьте одним сообщением /cudy_describe и описание. '+
@@ -80,4 +94,4 @@ function buildIssue(state) {
  };
 }
 function nextStep(state) {return steps.find(k=>!state[k])||null;}
-module.exports={OPTIONS, LABELS, startsProblem, option, prompt, summarize, buildIssue, nextStep, scrubDescription, descriptionPrompt};
+module.exports={OPTIONS, LABELS, startsProblem, option, prompt, summarize, buildIssue, nextStep, scrubDescription, descriptionPrompt, validDescription};
