@@ -83,6 +83,11 @@ def validated_release(meta: object, tag: str, expected_asset: str) -> bool:
 # Short human-reviewed Russian summaries. Never publish raw English CHANGELOG
 # lines as Telegram announcements. Add a new entry when preparing each release.
 RELEASE_NOTES_RU = {
+    "1.2.13": [
+        "Панель теперь подтверждает завершение обновления по версии реально запущенного монитора.",
+        "Ответ о запуске обновлятора больше не считается подтверждением успешной установки.",
+        "При ошибке проверки отображается предупреждение без автоматического повторного обновления.",
+    ],
     "1.2.12": [
         "Исправлена проверка обновления OpenWrt: сверяются версии файла и запущенного монитора.",
         "Улучшена диагностика, когда монитор показывает разные версии до и после обновления.",
