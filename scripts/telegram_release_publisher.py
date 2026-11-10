@@ -80,55 +80,93 @@ def validated_release(meta: object, tag: str, expected_asset: str) -> bool:
     return False
 
 
+# Short human-reviewed Russian summaries. Never publish raw English CHANGELOG
+# lines as Telegram announcements. Add a new entry when preparing each release.
+RELEASE_NOTES_RU = {
+    "1.2.11": [
+        "Исправлено обновление OpenWrt APK из веб-панели: устранена ошибка origin mismatch.",
+        "Для авторизации и обновлений используется единая проверка запросов браузера.",
+        "Добавлены тесты защиты от запросов с посторонних сайтов.",
+    ],
+    "1.2.10": [
+        "Исправлено включение авторизации в браузерах без заголовка Origin.",
+        "Сохранена защита от запросов с чужих сайтов.",
+    ],
+    "1.2.9": [
+        "Добавлены системные журналы OpenWrt и история обновлений.",
+        "Появились поиск, обновление списка и экспорт диагностического отчёта.",
+    ],
+    "1.2.8": [
+        "Добавлено обновление OpenWrt APK непосредственно из веб-панели.",
+        "Авторизацию теперь можно включать и отключать; по умолчанию она выключена.",
+    ],
+}
+
+
 def changelog(version: str) -> str:
-    source = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    match = re.search(
-        rf"(?ms)^## {re.escape(version)}[^\n]*\n(.*?)(?=^## |\Z)", source
-    )
-    if not match:
-        return "Новая версия доступна для OpenWrt и Entware."
-    points = []
-    for item in match.group(1).splitlines():
-        item = item.strip().lstrip("- ").strip()
-        if item and not item.startswith("#"):
-            points.append(item)
-        if len(points) == 3:
-            break
-    result = "\n".join("• " + html.escape(x[:180]) for x in points)
-    return result[:700] or "Обновление опубликовано."
+    """Return only reviewed Russian release notes; never machine-guess changes."""
+    points = RELEASE_NOTES_RU.get(version)
+    if not points:
+        return (
+            "Доступна новая версия монитора для OpenWrt и Entware.\n"
+            "Список изменений и подробности — на страницах релизов."
+        )
+    return "\n".join("• " + html.escape(item) for item in points[:3])
+
+
+def release_links(version: str) -> dict[str, str]:
+    if not VERSION_RE.fullmatch(version):
+        raise PublisherError("Invalid release version")
+    return {
+        "OpenWrt APK": f"https://github.com/{REPO}/releases/tag/cudy-monitor-openwrt-v{version}",
+        "Entware IPK": f"https://github.com/{REPO}/releases/tag/cudy-monitor-v{version}",
+        "Инструкция": f"https://github.com/{REPO}#readme",
+    }
 
 
 def message(version: str) -> str:
     safe_version = html.escape(version)
-    apk = f"https://github.com/{REPO}/releases/tag/cudy-monitor-openwrt-v{version}"
-    ipk = f"https://github.com/{REPO}/releases/tag/cudy-monitor-v{version}"
     return (
-        f"🚀 <b>Cudy Monitor Pro {safe_version} — новый релиз</b>\n\n"
-        f"{changelog(version)}\n\n"
-        "✅ Два пакета опубликованы и проверены сборкой GitHub Actions:\n"
-        f'📦 <a href="{apk}">OpenWrt APK</a>\n'
-        f'📦 <a href="{ipk}">Keenetic Ported / Entware IPK</a>\n\n'
-        f'📖 <a href="https://github.com/{REPO}#readme">Установка, обновление и удаление</a>\n\n'
-        "⚠️ Проверка CI не заменяет тестирование на реальном роутере. "
-        "Не открывайте панель в интернет.\n"
+        f"🚀 <b>Cudy Monitor Pro {safe_version} — новый релиз!</b>\n\n"
+        f"<b>Что нового:</b>\n{changelog(version)}\n\n"
+        "✅ Пакеты OpenWrt и Entware опубликованы. "
+        "Сборки прошли автоматические проверки GitHub Actions.\n\n"
+        "📦 <b>Выберите платформу с помощью кнопок ниже.</b>\n\n"
+        "⚠️ Автоматические тесты не заменяют проверку на реальном роутере. "
+        "Не открывайте порт панели в интернет.\n"
         "#CudyMonitorPro #Релиз"
     )
 
 
-def telegram_send(bot_token: str, chat_id: str, topic_id: int, body: str) -> None:
+def telegram_keyboard(version: str) -> dict:
+    urls = release_links(version)
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "📦 OpenWrt APK", "url": urls["OpenWrt APK"]},
+                {"text": "📦 Entware IPK", "url": urls["Entware IPK"]},
+            ],
+            [{"text": "📖 Установка и обновление", "url": urls["Инструкция"]}],
+        ]
+    }
+
+
+def telegram_send(bot_token: str, chat_id: str, topic_id: int, body: str,
+                  *, version: str) -> None:
     payload = {
         "chat_id": chat_id,
         "message_thread_id": topic_id,
         "text": body,
         "parse_mode": "HTML",
-        "disable_web_page_preview": True,
+        "link_preview_options": {"is_disabled": True},
         "disable_notification": True,
+        "reply_markup": telegram_keyboard(version),
     }
     # Never include the bot token or full request URL in errors/logs.
     req = Request(
         f"https://api.telegram.org/bot{bot_token}/sendMessage",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", "User-Agent": "CudyMonitorPublisher/1.0"},
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json", "User-Agent": "CudyMonitorPublisher/1.1"},
         method="POST",
     )
     try:
@@ -173,7 +211,7 @@ def main() -> int:
         print(f"Not ready: verified Entware IPK {version} is missing")
         return 0
 
-    telegram_send(bot, chat, int(topic), message(version))
+    telegram_send(bot, chat, int(topic), message(version), version=version)
     head = github_request("git/ref/heads/main", gh_token)
     sha = (head or {}).get("object", {}).get("sha")
     if not isinstance(sha, str) or not re.fullmatch(r"[a-f0-9]{40}", sha):
