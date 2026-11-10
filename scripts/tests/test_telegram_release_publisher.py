@@ -166,6 +166,11 @@ class PublisherTests(TestCase):
                 publisher.main()
             send.assert_not_called()
 
+    def test_version_1_2_14_has_reviewed_russian_notes(self):
+        msg = publisher.message("1.2.14")
+        self.assertIn("отката", msg)
+        self.assertIn("openwrt-v1.2.14", publisher.telegram_keyboard("1.2.14")["inline_keyboard"][0][0]["url"])
+
     def test_version_1_2_13_has_reviewed_russian_notes(self):
         msg = publisher.message("1.2.13")
         self.assertIn("подтверждает завершение обновления", msg)

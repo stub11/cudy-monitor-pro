@@ -51,8 +51,8 @@ jobs:
           assert 'ACTIONS=0' in sh and 'CUDY_MONITOR_NATIVE_APK=1' in sh
           install=Path('packaging/openwrt/install-openwrt.sh').read_text()
           assert 'apk add --allow-untrusted' in install and 'ACTUAL_SHA256=$(sha256sum' in install and 'EXPECTED_SHA256=' in install and 'cudy-monitor-lan --lan' in install
-          # The standalone offline installer remains pinned to the verified 1.2.11 digest.
-          assert 'PKG_VERSION:=1.2.13' in p
+          # The standalone installer stays pinned to the published 1.2.13 APK until 1.2.14 has a verified digest.
+          assert 'PKG_VERSION:=1.2.14' in p
           assert 'VERSION=1.2.13' in install
           easy=Path('scripts/easy-install.sh').read_text()
           assert 'if [ -f /etc/openwrt_release ]; then' in easy
