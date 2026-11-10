@@ -76,7 +76,7 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:18237/api/network-history?iface=untrusted')" = 400
           curl --fail --silent http://127.0.0.1:18237/api/logs | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["source"]=="monitor" and len(x["events"])<=80'
           curl --fail --silent http://127.0.0.1:18237/api/service/action-status | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["action"] is None'
-          curl --fail --silent http://127.0.0.1:18237/api/status | python3 -c 'import json,sys; x=json.load(sys.stdin); assert isinstance(x["cores"],list) and "connections" in x and "cpu_mhz" in x and all("cpu" in p for p in x["processes"])'
+          curl --fail --silent http://127.0.0.1:18237/api/status | python3 -c 'import json,sys; x=json.load(sys.stdin); assert isinstance(x["cores"],list) and "connections" in x and "cpu_mhz" in x and all("cpu" in p for p in x["processes"]) and "mem_htop_used" in x and "mem_available" in x'
           for _ in $(seq 1 25); do curl --fail --silent http://127.0.0.1:18237/health >/dev/null; done
           # Updater must be unavailable unless its verified Entware helper is installed.
           test "$(curl --silent -o /dev/null -w '%{http_code}' http://127.0.0.1:18237/api/update/check)" = 503
@@ -127,10 +127,11 @@ jobs:
           assert '<html lang="ru">' in html
           assert 'id="auth"' not in html and 'id="login"' not in html
           assert 'id="monitorrss"' in html
-          for control in ('cpubar','membar','diskbar','storagebar','viewtitle','viewsubtitle','healthsummary','processfilter','processcount','lastseen'):
+          for control in ('cpubar','membar','memcomparison','diskbar','storagebar','viewtitle','viewsubtitle','healthsummary','processfilter','processcount','lastseen'):
               assert 'id="'+control+'"' in html, control
           assert 'data-go="network"' in html
           assert 'function renderProcesses()' in html
+          assert 'telemetry-stale' in html and 'Без кэша (≈htop)' in html
           assert 'function openPage(id)' in html
           assert 'if(pollBusy)return' in html
           assert 'lastPollAttempt' in html

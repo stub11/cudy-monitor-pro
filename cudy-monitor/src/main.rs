@@ -32,7 +32,31 @@ fn num(s:&str)->u64{s.trim().parse().unwrap_or(0)}
 fn quoted(s:&str)->String {let mut v=String::from("\"");for c in s.chars(){match c {'"'=>v.push_str("\\\""),'\\'=>v.push_str("\\\\"),'\n'=>v.push_str("\\n"),'\r'=>v.push_str("\\r"),'\t'=>v.push_str("\\t"),c if c.is_control()=>{},c=>v.push(c)}}v.push('"');v}
 fn cpu()->Cpu {let line=read("/proc/stat");let vals:Vec<u64>=line.lines().next().unwrap_or("").split_whitespace().skip(1).take(10).map(num).collect();Cpu{total:vals.iter().sum(),idle:vals.get(3).copied().unwrap_or(0)+vals.get(4).copied().unwrap_or(0)}}
 fn nets()->HashMap<String,Net>{let mut m=HashMap::new();for l in read("/proc/net/dev").lines().skip(2){if let Some((name,rest))=l.split_once(':'){let a:Vec<_>=rest.split_whitespace().collect();if a.len()>8 && name.trim()!="lo"{m.insert(name.trim().to_string(),Net{rx:num(a[0]),tx:num(a[8])});}}}m}
-fn mem()->(u64,u64,u64){let m=read("/proc/meminfo");let v=|key:&str|->u64{m.lines().find(|l|l.starts_with(key)).and_then(|l|l.split_whitespace().nth(1)).map(num).unwrap_or(0)/1024};let total=v("MemTotal:");(total,total.saturating_sub(v("MemAvailable:")),v("Cached:"))}
+fn mem_kib(source:&str,key:&str)->Option<u64>{
+    source.lines().find(|line|line.starts_with(key))
+        .and_then(|line|line.split_whitespace().nth(1))
+        .and_then(|value|value.parse::<u64>().ok())
+}
+fn htop_used_kib(source:&str)->Option<u64>{
+    let total=mem_kib(source,"MemTotal:")?;
+    let free=mem_kib(source,"MemFree:")?;
+    let buffers=mem_kib(source,"Buffers:")?;
+    let cached=mem_kib(source,"Cached:")?;
+    let reclaimable=mem_kib(source,"SReclaimable:")?;
+    let shared=mem_kib(source,"Shmem:")?;
+    Some(total.saturating_sub(free).saturating_sub(buffers)
+        .saturating_sub(cached).saturating_sub(reclaimable).saturating_add(shared).min(total))
+}
+fn mem_detail()->(u64,u64,u64,Option<f64>,Option<f64>){
+    let source=read("/proc/meminfo");
+    let total=mem_kib(&source,"MemTotal:").unwrap_or(0);
+    let available=mem_kib(&source,"MemAvailable:");
+    let used=available.map(|v|total.saturating_sub(v)).unwrap_or(0);
+    (total/1024,used/1024,mem_kib(&source,"Cached:").unwrap_or(0)/1024,
+        htop_used_kib(&source).map(|v|v as f64/1024.0),available.map(|v|v as f64/1024.0))
+}
+fn mem()->(u64,u64,u64){let (total,used,cached,_,_)=mem_detail();(total,used,cached)}
+
 fn disk()->(u64,u64,String){if std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1") { if let Ok(o)=Command::new("df").args(["-Pk","/overlay"]).output(){if o.status.success(){if let Some(l)=String::from_utf8_lossy(&o.stdout).lines().last(){let a:Vec<_>=l.split_whitespace().collect();if a.len()>=6{return (num(a[1])/1024,num(a[2])/1024,"/overlay".into())}}}} return (0,0,"/overlay unavailable".into());} if fs::metadata("/opt/etc").is_err(){return (0,0,"/opt not mounted".into());}for path in ["/opt"]{if let Ok(o)=Command::new("df").args(["-Pk",path]).output(){if o.status.success(){if let Some(l)=String::from_utf8_lossy(&o.stdout).lines().last(){let a:Vec<_>=l.split_whitespace().collect();if a.len()>=6{return (num(a[1])/1024,num(a[2])/1024,path.to_string())}}}}}(0,0,"unknown".into())}
 fn temps()->Vec<(String,f64)>{let mut out=Vec::new();if let Ok(entries)=fs::read_dir("/sys/class/thermal"){for e in entries.flatten(){let p=e.path();if !e.file_name().to_string_lossy().starts_with("thermal_zone"){continue}let t=read(&p.join("temp").to_string_lossy()).trim().parse::<f64>().unwrap_or(-1.);if !(0.0..=150000.).contains(&t){continue}let n=read(&p.join("type").to_string_lossy());out.push((n.trim().to_string(),if t>1000.{t/1000.}else{t}));}}out.truncate(12);out}
 fn procs()->Vec<(String,u64,u64)>{let mut p=Vec::new();if let Ok(it)=fs::read_dir("/proc"){for e in it.flatten(){let id=e.file_name().to_string_lossy().to_string();if !id.bytes().all(|x|x.is_ascii_digit()){continue}let n=read(&format!("/proc/{id}/comm"));if n.is_empty(){continue}let status=read(&format!("/proc/{id}/status"));let kb=status.lines().find(|l|l.starts_with("VmRSS:")).and_then(|l|l.split_whitespace().nth(1)).map(num).unwrap_or(0);p.push((n.trim().to_string(),num(&id),kb/1024));}}p.sort_by(|a,b|b.2.cmp(&a.2));p.truncate(32);p}
@@ -207,7 +231,7 @@ fn service_actions_enabled()->bool{
     std::env::var("CUDY_MONITOR_SERVICE_ACTIONS").ok().as_deref()==Some("1")
         || read("/opt/etc/cudy-monitor/service-actions").trim()=="1"
 }
-fn data(s:&Arc<Mutex<State>>)->String{let (cpu,network,core_load,pid_load)={let state=s.lock().unwrap_or_else(|e|e.into_inner());(state.current_cpu,state.current_network.clone(),state.current_cores.clone(),state.pid_usage.clone())};let (mt,mu,mc)=mem();let (dt,du,dm)=disk();let (connections,connections_max)=connections();let cpu_mhz=cpu_clock_mhz();let service_actions=service_actions_enabled();let up=read("/proc/uptime").split_whitespace().next().and_then(|x|x.parse::<f64>().ok()).unwrap_or(0.)as u64;let mut o=format!("{{\"model\":{},\"platform\":{},\"cpu\":{cpu:.1},\"mem_total\":{mt},\"mem_used\":{mu},\"mem_cached\":{mc},\"disk_total\":{dt},\"disk_used\":{du},\"disk_mount\":{},\"uptime\":{up},\"temps\":[",quoted(&device_model()),quoted(platform()),quoted(&dm));for (i,(n,c))in temps().iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"c\":{c:.1}}}",quoted(n)))}o.push_str("],\"network\":[");for(i,(n,rx,tx))in network.iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"rx\":{rx:.0},\"tx\":{tx:.0}}}",quoted(n)))}o.push_str("],\"cores\":[");for(i,(idx,percent))in core_load.iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"id\":{},\"usage\":{:.1}}}",idx,percent))}o.push_str("],\"processes\":[");for(i,(n,pid,rss))in procs().iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"pid\":{pid},\"mem\":{rss},\"cpu\":{:.1}}}",quoted(n),pid_load.get(pid).copied().unwrap_or(0.0)))}o.push_str("],\"services\":[");for(i,n)in["D2K","DoQ","KeenKit"].iter().enumerate(){if i>0{o.push(',')}let found=if *n=="KeenKit"{false}else{service_running(n)};let installed=match *n {"KeenKit"=>std::path::Path::new("/opt/bin/keenkit").exists(),"D2K"=>std::path::Path::new("/opt/etc/init.d/S99d2k").exists(),"DoQ"=>std::path::Path::new("/opt/etc/init.d/S56doqd").exists(),_=>false};o.push_str(&format!("{{\"name\":{},\"detected\":{found},\"installed\":{installed}}}",quoted(n)))}o.push_str(&format!("],\"connections\":{},\"connections_max\":{},\"cpu_mhz\":{},\"service_actions_enabled\":{},\"monitor_rss_mb\":{:.2},\"version\":{}}}",connections,connections_max,cpu_mhz,service_actions,own_rss_mb(),quoted(env!("CARGO_PKG_VERSION"))));o}
+fn data(s:&Arc<Mutex<State>>)->String{let (cpu,network,core_load,pid_load)={let state=s.lock().unwrap_or_else(|e|e.into_inner());(state.current_cpu,state.current_network.clone(),state.current_cores.clone(),state.pid_usage.clone())};let (mt,mu,mc,htop_used,available)=mem_detail();let htop_json=htop_used.map(|v|v.to_string()).unwrap_or_else(||"null".into());let available_json=available.map(|v|v.to_string()).unwrap_or_else(||"null".into());let (dt,du,dm)=disk();let (connections,connections_max)=connections();let cpu_mhz=cpu_clock_mhz();let service_actions=service_actions_enabled();let up=read("/proc/uptime").split_whitespace().next().and_then(|x|x.parse::<f64>().ok()).unwrap_or(0.)as u64;let mut o=format!("{{\"model\":{},\"platform\":{},\"cpu\":{cpu:.1},\"mem_total\":{mt},\"mem_used\":{mu},\"mem_cached\":{mc},\"mem_htop_used\":{htop_json},\"mem_available\":{available_json},\"disk_total\":{dt},\"disk_used\":{du},\"disk_mount\":{},\"uptime\":{up},\"temps\":[",quoted(&device_model()),quoted(platform()),quoted(&dm));for (i,(n,c))in temps().iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"c\":{c:.1}}}",quoted(n)))}o.push_str("],\"network\":[");for(i,(n,rx,tx))in network.iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"rx\":{rx:.0},\"tx\":{tx:.0}}}",quoted(n)))}o.push_str("],\"cores\":[");for(i,(idx,percent))in core_load.iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"id\":{},\"usage\":{:.1}}}",idx,percent))}o.push_str("],\"processes\":[");for(i,(n,pid,rss))in procs().iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"pid\":{pid},\"mem\":{rss},\"cpu\":{:.1}}}",quoted(n),pid_load.get(pid).copied().unwrap_or(0.0)))}o.push_str("],\"services\":[");for(i,n)in["D2K","DoQ","KeenKit"].iter().enumerate(){if i>0{o.push(',')}let found=if *n=="KeenKit"{false}else{service_running(n)};let installed=match *n {"KeenKit"=>std::path::Path::new("/opt/bin/keenkit").exists(),"D2K"=>std::path::Path::new("/opt/etc/init.d/S99d2k").exists(),"DoQ"=>std::path::Path::new("/opt/etc/init.d/S56doqd").exists(),_=>false};o.push_str(&format!("{{\"name\":{},\"detected\":{found},\"installed\":{installed}}}",quoted(n)))}o.push_str(&format!("],\"connections\":{},\"connections_max\":{},\"cpu_mhz\":{},\"service_actions_enabled\":{},\"monitor_rss_mb\":{:.2},\"version\":{}}}",connections,connections_max,cpu_mhz,service_actions,own_rss_mb(),quoted(env!("CARGO_PKG_VERSION"))));o}
 fn respond(s:&mut TcpStream,status:&str,typ:&str,body:&[u8]){let header=format!("HTTP/1.1 {status}\r\nContent-Type: {typ}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nConnection: close\r\n\r\n",body.len());let _=s.write_all(header.as_bytes());let _=s.write_all(body);}
 fn constant_time_match(a:&[u8],b:&[u8])->bool{let mut diff=a.len()^b.len();for i in 0..a.len().max(b.len()){diff|=usize::from(a.get(i).copied().unwrap_or(0)^b.get(i).copied().unwrap_or(0));}diff==0}
 fn update_command(mode:&str)->Result<String,String>{
@@ -526,6 +550,17 @@ fn main()->std::io::Result<()>{
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test] fn ram_htop_vs_available_fixture(){
+        let fixture="MemTotal: 239564 kB\nMemFree: 50632 kB\nMemAvailable: 73540 kB\nBuffers: 17960 kB\nCached: 51872 kB\nShmem: 3084 kB\nSReclaimable: 10868 kB\n";
+        assert_eq!(htop_used_kib(fixture),Some(111316));
+        assert_eq!(mem_kib(fixture,"MemAvailable:"),Some(73540));
+        assert_eq!(mem_kib(fixture,"MemTotal:").unwrap()-mem_kib(fixture,"MemAvailable:").unwrap(),166024);
+        assert_eq!(htop_used_kib("MemTotal: 239564 kB\n"),None);
+    }
+    #[test] fn ram_underflow_is_clamped(){
+        let source="MemTotal: 100 kB\nMemFree: 90 kB\nBuffers: 40 kB\nCached: 40 kB\nSReclaimable: 40 kB\nShmem: 0 kB\n";
+        assert_eq!(htop_used_kib(source),Some(0));
+    }
     #[test] fn history_size(){let mut v=VecDeque::with_capacity(HISTORY_POINTS);for i in 0..3000 {if v.len()==HISTORY_POINTS{v.pop_front();}v.push_back(i)}assert_eq!(v.len(),1080);assert_eq!(v.front(),Some(&1920));}
     #[test] fn restart_identity(){assert!(service_restarted(&[12],&[13]));assert!(service_restarted(&[],&[13]));assert!(!service_restarted(&[12],&[12]));assert!(!service_restarted(&[12],&[]));assert!(!service_restarted(&[12,13],&[13,14]));}
     #[test] fn iface_validation(){assert!(valid_iface("br-lan"));assert!(valid_iface("pppoe-wan"));assert!(valid_iface("wlan0"));assert!(valid_iface("eth0.2"));assert!(!valid_iface("../etc/passwd"));assert!(!valid_iface("bad?iface"));assert!(!valid_iface(""));}

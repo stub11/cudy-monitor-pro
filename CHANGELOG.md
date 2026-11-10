@@ -1,5 +1,11 @@
 # Cudy Monitor Pro — Release notes
 
+## 1.2.4 — CM Aurora telemetry lessons
+- Distinguish stale dashboard data from live readings after HTTP/API failures; pause live network visualization until a valid status poll returns.
+- Expose htop-like used RAM and MemAvailable separately while retaining the existing memory metric/API for compatibility.
+- Display a memory comparison in the UI and add Linux meminfo regression tests.
+- Keep service management disabled by default; no router-side configuration or unrelated service changes.
+
 ## 1.1.0 — Aurora dashboard
 - First implementation of Aurora visual design: responsive cards, clearer navigation and spacious desktop charts.
 - Show real local service status chips from the existing API; no fabricated metrics.
