@@ -49,11 +49,11 @@ CURRENT=1.2.12
 DIR="$TEST_ROOT"
 : > "$DIR/previous.apk"
 SELF="$TEST_ROOT/bin/cudy-monitor-pro"
-printf '%s\\n' '1.2.12' > "$TEST_ROOT/disk-version"
+printf '%s\n' '1.2.12' > "$TEST_ROOT/disk-version"
 cat > "$SELF" <<'EOF'
 #!/bin/sh
 [ "${1:-}" = "--version" ] || exit 2
-printf 'cudy-monitor-pro %s\\n' "$(cat "$TEST_DISK_VERSION")"
+printf 'cudy-monitor-pro %s\n' "$(cat "$TEST_DISK_VERSION")"
 EOF
 chmod +x "$SELF"
 TEST_DISK_VERSION="$TEST_ROOT/disk-version"
@@ -73,10 +73,10 @@ mock_exe 102 1.2.12
 (restore_old > "$TEST_ROOT/rollback.log" 2>&1) ||
   { echo 'correct rollback rejected'; exit 1; }
 # Old daemon still running, but disk executable is a newer (wrong) version.
-printf '%s\\n' '1.2.13' > "$TEST_ROOT/disk-version"
+printf '%s\n' '1.2.13' > "$TEST_ROOT/disk-version"
 (rollback_fails disk-mismatch)
 # Disk restored correctly, but one daemon remains the newer version.
-printf '%s\\n' '1.2.12' > "$TEST_ROOT/disk-version"
+printf '%s\n' '1.2.12' > "$TEST_ROOT/disk-version"
 mock_exe 102 1.2.13
 (rollback_fails process-mismatch)
 # A failed package-manager restoration cannot be considered successful.
