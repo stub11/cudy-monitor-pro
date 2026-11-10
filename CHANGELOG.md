@@ -1,5 +1,10 @@
 # Cudy Monitor Pro — Release notes
 
+## 1.2.10 — Authorization origin compatibility
+- Fixes optional panel authorization when a LAN browser suppresses the `Origin` header on a same-origin POST.
+- The panel now sends an explicit first-party origin header for privileged actions; mismatched origins remain blocked.
+- Adds unit and API regression tests for the missing-Origin case and hostile origins.
+
 ## 1.2.9 — Logs and diagnostics
 - Adds selectable read-only log sources: monitor events, system logread, and volatile native updater log.
 - Adds search, source refresh, and local TXT export; exports are filtered and capped before reaching the browser.
