@@ -162,7 +162,7 @@ async function handleProblem(message, text, token) {
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) state = parsed;
     } catch { state = {}; }
   }
-  if (/^\\/cudy_cancel(?:@cudyapp)?\\s*$/u.test(command)) {
+  if (/^\/cudy_cancel(?:@cudyapp)?\s*$/u.test(command)) {
     if (!activeRaw) return false;
     await redis(['DEL', key]);
     await problemReply(message, 'Опрос отменён. Никакой отчёт не опубликован.', token);
@@ -175,7 +175,7 @@ async function handleProblem(message, text, token) {
   }
   if (!activeRaw) return false;
   const step = issueIntake.nextStep(state);
-  if (/^\\/cudy_report(?:@cudyapp)?\\s*$/u.test(command) && !step) {
+  if (/^\/cudy_report(?:@cudyapp)?\s*$/u.test(command) && !step) {
     const report = issueIntake.buildIssue(state);
     if (!report) return true;
     if (process.env.CUDY_ISSUE_REPORTS_ENABLED !== 'true' ||
@@ -206,7 +206,7 @@ async function handleProblem(message, text, token) {
     const value = issueIntake.option(text,step);
     if (!value) {
       // Ignore unrelated discussion rather than hijacking every user message.
-      return /^\\/cudy_(?:platform|symptom|tried|report)/u.test(command);
+      return /^\/cudy_(?:platform|symptom|tried|report)/u.test(command);
     }
     state[step] = value;
     await redis(['SET', key, JSON.stringify(state), 'EX', '1800']);
