@@ -44,6 +44,35 @@ async function checkBrowser(engine, label, options = {}) {
     assert.match(await page.locator('#updatestatus').textContent(), /установлен 1\.2\.11.*запущен 1\.2\.10/u);
     await page.unroute('**/api/update/check');
 
+    // A successful 202 Accepted only starts an OTA. The UI must wait for
+    // the running daemon's exact target version before claiming success.
+    await page.route('**/api/update/check', route => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        latest: '1.2.13', current: '1.2.12', running: '1.2.12',
+        available: true, restart_required: false
+      })
+    }));
+    await page.locator('#checkupdate').click();
+    await page.waitForFunction(() => !document.querySelector('#applyupdate').disabled);
+    await page.route('**/api/update/apply', route => route.fulfill({
+      status: 202, contentType: 'application/json',
+      body: JSON.stringify({status:'started'})
+    }));
+    await page.route('**/api/status', route => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({version:'1.2.13'})
+    }));
+    await page.locator('#applyupdate').click();
+    await page.waitForFunction(() => document.querySelector('#updatestatus')
+      .textContent.includes('Обновление подтверждено: запущена версия 1.2.13'), null,
+      {timeout: 12000});
+    assert.equal(await page.locator('#applyupdate').isDisabled(),true,
+      label+' update must not be re-enabled without rechecking metadata');
+    await page.unroute('**/api/status');
+    await page.unroute('**/api/update/apply');
+    await page.unroute('**/api/update/check');
+
     // Simulate privacy-focused browsers which omit Origin on same-origin POSTs.
     await page.route('**/api/auth/enable', route => {
       const headers = { ...route.request().headers() };
