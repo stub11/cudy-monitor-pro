@@ -84,6 +84,15 @@ async function rollingCounter(key, windowSeconds, messageId, timestampMs = Date.
   return Number(await redis(['EVAL', script, '1', key, String(cutoff),
     String(timestampMs), String(messageId), String(windowSeconds + 2)]));
 }
+function allowReaction(updateId, token, probability = 1) {
+  const chance = Number(probability);
+  if (!Number.isFinite(chance) || chance <= 0) return false;
+  if (chance >= 1) return true;
+  // Stable draw for Telegram retries, without storing or logging message contents.
+  const digest = crypto.createHash('sha256')
+    .update(String(updateId) + '|' + token).digest();
+  return digest.readUInt32BE(0) / 0x100000000 < chance;
+}
 function hasRedis() {
   const { url, key } = redisCredentials();
   return Boolean(url && key);
@@ -163,7 +172,8 @@ async function processUpdate(update, token) {
   }
   if (!update.message || !config.reactions.enabled || !hasRedis()) return;
   const reaction = selectReaction(text, config.reactions.triggers, update.update_id || message.message_id);
-  if (!reaction) return;
+  if (!reaction || !allowReaction(update.update_id || message.message_id, token,
+      config.reactions.probability ?? 1)) return;
   const throttle = 'cudy:reaction:' + message.chat.id + ':' + message.message_thread_id;
   try {
     if (!await once(throttle, config.reactions.cooldown_seconds)) return;
@@ -200,4 +210,4 @@ module.exports = async function handler(req, res) {
   }
   res.statusCode = 200; res.end('OK');
 };
-module.exports._test = { webhookSecret, equalSecret, targetChat, targetTopic, processUpdate };
+module.exports._test = { webhookSecret, equalSecret, targetChat, targetTopic, processUpdate, allowReaction };
