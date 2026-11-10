@@ -660,14 +660,8 @@ fn handle(mut c:TcpStream,s:Arc<Mutex<State>>,token:String){
         respond(&mut c,"202 Accepted","application/json",if name=="DoQ" && action=="stop"{&b"{\"status\":\"started\",\"auto_restore_sec\":90}"[..]}else{&b"{\"status\":\"started\"}"[..]});return;
     }
     if line.starts_with("POST /api/update/apply HTTP/"){
-        // Require a custom header and local host Origin to limit cross-site requests.
-        let host=request.lines().find_map(|l|l.split_once(':')
-            .filter(|(k,_)|k.eq_ignore_ascii_case("Host")).map(|(_,v)|v.trim())).unwrap_or("");
-        let origin=request.lines().find_map(|l|l.split_once(':')
-            .filter(|(k,_)|k.eq_ignore_ascii_case("Origin")).map(|(_,v)|v.trim())).unwrap_or("");
-        let action_header=request.lines().find_map(|l|l.split_once(':')
-            .filter(|(k,_)|k.eq_ignore_ascii_case("X-Monitor-Action")).map(|(_,v)|v.trim())).unwrap_or("");
-        if action_header!="apply" || origin.is_empty() || origin!=format!("http://{host}") || host != addr_for_host(&c) {
+        // Use the same first-party origin policy as the authorization endpoints.
+        if !same_origin(&request,&c,"apply") {
             respond(&mut c,"403 Forbidden","application/json",b"{\"error\":\"origin mismatch\"}");return;
         }
         let is_native=std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1");
@@ -795,6 +789,22 @@ pppoe-wan 00000000 00000000 0001 0 0 10 00000000 0 0 0\n";
             assert_eq!(update_available(invalid,"1.0.0"),None);
             assert_eq!(update_available("1.0.3",invalid),None);
         }
+    }
+    #[test] fn update_origin_accepts_local_page_and_rejects_other_sites(){
+        let listener=TcpListener::bind("127.0.0.1:0").unwrap();
+        let address=listener.local_addr().unwrap();
+        let peer=TcpStream::connect(address).unwrap();
+        let (server,_)=listener.accept().unwrap();
+        let host=address.to_string();
+        let base=format!("POST /api/update/apply HTTP/1.1\r\nHost: {host}\r\nX-Monitor-Action: apply\r\nX-Monitor-Page-Origin: http://{host}\r\n\r\n");
+        assert!(same_origin(&base,&server,"apply"));
+        let traditional=format!("POST /api/update/apply HTTP/1.1\r\nHost: {host}\r\nOrigin: http://{host}\r\nX-Monitor-Action: apply\r\n\r\n");
+        assert!(same_origin(&traditional,&server,"apply"));
+        assert!(!same_origin(&base.replace("X-Monitor-Action: apply","X-Monitor-Action: auth-enable"),&server,"apply"));
+        assert!(!same_origin(&base.replace(&format!("http://{host}"),"http://evil.invalid"),&server,"apply"));
+        assert!(!same_origin(&base.replace("\r\n\r\n","\r\nOrigin: http://evil.invalid\r\n\r\n"),&server,"apply"));
+        assert!(!same_origin(&base.replace("\r\n\r\n","\r\nSec-Fetch-Site: cross-site\r\n\r\n"),&server,"apply"));
+        drop(peer);
     }
     #[test] fn same_origin_fallback_requires_first_party_header(){
         let listener=TcpListener::bind("127.0.0.1:0").unwrap();
