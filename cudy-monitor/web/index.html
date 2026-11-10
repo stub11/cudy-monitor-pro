@@ -645,10 +645,29 @@ async function checkUpdate(){
     const r=await fetch('/api/update/check',{cache:'no-store'});
     const data=await r.json();
     if(!r.ok)throw Error(data.error||'Ошибка сети');
-    el('currentversion').textContent=data.current;
-    el('latestversion').textContent=data.latest;
-    el('updatestatus').textContent=data.available?'Доступно обновление '+data.latest:'Установлена актуальная версия';
-    el('applyupdate').disabled=!data.available;
+    const versionTuple=v=>/^\d+\.\d+\.\d+$/.test(v||'')?v.split('.').map(Number):null;
+    const serverLatest=versionTuple(data.latest),serverCurrent=versionTuple(data.current);
+    const actuallyNewer=serverLatest&&serverCurrent?
+      serverLatest.some((n,i)=>n!==serverCurrent[i]&&
+        serverLatest.slice(0,i).every((x,j)=>x===serverCurrent[j])&&n>serverCurrent[i]):null;
+    // A contradictory API status must never enable privileged installation.
+    const inconsistent=typeof data.available!=='boolean'||actuallyNewer===null||
+      Boolean(data.available)!==actuallyNewer;
+    const runningVersion=el('sidebarversion').textContent.trim();
+    const liveVersion=versionTuple(runningVersion)?runningVersion:null;
+    const runningMismatch=liveVersion&&data.current!==liveVersion;
+    el('currentversion').textContent=liveVersion||data.current;
+    el('latestversion').textContent=data.latest||'—';
+    if(inconsistent||runningMismatch){
+      el('updatestatus').textContent='⚠️ Несогласованные данные обновления: API сообщает '+data.current+
+        ' → '+data.latest+', обновление '+String(data.available)+
+        (runningMismatch?', работающий монитор '+liveVersion:'')+
+        '. Установка заблокирована. Проверьте журнал обновлений и сообщите разработчику.';
+      el('applyupdate').disabled=true;
+    }else{
+      el('updatestatus').textContent=data.available?'Доступно обновление '+data.latest:'Установлена актуальная версия';
+      el('applyupdate').disabled=!data.available;
+    }
   }catch(e){el('updatestatus').textContent='Не удалось проверить: '+e.message;}
   finally{el('checkupdate').disabled=false;}
 }
