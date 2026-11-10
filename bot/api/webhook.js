@@ -120,6 +120,14 @@ async function processUpdate(update, token) {
     }
   }
   if (bad) {
+    // Never moderate group owners or other administrators automatically.
+    // If membership cannot be confirmed, fail open instead of deleting.
+    try {
+      const membership = await api('getChatMember', {
+        chat_id: message.chat.id, user_id: message.from.id
+      }, token);
+      if (!membership || ['creator', 'administrator'].includes(membership.status)) return;
+    } catch { return; }
     try {
       await api('deleteMessage', {
         chat_id: message.chat.id, message_id: message.message_id
