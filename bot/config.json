@@ -1,0 +1,26 @@
+{
+  "chat_username": "zapret2keenetic",
+  "topic_id": 87621,
+  "enabled": true,
+  "moderation": {
+    "enabled": true,
+    "delete_profanity": true,
+    "delete_explicit_insults": true,
+    "flood": {
+      "enabled": true,
+      "limit": 6,
+      "window_seconds": 20
+    },
+    "warnings": {
+      "enabled": true,
+      "cooldown_seconds": 120
+    },
+    "ban_enabled": false,
+    "mute_enabled": false
+  },
+  "reactions": {
+    "enabled": true,
+    "cooldown_seconds": 40,
+    "triggers": []
+  }
+}
