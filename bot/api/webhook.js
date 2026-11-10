@@ -197,7 +197,7 @@ async function handleProblem(message, text, token) {
     await problemReply(message, 'Опрос отменён. Никакой отчёт не опубликован.', token);
     return true;
   }
-  if (issueIntake.startsProblem(text)) {
+  if (!/^\/cudy_describe(?:@cudyapp)?(?:\s|$)/u.test(command) && issueIntake.startsProblem(text)) {
     await redis(['SET', key, JSON.stringify({}), 'EX', '1800']);
     await problemReply(message, issueIntake.prompt('platform'), token, diagnosticKeyboard('platform'));
     return true;
