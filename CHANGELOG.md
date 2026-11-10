@@ -1,5 +1,11 @@
 # Cudy Monitor Pro — Release notes
 
+## 1.2.6 — WAN auto/manual controls
+- Add one-tap return to default-route WAN after manually selecting a network interface.
+- Clearly display whether the WAN view is automatic or manual, including missing or ambiguous routes.
+- Add browser regression coverage for manual-to-auto switching and fix duplicate RAM comparison class attributes.
+- Keep router network settings unchanged.
+
 ## 1.2.5 — Active WAN route detection
 - Detect default IPv4 route interface from the kernel's main routing table; select by lowest metric and treat equally ranked different interfaces as ambiguous.
 - Follow the detected WAN in the dashboard without hard-coded interface names; retain deliberate manual selection and reset the chart on route changes.

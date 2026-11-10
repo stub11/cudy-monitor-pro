@@ -41,7 +41,7 @@ jobs:
           assert 'ACTIONS=0' in sh and 'CUDY_MONITOR_NATIVE_APK=1' in sh
           install=Path('packaging/openwrt/install-openwrt.sh').read_text()
           assert 'apk add --allow-untrusted' in install and 'sha256sum -c -' in install and 'cudy-monitor-lan --lan' in install
-          assert 'PKG_VERSION:=1.2.5' in p and 'VERSION=1.2.5' in install
+          assert 'PKG_VERSION:=1.2.6' in p and 'VERSION=1.2.6' in install
           easy=Path('scripts/easy-install.sh').read_text()
           assert 'if [ -f /etc/openwrt_release ]; then' in easy
           assert 'elif [ -d /opt/etc/init.d ] && [ -x /opt/bin/opkg ]; then' in easy

@@ -1,7 +1,7 @@
 #!/bin/sh
 # One-command native OpenWrt installer. No modification of DNS/firewall/routing.
 set -eu
-VERSION=1.2.5
+VERSION=1.2.6
 PACKAGE="cudy-monitor-pro-$VERSION-r1.apk"
 BASE="https://github.com/stub11/cudy-monitor-pro/releases/download/cudy-monitor-openwrt-v$VERSION"
 TMPDIR=/tmp/cudy-monitor-installer.$$
