@@ -146,6 +146,84 @@ function diagnosticKeyboard(step, complete = false) {
     [{text:'❌ Отмена',callback_data:'cd:cancel:yes'}]
   ]};
 }
+function mediaStoreKey(message, index) {
+  return 'cudy:media:v1:' + message.chat.id + ':' + message.message_thread_id + ':' + index;
+}
+function mediaCommand(text) {
+  const m = /^\\/cudy_media(?:@Cudyapp)?(?:\\s+(help|list|add|remove)(?:\\s+(\\d{1,2}))?)?\\s*$/iu.exec(text || '');
+  if (!m) return null;
+  const action = (m[1] || 'help').toLowerCase();
+  const index = m[2] === undefined ? null : Number(m[2]);
+  if ((action === 'add' || action === 'remove') && (index === null || index < 1 || index > config.reactions.triggers.length)) return null;
+  return {action,index:index === null ? null : index - 1};
+}
+async function manageMedia(message, text, token) {
+  const cmd = mediaCommand(text);
+  if (!cmd) return false;
+  // Only an administrator can read/change media settings; commands are
+  // processed strictly inside configured forum topic.
+  let membership;
+  try {
+    membership = await api('getChatMember',{chat_id:message.chat.id,user_id:message.from.id},token);
+  } catch { return true; }
+  if (!['administrator','creator'].includes(membership?.status)) return true;
+  if (!hasRedis()) return true;
+  const reply = async text=>api('sendMessage',{
+    chat_id:message.chat.id,message_thread_id:message.message_thread_id,
+    reply_to_message_id:message.message_id,text,disable_notification:true,
+    disable_web_page_preview:true
+  },token);
+  if (cmd.action === 'help') {
+    await reply('🎭 Настройка реакций @Cudyapp (только администраторы).\\n'+
+      '/cudy_media list — список 33 категорий.\\n'+
+      'Ответьте на понравившийся стикер или GIF командой /cudy_media add 1 (номер категории).\\n'+
+      '/cudy_media remove 1 — убрать медиа категории.\\n'+
+      'Слова и ответы из утверждённого словаря остаются без изменений. Медиа появляются редко, не чаще общего лимита 40 секунд.');
+    return true;
+  }
+  if (cmd.action === 'list') {
+    const lines = config.reactions.triggers.map((g,i)=>
+      (i+1)+'. '+g.words.slice(0,3).join(', '));
+    await reply('🎭 Номера категорий для привязки стикеров и GIF:\\n'+lines.join('\\n'));
+    return true;
+  }
+  const key=mediaStoreKey(message,cmd.index);
+  if (cmd.action === 'remove') {
+    await redis(['DEL',key]);
+    await reply('✅ Медиа для категории №'+(cmd.index+1)+' отключено; текстовые реакции сохранены.');
+    return true;
+  }
+  const source=message.reply_to_message;
+  // Telegram already validated and hosted these assets. Do not take media
+  // from arbitrary URLs, messages outside the topic or an external source.
+  const sticker=source?.sticker?.file_id;
+  const animation=source?.animation?.file_id;
+  if (!source || !targetTopic(source) ||
+      !(typeof sticker==='string' && sticker.length<=200 ||
+        typeof animation==='string' && animation.length<=200)) {
+    await reply('⚠️ Для добавления ответьте командой на стикер или GIF в этой же теме. Ссылки и файлы от сторонних сайтов не принимаются.');
+    return true;
+  }
+  const media=sticker?{kind:'sticker',fileId:sticker}:{kind:'animation',fileId:animation};
+  await redis(['SET',key,JSON.stringify(media)]);
+  await reply('✅ Категория №'+(cmd.index+1)+' получила '+(sticker?'стикер':'GIF')+'. Действует общий лимит реакций.');
+  return true;
+}
+async function mediaReaction(message,text,entropy,token) {
+  for(let index=0;index<config.reactions.triggers.length;index++){
+    const rule=config.reactions.triggers[index];
+    if(!selectReaction(text,[rule],entropy)) continue;
+    const stored=await redis(['GET',mediaStoreKey(message,index)]);
+    if(!stored) return null;
+    let media;
+    try {media=JSON.parse(stored);} catch{return null;}
+    if(!media || typeof media.fileId!=='string' || !/^[A-Za-z0-9_-]{10,200}$/.test(media.fileId))return null;
+    if(media.kind==='sticker')return {sticker_file_id:media.fileId};
+    if(media.kind==='animation')return {animation_url:media.fileId};
+    return null;
+  }
+  return null;
+}
 async function problemReply(message, text, token, keyboard) {
   await api('sendMessage', {
     chat_id: message.chat.id, message_thread_id: message.message_thread_id,
@@ -361,6 +439,11 @@ async function processUpdate(update, token) {
     try { await warn(message, reason, token, named); } catch { /* best effort */ }
     return;
   }
+  // Restrict media administration to group admins, in the monitor topic.
+  if (update.message && /^\\/cudy_media(?:@Cudyapp)?(?:\\s|$)/iu.test(text)) {
+    try {await manageMedia(message,text,token);}catch{}
+    return;
+  }
   // Only process diagnostic intake after moderation and within the target topic.
   if (update.message && hasRedis()) {
     try {
@@ -401,7 +484,12 @@ async function processUpdate(update, token) {
   const throttle = 'cudy:reaction:' + message.chat.id + ':' + message.message_thread_id;
   try {
     if (!await once(throttle, config.reactions.cooldown_seconds)) return;
-    await react(message, reaction, token);
+    // Up to 45% of already eligible reactions may use admin-approved
+    // Telegram-hosted media. Otherwise retain approved text response.
+    const media = allowReaction(update.update_id || message.message_id, token+'|media', 0.45)
+      ? await mediaReaction(message,text,update.update_id || message.message_id,token) : null;
+    try {await react(message,media||reaction,token);}
+    catch {if(media)await react(message,reaction,token);}
   } catch { /* media may be unavailable; never disrupt ordinary chat */ }
 }
 module.exports = async function handler(req, res) {
@@ -435,4 +523,4 @@ module.exports = async function handler(req, res) {
   }
   res.statusCode = 200; res.end('OK');
 };
-module.exports._test = { webhookSecret, equalSecret, targetChat, targetTopic, processUpdate, allowReaction, diagnosticKeyboard, handleDiagnosticCallback };
+module.exports._test = { webhookSecret, equalSecret, targetChat, targetTopic, processUpdate, allowReaction, diagnosticKeyboard, handleDiagnosticCallback, mediaCommand, mediaStoreKey, mediaReaction };
