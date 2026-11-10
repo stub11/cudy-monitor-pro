@@ -56,7 +56,10 @@ jobs:
           # can be independently verified in a separate follow-up commit.
           cargo=Path('cudy-monitor/Cargo.toml').read_text()
           import re
-          version=re.search(r'^version = "([0-9]+\\.[0-9]+\\.[0-9]+)"
+          version=re.search(r'version = "([0-9]+[.][0-9]+[.][0-9]+)"', cargo)
+          assert version, 'Cargo release version missing'
+          assert f'PKG_VERSION:={version.group(1)}' in p
+          assert 'VERSION=1.2.11' in install, 'pinned installer updated without verifying checksum'
           easy=Path('scripts/easy-install.sh').read_text()
           assert 'if [ -f /etc/openwrt_release ]; then' in easy
           assert 'elif [ -d /opt/etc/init.d ] && [ -x /opt/bin/opkg ]; then' in easy
