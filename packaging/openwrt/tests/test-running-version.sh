@@ -26,7 +26,7 @@ mock_exe() {
   cat > "$TEST_ROOT/proc/$pid/exe" <<EOF
 #!/bin/sh
 [ "\${1:-}" = "--version" ] || exit 2
-printf '%s\\n' 'cudy-monitor-pro $version'
+printf '%s\n' 'cudy-monitor-pro $version'
 EOF
   chmod +x "$TEST_ROOT/proc/$pid/exe"
 }
