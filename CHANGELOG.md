@@ -1,5 +1,11 @@
 # Cudy Monitor Pro — Release notes
 
+## 1.2.7 — OpenWrt update guidance
+- Native OpenWrt APK now identifies itself to the browser as a separate update mode.
+- Replaces the misleading generic updater failure with a clear copyable SSH command and GitHub releases link.
+- Keeps one-click browser-side package installation disabled because the LAN dashboard has no authentication.
+- Adds native-specific HTTP/API tests and safe fallback clipboard copying.
+
 ## 1.2.6 — WAN auto/manual controls
 - Add one-tap return to default-route WAN after manually selecting a network interface.
 - Clearly display whether the WAN view is automatic or manual, including missing or ambiguous routes.

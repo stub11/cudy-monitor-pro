@@ -76,7 +76,7 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:18237/api/network-history?iface=untrusted')" = 400
           curl --fail --silent http://127.0.0.1:18237/api/logs | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["source"]=="monitor" and len(x["events"])<=80'
           curl --fail --silent http://127.0.0.1:18237/api/service/action-status | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["action"] is None'
-          curl --fail --silent http://127.0.0.1:18237/api/status | python3 -c 'import json,sys; x=json.load(sys.stdin); assert isinstance(x["cores"],list) and "connections" in x and "cpu_mhz" in x and all("cpu" in p for p in x["processes"]) and "mem_htop_used" in x and "mem_available" in x and (x["wan_iface"] is None or isinstance(x["wan_iface"],str)) and x["wan_route_status"] in ("missing","ambiguous","main_ipv4_route")'
+          curl --fail --silent http://127.0.0.1:18237/api/status | python3 -c 'import json,sys; x=json.load(sys.stdin); assert isinstance(x["cores"],list) and "connections" in x and "cpu_mhz" in x and all("cpu" in p for p in x["processes"]) and "mem_htop_used" in x and "mem_available" in x and (x["wan_iface"] is None or isinstance(x["wan_iface"],str)) and x["wan_route_status"] in ("missing","ambiguous","main_ipv4_route") and x["update_mode"]=="entware"'
           for _ in $(seq 1 25); do curl --fail --silent http://127.0.0.1:18237/health >/dev/null; done
           # Updater must be unavailable unless its verified Entware helper is installed.
           test "$(curl --silent -o /dev/null -w '%{http_code}' http://127.0.0.1:18237/api/update/check)" = 503
@@ -117,6 +117,20 @@ jobs:
           curl -fsS http://127.0.0.1:18239/api/status | python3 -c 'import sys,json;assert json.load(sys.stdin)["service_actions_enabled"] is True'
           # CI hosts do not carry a privileged router service script.
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Origin: http://127.0.0.1:18239' -H 'X-Monitor-Action: restart' "$endpoint")" = 503
+      - name: Native OpenWrt update controls remain read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          CUDY_MONITOR_NATIVE_APK=1 CUDY_MONITOR_BIND=127.0.0.1:18244 target/debug/cudy-monitor-pro &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for _ in {1..30}; do
+            if curl -fsS http://127.0.0.1:18244/health >/dev/null; then break; fi
+            sleep 0.2
+          done
+          curl -fsS http://127.0.0.1:18244/api/status | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["update_mode"]=="native_apk" and x["service_actions_enabled"] is False'
+          test "$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:18244/api/update/check')" = 503
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'X-Monitor-Action: apply' -H 'Origin: http://127.0.0.1:18244' 'http://127.0.0.1:18244/api/update/apply')" = 503
       - name: Frontend JavaScript syntax and accessibility smoke
         shell: bash
         run: |
@@ -126,7 +140,7 @@ jobs:
           html=Path('web/index.html').read_text()
           assert '<html lang="ru">' in html
           assert 'id="auth"' not in html and 'id="login"' not in html
-          assert 'id="monitorrss"' in html
+          assert 'id="monitorrss"' in html and 'id="nativeupdatehelp"' in html and 'id="copyupdatecmd"' in html
           for control in ('cpubar','membar','memcomparison','diskbar','storagebar','viewtitle','viewsubtitle','healthsummary','processfilter','processcount','lastseen'):
               assert 'id="'+control+'"' in html, control
           assert 'data-go="network"' in html
