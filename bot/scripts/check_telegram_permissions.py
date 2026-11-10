@@ -35,7 +35,9 @@ try:
     print("Webhook configured:", configured)
     print("Webhook points to own Vercel:", info.get("url", "").startswith("https://cudyapp-community-bot.vercel.app/api/webhook"))
     try:
-        member = call("getChatMember", {"chat_id": chat, "user_id": me["id"]})
+        chat_info = call("getChat", {"chat_id": chat})
+        print("Target chat type:", chat_info.get("type", "unknown"))
+        member = call("getChatMember", {"chat_id": chat_info["id"], "user_id": me["id"]})
         state = member.get("status", "unknown")
         delete = state == "creator" or (state == "administrator" and bool(member.get("can_delete_messages")))
         print("Group membership:", state)
