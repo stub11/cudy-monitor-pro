@@ -8,6 +8,13 @@ on:
       - 'cudy-monitor/web/**'
       - 'tests/browser/**'
       - '.github/workflows/browser-compatibility.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'cudy-monitor/src/**'
+      - 'cudy-monitor/web/**'
+      - 'tests/browser/**'
+      - '.github/workflows/browser-compatibility.yml'
   workflow_dispatch:
 
 permissions:
