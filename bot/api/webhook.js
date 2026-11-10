@@ -91,6 +91,9 @@ async function react(message, reaction, token) {
   };
   if (reaction.sticker_file_id) {
     await api('sendSticker', { ...payload, sticker: reaction.sticker_file_id }, token);
+  } else if (reaction.animation_url) {
+    await api('sendAnimation', { ...payload, animation: reaction.animation_url,
+      caption: String(reaction.text || '').slice(0, 500) }, token);
   } else if (reaction.photo_url) {
     await api('sendPhoto', { ...payload, photo: reaction.photo_url,
       caption: String(reaction.text || '').slice(0, 500) }, token);
