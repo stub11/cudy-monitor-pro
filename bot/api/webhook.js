@@ -7,6 +7,8 @@
 const crypto = require('node:crypto');
 const config = require('../config.json');
 const { checkMessage, selectReaction } = require('../lib/moderation.js');
+const { answerPublicQuestion } = require('../lib/public-faq.js');
+const issueIntake = require('../lib/problem-intake.js');
 
 const SECRET_SALT = '|cudyapp-topic-webhook-v1';
 
@@ -119,6 +121,104 @@ async function react(message, reaction, token) {
       text: String(reaction.text || reaction.emoji || '😄').slice(0, 500) }, token);
   }
 }
+async function problemReply(message, text, token) {
+  await api('sendMessage', {
+    chat_id: message.chat.id, message_thread_id: message.message_thread_id,
+    reply_to_message_id: message.message_id,
+    disable_notification: true, disable_web_page_preview: true,
+    text
+  }, token);
+}
+async function publishSanitizedIssue(state) {
+  // Disabled until the owner configures a dedicated least-privilege GitHub token.
+  if (process.env.CUDY_ISSUE_REPORTS_ENABLED !== 'true') return false;
+  const token = process.env.CUDY_GITHUB_ISSUE_TOKEN;
+  if (!token) return false;
+  const report = issueIntake.buildIssue(state);
+  if (!report) return false;
+  const response = await fetch('https://api.github.com/repos/stub11/cudy-monitor-pro/issues', {
+    method: 'POST',
+    headers: {
+      'authorization': 'Bearer ' + token,
+      'accept': 'application/vnd.github+json',
+      'x-github-api-version': '2022-11-28',
+      'user-agent': 'cudyapp-sanitized-diagnostics',
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(report),
+    signal: AbortSignal.timeout(6000)
+  });
+  return response.status === 201;
+}
+async function handleProblem(message, text, token) {
+  if (!hasRedis()) return false;
+  // Do not spend a Redis GET for every ordinary group message.
+  if (!issueIntake.startsProblem(text) &&
+      !/^\/cudy_(?:platform|symptom|tried|report|cancel)/iu.test(String(text).trim())) return false;
+  const key = 'cudy:problem:' + message.chat.id + ':' +
+    message.message_thread_id + ':' + message.from.id;
+  const command = String(text).trim().toLowerCase();
+  const activeRaw = await redis(['GET', key]);
+  let state = {};
+  if (typeof activeRaw === 'string') {
+    try { const parsed = JSON.parse(activeRaw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) state = parsed;
+    } catch { state = {}; }
+  }
+  if (/^\/cudy_cancel(?:@cudyapp)?\s*$/u.test(command)) {
+    if (!activeRaw) return false;
+    await redis(['DEL', key]);
+    await problemReply(message, 'Опрос отменён. Никакой отчёт не опубликован.', token);
+    return true;
+  }
+  if (issueIntake.startsProblem(text)) {
+    await redis(['SET', key, JSON.stringify({}), 'EX', '1800']);
+    await problemReply(message, issueIntake.prompt('platform'), token);
+    return true;
+  }
+  if (!activeRaw) return false;
+  const step = issueIntake.nextStep(state);
+  if (/^\/cudy_report(?:@cudyapp)?\s*$/u.test(command) && !step) {
+    const report = issueIntake.buildIssue(state);
+    if (!report) return true;
+    if (process.env.CUDY_ISSUE_REPORTS_ENABLED !== 'true' ||
+        !process.env.CUDY_GITHUB_ISSUE_TOKEN) {
+      await problemReply(message,
+        'Отчёт подготовлен, но отправка в GitHub пока не настроена. Данные не переданы. '+
+        'Ознакомьтесь с публичным README: https://github.com/stub11/cudy-monitor-pro#readme', token);
+      return true;
+    }
+    // Distinct reports with identical categories are coalesced within a day.
+    const digest = crypto.createHash('sha256').update(JSON.stringify(report)).digest('hex');
+    if (!await once('cudy:issue-report:' + digest, 86400)) {
+      await redis(['DEL', key]);
+      return true;
+    }
+    const published = await publishSanitizedIssue(state);
+    if (published) {
+      await redis(['DEL', key]);
+      // Consent was explicitly obtained via /cudy_report. Avoid chat noise.
+    } else {
+      await problemReply(message, 'Отправить обезличенный отчёт не получилось. '+
+        'Никаких личных сведений бот не отправлял. При необходимости сообщите об ошибке '+
+        'через https://github.com/stub11/cudy-monitor-pro/issues/new/choose', token);
+    }
+    return true;
+  }
+  if (step) {
+    const value = issueIntake.option(text,step);
+    if (!value) {
+      // Ignore unrelated discussion rather than hijacking every user message.
+      return /^\/cudy_(?:platform|symptom|tried|report)/u.test(command);
+    }
+    state[step] = value;
+    await redis(['SET', key, JSON.stringify(state), 'EX', '1800']);
+    const next = issueIntake.nextStep(state);
+    await problemReply(message, next ? issueIntake.prompt(next) : issueIntake.summarize(state), token);
+    return true;
+  }
+  return false;
+}
 async function processUpdate(update, token) {
   const message = update.message || update.edited_message;
   if (!message || !targetChat(message.chat) || !targetTopic(message)) return;
@@ -160,6 +260,34 @@ async function processUpdate(update, token) {
       'без мата и оскорблений.';
     try { await warn(message, reason, token, named); } catch { /* best effort */ }
     return;
+  }
+  // Only process diagnostic intake after moderation and within the target topic.
+  if (update.message && hasRedis()) {
+    try {
+      if (await handleProblem(message, text, token)) return;
+    } catch { /* no personal logs, diagnostics fail open */ }
+  }
+  // Public documentation support precedes humorous reactions. No remote model,
+  // no private files, and no README fetching at request time.
+  if (update.message && hasRedis()) {
+    const faqAnswer = answerPublicQuestion(text);
+    if (faqAnswer) {
+      try {
+        const faqKey = 'cudy:public-faq:' + message.chat.id + ':' +
+          message.message_thread_id + ':' + message.from.id;
+        if (await once(faqKey, 90)) {
+          await api('sendMessage', {
+            chat_id: message.chat.id,
+            message_thread_id: message.message_thread_id,
+            reply_to_message_id: message.message_id,
+            text: faqAnswer,
+            disable_notification: true,
+            disable_web_page_preview: true
+          }, token);
+        }
+      } catch { /* FAQ errors must not interrupt discussion. */ }
+      return;
+    }
   }
   if (!update.message || !config.reactions.enabled || !hasRedis()) return;
   const reaction = selectReaction(text, config.reactions.triggers, update.update_id || message.message_id);
