@@ -11,3 +11,4 @@ codegen-units = 1
 panic = "abort"
 strip = true
 # Release CI recheck: no functional changes
+# CI publication retry for v1.2.11 after origin check fix
