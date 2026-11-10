@@ -1,47 +1,81 @@
-# @Cudyapp: enabling shared Redis state (Vercel)
+# Подключение Redis к Telegram-боту @Cudyapp через Vercel
 
-Current production project: `cudyapp-community-bot`.
-Target chat: `-1003834368989`; target topic: `87621`.
-Bot-token secret is already configured. **Do not replace or disclose it.**
+Инструкция для владельца проекта. Ничего переустанавливать в Telegram и менять токен бота **не нужно**.
 
-## Current status (2026-11-10)
+**Наш проект Vercel:** `cudyapp-community-bot`  
+**Группа Z2K:** `-1003834368989`  
+**Тема CM Aurora:** `87621`  
+**Адрес обработчика:** `https://cudyapp-community-bot.vercel.app/api/webhook`
 
-- Telegram webhook and delete permissions were verified with Telegram API.
-- One user-authorized message (87846) was successfully deleted.
-- No Redis integration or Redis environment variables are present in Vercel.
-- Consequently, reactions and anti-flood are *inactive*; profanity/insult deletion can still operate without Redis.
-- No automatic bans/mutes. Trigger list remains empty.
+## 1. Что уже работает
 
-## Create storage
+- @Cudyapp подключён к Telegram; веб-хук ранее настроен.
+- Telegram подтвердил права администратора и `can_delete_messages=true`.
+- Одно указанное владельцем сообщение `87846` было успешно удалено.
+- Токен `CUDY_TELEGRAM_BOT_TOKEN` уже сохранён в Vercel как защищённая переменная.
+- Автоматические баны и блокировки выключены; список слов-триггеров пуст.
 
-Use Vercel dashboard → project `cudyapp-community-bot` → **Storage / Marketplace** → **Upstash for Redis**.
-Select the free plan if available, review provider terms before accepting, provision a dedicated database (suggested name: `cudyapp-moderation`) and connect *only this project* for the **Production** environment.
+**Пока нет Redis**, антифлуд и развлекательные реакции неактивны. Удаление явного мата и оскорблений может работать независимо от Redis.
 
-The current implementation expects **both** exact names:
-- `UPSTASH_REDIS_REST_URL`
-- `UPSTASH_REDIS_REST_TOKEN`
+## 2. Создаём Redis
 
-If the integration creates different names, map their values to those names using Vercel **Sensitive** project environment variables. Never place credentials in GitHub, an issue, a chat message, a log, or a local unencrypted file.
+1. Откройте [панель Vercel](https://vercel.com/dashboard) и войдите в нужную учётную запись.
+2. Откройте проект **cudyapp-community-bot**.
+3. Перейдите в **Storage** или **Marketplace** (название пункта может меняться).
+4. Найдите **Upstash for Redis** и выберите создание новой базы Redis.
+5. Если доступен бесплатный тариф, выберите его. **Не подключайте платный тариф без отдельного согласия.** Проверьте условия и ограничения.
+6. Назовите базу, например, `cudyapp-moderation`.
+7. Подключите её **только** к проекту `cudyapp-community-bot` и окружению **Production**.
 
-## Activation and verification
+При подключении может понадобиться создать учётную запись Upstash и принять условия провайдера.
 
-1. Verify the Redis integration belongs to the correct Vercel project and Production only.
-2. Confirm both environment variables exist, without displaying their values.
-3. Run existing Node tests before deployment.
-4. Deploy the tested application to Production and check READY.
-5. Confirm the webhook URL remains `https://cudyapp-community-bot.vercel.app/api/webhook`; do not re-register Telegram or alter release workflows.
-6. Check only the intended forum topic. First verify normal messages are unaffected, then test a limited sequence of seven benign messages from an authorized test account. The seventh message within a rolling 20 seconds should be removed (threshold: 6), with a rate-limited warning.
-7. Confirm other topics are ignored and empty triggers never elicit reactions.
-8. Check errors and latency without logging message content or secrets.
+## 3. Проверяем переменные окружения
 
-## Failure behavior and maintenance
+Откройте в Vercel: **Project → Settings → Environment Variables**.
 
-If Redis is absent or cannot be reached, **anti-flood and reactions do not run**. The bot never bans or mutes users. Its content-based profanity/insult moderation is a separate feature; disable it in `bot/config.json` if needed.
+Наш код ожидает две переменные с **точными** именами:
 
-Only short-lived opaque Redis counters/deduplication keys should be stored (with TTL). Do not store raw user message text.
+- `UPSTASH_REDIS_REST_URL` — HTTPS-адрес Redis REST API.
+- `UPSTASH_REDIS_REST_TOKEN` — секретный токен доступа к Redis.
 
-Existing Vercel deployment is **not** automatically updated from this repo. Publishing a GitHub PR/merge by itself does not update the live bot.
+Если Vercel добавил их автоматически, ничего дублировать не нужно. Если интеграция создала переменные с другими названиями, добавьте нужные имена с соответствующими значениями, выберите окружение **Production** и для токена включите **Sensitive**, если интерфейс это предлагает.
 
-## Billing and permissions
+**Никогда не отправляйте содержимое токенов в чат, на GitHub или в скриншоты.** Проверять нужно только наличие *названий* переменных.
 
-Installing Marketplace storage can require accepting provider terms and choosing billing. Do not authorize a paid plan without the project owner's explicit permission. If the integration cannot be installed with current account permissions, keep production unchanged until the owner connects it.
+Существующие `CUDY_TELEGRAM_BOT_TOKEN`, `CUDY_TELEGRAM_CHAT_ID` и `CUDY_TELEGRAM_TOPIC_ID` не трогайте.
+
+## 4. Обновляем приложение только после проверки
+
+1. Убедитесь, что изменения антифлуда в GitHub прошли тесты и включены в `main`.
+2. Разверните проверенную версию проекта `cudyapp-community-bot` в **Production**. Если Vercel не связан с GitHub, изменение файлов на GitHub само по себе приложение не обновит: потребуется отдельная публикация.
+3. В **Deployments** убедитесь, что статус новой версии — `READY`.
+4. Сохраните старый работающий deployment для возможного отката.
+5. Проверьте, что адрес веб-хука не изменился. Регистрировать Telegram-бота повторно не нужно.
+6. Не меняйте GitHub Actions, отвечающие за публикацию релизов.
+
+## 5. Проверяем антифлуд
+
+Делайте тесты **только в теме «Cudy Monitor Pro • CM Aurora»**.
+
+1. Отправьте обычное сообщение: оно должно остаться.
+2. Убедитесь, что остальные темы Z2K не затрагиваются.
+3. С разрешённого тестового аккаунта отправьте **7 обычных сообщений за 20 секунд**. Лимит — 6, поэтому седьмое должно быть удалено, и бот может отправить предупреждение.
+4. Убедитесь, что сообщения администраторов не модерируются автоматически.
+5. Проверьте, что сообщение без триггерного слова не вызывает стикер, GIF или ответ. Список триггеров пока пуст.
+6. Проверьте журналы Vercel на ошибки, **не записывая туда тексты сообщений или секреты**.
+
+**Внимание:** испытание на настоящей группе выполняйте аккуратно, после подтверждения успешного деплоя и подключения Redis.
+
+## 6. Если что-то не работает
+
+- **Redis не подключён / переменные отсутствуют:** антифлуд и реакции отключаются; бот не должен наказывать пользователей за сбои хранилища.
+- **Ошибка деплоя:** верните предыдущий рабочий deployment Vercel.
+- **Удаление не работает:** проверьте `can_delete_messages` и правильность ID группы и темы.
+- **Нет реакций:** это нормально, пока `reactions.triggers` в `bot/config.json` пуст.
+- **Неверный тариф / требуется оплата:** ничего не оплачивайте без согласования.
+
+## 7. Безопасность и приватность
+
+Redis хранит короткоживущие счётчики и ключи защиты от повторов, а не содержимое переписки. Автоматические баны и муты выключены. При сбоях Redis антифлуд не должен ошибочно удалять сообщения.
+
+**Итог:** сначала подключаем Upstash Redis и проверяем две переменные, потом тестируем и развёртываем код. Токен Telegram уже настроен, повторно вводить его не нужно.
