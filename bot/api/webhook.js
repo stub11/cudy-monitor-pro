@@ -45,9 +45,16 @@ async function api(method, payload, token) {
   if (!reply.ok || !data.ok) throw new Error('Telegram API ' + method + ' rejected request');
   return data.result;
 }
+function redisCredentials() {
+  // Vercel Upstash Marketplace uses STORAGE_KV_REST_API_* by default.
+  // Existing standalone Upstash installs use UPSTASH_REDIS_REST_*.
+  return {
+    url: process.env.UPSTASH_REDIS_REST_URL || process.env.STORAGE_KV_REST_API_URL,
+    key: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.STORAGE_KV_REST_API_TOKEN
+  };
+}
 async function redis(command) {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const key = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const { url, key } = redisCredentials();
   if (!url || !key) return null;
   const response = await fetch(url.replace(/\/$/, ''), {
     method: 'POST',
@@ -78,7 +85,8 @@ async function rollingCounter(key, windowSeconds, messageId, timestampMs = Date.
     String(timestampMs), String(messageId), String(windowSeconds + 2)]));
 }
 function hasRedis() {
-  return Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
+  const { url, key } = redisCredentials();
+  return Boolean(url && key);
 }
 async function warn(message, text, token, name) {
   if (!config.moderation.warnings.enabled || !hasRedis()) return;
