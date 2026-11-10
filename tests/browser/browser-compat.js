@@ -29,6 +29,19 @@ async function checkBrowser(engine, label, options = {}) {
     assert.equal(await page.locator('#applyupdate').isDisabled(), true,
       label + ' contradictory updater metadata must never enable installation');
     assert.match(await page.locator('#updatestatus').textContent(), /1\.2\.10.*1\.2\.11/u);
+    await page.route('**/api/update/check', route => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        latest: '1.2.11', current: '1.2.11', running: '1.2.10',
+        available: false, restart_required: true
+      })
+    }));
+    await page.locator('#checkupdate').click();
+    await page.waitForFunction(() => document.querySelector('#updatestatus')
+      .textContent.includes('Версии файла монитора и работающего процесса различаются'));
+    assert.equal(await page.locator('#applyupdate').isDisabled(), true,
+      label + ' native package mismatch must prevent another upgrade');
+    assert.match(await page.locator('#updatestatus').textContent(), /установлен 1\.2\.11.*запущен 1\.2\.10/u);
     await page.unroute('**/api/update/check');
 
     // Simulate privacy-focused browsers which omit Origin on same-origin POSTs.

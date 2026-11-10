@@ -656,9 +656,17 @@ async function checkUpdate(){
     const runningVersion=el('sidebarversion').textContent.trim();
     const liveVersion=versionTuple(runningVersion)?runningVersion:null;
     const runningMismatch=liveVersion&&data.current!==liveVersion;
+    const restartRequired=data.restart_required===true ||
+      (data.running && data.current!==data.running);
     el('currentversion').textContent=liveVersion||data.current;
     el('latestversion').textContent=data.latest||'—';
-    if(inconsistent||runningMismatch){
+    if(restartRequired){
+      el('updatestatus').textContent='⚠️ Версии файла монитора и работающего процесса различаются: '+
+        'установлен '+data.current+', запущен '+(data.running||liveVersion||'неизвестно')+
+        '. Новое обновление заблокировано. Проверьте состояние службы и журнал обновления; '+
+        'не перезагружайте роутер без сохранения конфигурации.';
+      el('applyupdate').disabled=true;
+    }else if(inconsistent||runningMismatch){
       el('updatestatus').textContent='⚠️ Несогласованные данные обновления: API сообщает '+data.current+
         ' → '+data.latest+', обновление '+String(data.available)+
         (runningMismatch?', работающий монитор '+liveVersion:'')+

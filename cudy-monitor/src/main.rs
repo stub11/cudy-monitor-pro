@@ -532,8 +532,15 @@ fn handle(mut c:TcpStream,s:Arc<Mutex<State>>,token:String){
                 let Some(available)=available else {
                     respond(&mut c,"502 Bad Gateway","application/json",b"{\"error\":\"invalid update metadata\"}");return;
                 };
-                let body=format!("{{\"latest\":{},\"current\":{},\"available\":{}}}",
-                    quoted(parts[0]),quoted(parts[1]),available);
+                // On OpenWrt, update-native.sh checks /usr/bin/cudy-monitor-pro
+                // on disk, while /api/status reports this running process.
+                // A successful package replacement without a daemon restart can
+                // otherwise claim "up to date" while an old daemon is still live.
+                let running=env!("CARGO_PKG_VERSION");
+                let mismatch=std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1")
+                    && parts[1]!=running;
+                let body=format!("{{\"latest\":{},\"current\":{},\"running\":{},\"available\":{},\"restart_required\":{}}}",
+                    quoted(parts[0]),quoted(parts[1]),quoted(running),available && !mismatch,mismatch);
                 respond(&mut c,"200 OK","application/json",body.as_bytes());
             }
             Err(e)=>{
@@ -665,6 +672,27 @@ fn handle(mut c:TcpStream,s:Arc<Mutex<State>>,token:String){
             respond(&mut c,"403 Forbidden","application/json",b"{\"error\":\"origin mismatch\"}");return;
         }
         let is_native=std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1");
+        if is_native {
+            // Fail closed when a previously installed APK has not actually
+            // restarted its service; another upgrade should not mask this.
+            if let Ok(output)=Command::new("/usr/bin/cudy-monitor-pro").arg("--version").output() {
+                let disk=String::from_utf8_lossy(&output.stdout);
+                if !output.status.success() {
+                    respond(&mut c,"503 Service Unavailable","application/json",
+                        b"{\"error\":\"installed monitor version check failed\"}");
+                    return;
+                }
+                if disk.trim()!=format!("cudy-monitor-pro {}",env!("CARGO_PKG_VERSION")) {
+                    respond(&mut c,"409 Conflict","application/json",
+                        b"{\"error\":\"installed binary differs from running monitor; check service restart before updating\"}");
+                    return;
+                }
+            } else {
+                respond(&mut c,"503 Service Unavailable","application/json",
+                    b"{\"error\":\"cannot verify installed monitor binary\"}");
+                return;
+            }
+        }
         let script=if is_native{"/usr/share/cudy-monitor-pro/update-native.sh"}else{"/opt/share/cudy-monitor/update.sh"};
         if !std::path::Path::new(script).is_file(){
             respond(&mut c,"503 Service Unavailable","application/json",b"{\"error\":\"updater not installed\"}");return;
