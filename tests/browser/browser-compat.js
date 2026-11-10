@@ -63,7 +63,6 @@ async function checkBrowser(engine, label, options = {}) {
       status: 200, contentType: 'application/json',
       body: JSON.stringify({version:'1.2.13'})
     }));
-    page.once('dialog', dialog => dialog.accept());
     await page.locator('#applyupdate').click();
     await page.waitForFunction(() => document.querySelector('#updatestatus')
       .textContent.includes('Обновление подтверждено: запущена версия 1.2.13'), null,
