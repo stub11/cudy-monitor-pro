@@ -237,6 +237,55 @@ async function mediaReaction(message,text,entropy,token) {
   }
   return null;
 }
+async function handleOtaStructuredStatus(message,text,token) {
+  if(!otaFollowup.STRUCTURED_COMMAND.test(text||''))return false;
+  const parsed=otaFollowup.parseStructuredStatus(text);
+  const reply=parsed?otaFollowup.summarizeStructuredStatus(parsed):
+    '⚠️ Неверный формат. Используйте только технические значения без IP, паролей или журналов.\n'+
+    '/cudy_ota_check native_apk 1.2.10 1.2.11 1.2.11 false\n'+
+    '(режим, версия запущенного процесса, версия файла, GitHub, available)';
+  if(!reply)return true;
+  if(hasRedis()){
+    const key='cudy:ota:explain:v1:'+message.chat.id+':'+message.message_thread_id+':'+message.from.id;
+    if(!await once(key,20))return true;
+  }
+  await api('sendMessage',{
+    chat_id:message.chat.id,message_thread_id:message.message_thread_id,
+    reply_to_message_id:message.message_id,allow_sending_without_reply:false,
+    text:reply,disable_notification:true,disable_web_page_preview:true
+  },token);
+  return true;
+}
+async function handleOtaDialogue(message,text,token){
+  if(!hasRedis() || !message.from?.id || typeof text!=='string' ||
+     text.startsWith('/'))return false;
+  const fields=otaFollowup.partialTechnicalFields(text);
+  if(!fields)return false; // Ordinary chat must never be interpreted as a diagnostic.
+  const key='cudy:ota:session:v1:'+message.chat.id+':'+
+    message.message_thread_id+':'+message.from.id;
+  const raw=await redis(['GET',key]);
+  if(typeof raw!=='string')return false;
+  let state;
+  try {state=JSON.parse(raw);}catch{return false;}
+  if(!state || typeof state!=='object' || Array.isArray(state))return false;
+  // Store only validated, allowlisted technical fields, no usernames or raw text.
+  const collected={};
+  for(const name of otaFollowup.FIELD_NAMES){
+    if(Object.prototype.hasOwnProperty.call(state,name))collected[name]=state[name];
+    if(Object.prototype.hasOwnProperty.call(fields,name))collected[name]=fields[name];
+  }
+  const answer=otaFollowup.explainPartial(collected);
+  if(!answer)return false;
+  // Webhook update IDs are already idempotent. Every distinct technical
+  // answer must advance the dialogue rather than being lost to a timer.
+  await redis(['SET',key,JSON.stringify(collected),'EX','1800']);
+  await api('sendMessage',{
+    chat_id:message.chat.id,message_thread_id:message.message_thread_id,
+    reply_to_message_id:message.message_id,allow_sending_without_reply:false,
+    disable_notification:true,disable_web_page_preview:true,text:answer
+  },token);
+  return true;
+}
 async function handleOtaFollowup(message, text, token) {
   if(!hasRedis()) return false;
   const adminCommand=otaFollowup.ADMIN_COMMAND.test(text||'');
@@ -277,6 +326,10 @@ async function handleOtaFollowup(message, text, token) {
     disable_web_page_preview:true,
     text:otaFollowup.QUESTION
   },token);
+  // 30-minute numeric-only session bound to the ORIGINAL tester (never admin).
+  const session='cudy:ota:session:v1:'+message.chat.id+':'+
+    message.message_thread_id+':'+original.from.id;
+  await redis(['SET',session,JSON.stringify({}),'EX','1800']);
   return true;
 }
 async function problemReply(message, text, token, keyboard) {
@@ -494,10 +547,20 @@ async function processUpdate(update, token) {
     try { await warn(message, reason, token, named); } catch { /* best effort */ }
     return;
   }
+  // Optional numeric-only diagnostic: no logs, identifiers, or GitHub posting.
+  if(update.message && otaFollowup.STRUCTURED_COMMAND.test(text||'')){
+    try {await handleOtaStructuredStatus(message,text,token);}catch{}
+    return;
+  }
   // Restrict media administration to group admins, in the monitor topic.
   if (update.message && /^\/cudy_media(?:@Cudyapp)?(?:\s|$)/iu.test(text)) {
     try {await manageMedia(message,text,token);}catch{}
     return;
+  }
+  // Continue a prior OTA diagnostic after the same tester supplies a short
+  // technical value, with a contextual explanation or the next question.
+  if(update.message && hasRedis()){
+    try {if(await handleOtaDialogue(message,text,token))return;}catch{}
   }
   // Reply directly to the tester's exact message, either when a new OTA
   // complaint is recognized or via an admin's explicit reply to an old one.
@@ -600,4 +663,4 @@ module.exports = async function handler(req, res) {
   }
   res.statusCode = 200; res.end('OK');
 };
-module.exports._test = { webhookSecret, equalSecret, targetChat, targetTopic, processUpdate, allowReaction, diagnosticKeyboard, handleDiagnosticCallback, mediaCommand, mediaStoreKey, mediaReaction, nativeEmojiForText, handleOtaFollowup };
+module.exports._test = { webhookSecret, equalSecret, targetChat, targetTopic, processUpdate, allowReaction, diagnosticKeyboard, handleDiagnosticCallback, mediaCommand, mediaStoreKey, mediaReaction, nativeEmojiForText, handleOtaFollowup, handleOtaStructuredStatus, handleOtaDialogue };
