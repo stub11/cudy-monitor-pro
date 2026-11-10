@@ -1,5 +1,11 @@
 # Cudy Monitor Pro — Release notes
 
+## 1.2.9 — Logs and diagnostics
+- Adds selectable read-only log sources: monitor events, system logread, and volatile native updater log.
+- Adds search, source refresh, and local TXT export; exports are filtered and capped before reaching the browser.
+- Adds best-effort redaction of addresses and possible credentials, with a warning to inspect exports before sharing.
+- Adds regression tests for log source routing and sensitive-value masking.
+
 ## 1.2.8 — In-panel native OpenWrt updates and optional access key
 - Adds browser-initiated updates of the Cudy Monitor Pro native APK, restricted to GitHub Releases and verified SHA-256 digests, with a best-effort rollback and health check.
 - Adds optional key-based authorization for all API endpoints; defaults to OFF and is configurable from the Settings page.

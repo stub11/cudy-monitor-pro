@@ -222,6 +222,71 @@ fn logs_json(state:&Arc<Mutex<State>>)->String{
     }
     out.push_str("]}");out
 }
+
+// Diagnostics are read-only and bounded. This is intentionally a conservative,
+// best-effort redactor: users must inspect exported text before sharing it.
+fn diagnostic_token(token:&str)->String{
+    let t=token.trim_matches(|c:char|!c.is_ascii_alphanumeric() && c!='.' && c!=':' && c!='@');
+    let lower=t.to_ascii_lowercase();
+    let sensitive_key=["password","passwd","token","secret","cookie","authorization","apikey","api_key","private","credential","ssid","psk","bearer"];
+    if sensitive_key.iter().any(|x|lower.contains(x)) {return "[скрыто]".into();}
+    if lower.contains("://") || t.contains('@') || t.len()>36{return "[скрыто]".into();}
+    let addr=t.split(':').next().unwrap_or(t);
+    let chunks:Vec<_>=addr.split('.').collect();
+    if chunks.len()==4 && chunks.iter().all(|v|!v.is_empty()&&v.len()<=3&&v.bytes().all(|c|c.is_ascii_digit())){
+        return "[IP скрыт]".into();
+    }
+    if t.matches(':').count()>=2 && t.bytes().any(|c|c.is_ascii_hexdigit()){
+        return "[адрес скрыт]".into();
+    }
+    token.chars().filter(|c|!c.is_control()).take(160).collect()
+}
+fn sanitize_diag(line:&str)->String{
+    // Discard lines with obvious credentials rather than risk partial disclosure.
+    let low=line.to_ascii_lowercase();
+    if ["password","passwd","token=","secret","authorization","api_key","cookie=","private key","psk=","ssid=","bearer "].iter().any(|v|low.contains(v)){
+        return "[строка со служебными данными скрыта]".into();
+    }
+    line.split_whitespace().take(28).map(diagnostic_token).collect::<Vec<_>>().join(" ").chars().take(240).collect()
+}
+fn log_entries(source:&str)->(String,Vec<(u64,String)>){
+    let mut lines=Vec::new();
+    match source{
+        "system"=>{
+            // logread -l exists on OpenWrt. No shell or user-supplied arguments.
+            if let Ok(out)=Command::new("logread").args(["-l","100"]).output(){
+                if out.status.success(){
+                    let text=String::from_utf8_lossy(&out.stdout);
+                    for line in text.lines().rev().take(80).rev(){
+                        lines.push((0,sanitize_diag(line)));
+                    }
+                }
+            }
+        }
+        "updates"=>{
+            // Detached native updater writes this volatile file. Never disclose raw logs.
+            if std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1"){
+                let data=fs::read("/tmp/cudy-monitor-update.log").unwrap_or_default();
+                let cut=data.len().saturating_sub(16_384);
+                let text=String::from_utf8_lossy(&data[cut..]);
+                for line in text.lines().rev().take(80).rev(){
+                    lines.push((0,sanitize_diag(line)));
+                }
+            }
+        }
+        _=>{}
+    }
+    (source.to_string(),lines)
+}
+fn diagnostics_json(source:&str)->String{
+    let (source,events)=log_entries(source);
+    let mut out=format!("{{\"source\":{},\"max_events\":80,\"redacted\":true,\"events\":[",quoted(&source));
+    for (i,(ts,msg)) in events.iter().enumerate(){
+        if i>0{out.push(',');}
+        out.push_str(&format!("[{},{}]",ts,quoted(msg)));
+    }
+    out.push_str("]}");out
+}
 fn own_rss_mb()->f64{
     read("/proc/self/status").lines()
         .find(|l|l.starts_with("VmRSS:"))
@@ -421,8 +486,14 @@ fn handle(mut c:TcpStream,s:Arc<Mutex<State>>,token:String){
         let body=service_action_json(&s);
         respond(&mut c,"200 OK","application/json",body.as_bytes());return;
     }
-    if line.starts_with("GET /api/logs HTTP/"){
-        let body=logs_json(&s);respond(&mut c,"200 OK","application/json",body.as_bytes());return;
+    if line.starts_with("GET /api/logs HTTP/") || line.starts_with("GET /api/logs?source="){
+        let source=line.split_whitespace().nth(1).unwrap_or("").strip_prefix("/api/logs?source=").unwrap_or("monitor");
+        let body=match source{
+            "monitor"=>logs_json(&s),
+            "system"|"updates"=>diagnostics_json(source),
+            _=>{respond(&mut c,"400 Bad Request","application/json",b"{"error":"invalid log source"}");return;}
+        };
+        respond(&mut c,"200 OK","application/json",body.as_bytes());return;
     }
     if line.starts_with("GET /api/network-history HTTP/") || line.starts_with("GET /api/network-history?iface="){
         let iface=line.split_whitespace().nth(1).unwrap_or("").strip_prefix("/api/network-history?iface=").unwrap_or("eth2.4");
@@ -672,6 +743,16 @@ pppoe-wan 00000000 00000000 0001 0 0 10 00000000 0 0 0\n";
             "wan0 00000000 00000000 0001 0 0 1 FFFFFFFF 0 0 0\n")),(None,"missing"));
         assert_eq!(default_wan_from_routes(&(header.to_owned()+
             "../unsafe 00000000 00000000 0001 0 0 1 00000000 0 0 0\n")),(None,"missing"));
+    }
+    #[test] fn diagnostic_redaction(){
+        let x="client 192.168.1.24 connected; mac=AA:BB:CC:DD:EE:FF user@host";
+        let safe=sanitize_diag(x);
+        assert!(!safe.contains("192.168.1.24"));
+        assert!(!safe.contains("AA:BB:CC:DD:EE:FF"));
+        assert!(!safe.contains("user@host"));
+        assert!(!sanitize_diag("login from 192.168.1.1:5588").contains("192.168.1.1"));
+        assert_eq!(sanitize_diag("password=hello hidden"),"[строка со служебными данными скрыта]");
+        assert!(sanitize_diag("service restarted").contains("service restarted"));
     }
     #[test] fn ram_htop_vs_available_fixture(){
         let fixture="MemTotal: 239564 kB\nMemFree: 50632 kB\nMemAvailable: 73540 kB\nBuffers: 17960 kB\nCached: 51872 kB\nShmem: 3084 kB\nSReclaimable: 10868 kB\n";
