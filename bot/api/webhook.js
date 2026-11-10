@@ -7,6 +7,7 @@
 const crypto = require('node:crypto');
 const config = require('../config.json');
 const { checkMessage, selectReaction } = require('../lib/moderation.js');
+const { answerPublicQuestion } = require('../lib/public-faq.js');
 
 const SECRET_SALT = '|cudyapp-topic-webhook-v1';
 
@@ -160,6 +161,28 @@ async function processUpdate(update, token) {
       'без мата и оскорблений.';
     try { await warn(message, reason, token, named); } catch { /* best effort */ }
     return;
+  }
+  // Public documentation support precedes humorous reactions. No remote model,
+  // no private files, and no README fetching at request time.
+  if (update.message && hasRedis()) {
+    const faqAnswer = answerPublicQuestion(text);
+    if (faqAnswer) {
+      try {
+        const faqKey = 'cudy:public-faq:' + message.chat.id + ':' +
+          message.message_thread_id + ':' + message.from.id;
+        if (await once(faqKey, 90)) {
+          await api('sendMessage', {
+            chat_id: message.chat.id,
+            message_thread_id: message.message_thread_id,
+            reply_to_message_id: message.message_id,
+            text: faqAnswer,
+            disable_notification: true,
+            disable_web_page_preview: true
+          }, token);
+        }
+      } catch { /* FAQ errors must not interrupt discussion. */ }
+      return;
+    }
   }
   if (!update.message || !config.reactions.enabled || !hasRedis()) return;
   const reaction = selectReaction(text, config.reactions.triggers, update.update_id || message.message_id);
