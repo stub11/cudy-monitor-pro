@@ -51,7 +51,88 @@ jobs:
           assert 'ACTIONS=0' in sh and 'CUDY_MONITOR_NATIVE_APK=1' in sh
           install=Path('packaging/openwrt/install-openwrt.sh').read_text()
           assert 'apk add --allow-untrusted' in install and 'ACTUAL_SHA256=$(sha256sum' in install and 'EXPECTED_SHA256=' in install and 'cudy-monitor-lan --lan' in install
-          assert 'PKG_VERSION:=1.2.11' in p and 'VERSION=1.2.11' in install
+          # APK builder follows Cargo/Makefile version; the standalone installer
+          # remains pinned to v1.2.11 until the new published asset digest
+          # can be independently verified in a separate follow-up commit.
+          cargo=Path('cudy-monitor/Cargo.toml').read_text()
+          import re
+          version=re.search(r'^version = "([0-9]+\\.[0-9]+\\.[0-9]+)"
+          easy=Path('scripts/easy-install.sh').read_text()
+          assert 'if [ -f /etc/openwrt_release ]; then' in easy
+          assert 'elif [ -d /opt/etc/init.d ] && [ -x /opt/bin/opkg ]; then' in easy
+          assert '/bin/sh "$FILE" --lan' in easy
+          assert 'packaging/openwrt/install-openwrt.sh' in easy
+          assert 'apk del cudy-monitor-pro' in easy
+          assert '/opt/bin/opkg remove cudy-monitor-pro' in easy
+          assert 'ACTION=${1:---install}' in easy
+          assert 'forbidden placeholder' not in easy
+          PY
+      - name: Build static Linux ARM64 binary
+        working-directory: cudy-monitor
+        run: cross build --release --target aarch64-unknown-linux-musl
+      - name: Download and validate official OpenWrt 25.12.6 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq zstd
+          SDK_FILE=openwrt-sdk-25.12.6-mediatek-filogic_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+          SDK_URL=https://downloads.openwrt.org/releases/25.12.6/targets/mediatek/filogic/$SDK_FILE
+          curl -fL --retry 3 "$SDK_URL" -o "$RUNNER_TEMP/$SDK_FILE"
+          echo "1c04ac47bdfc361d6aab299eb520d570e368013dedcb8d29cf39dc7168ae642e  $RUNNER_TEMP/$SDK_FILE" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/sdk"
+          tar --zstd -xf "$RUNNER_TEMP/$SDK_FILE" -C "$RUNNER_TEMP/sdk" --strip-components=1
+      - name: Package through OpenWrt SDK (not Alpine)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$RUNNER_TEMP/sdk"
+          mkdir -p "$SDK/package/cudy-monitor-pro/files"
+          cp packaging/openwrt/Makefile "$SDK/package/cudy-monitor-pro/Makefile"
+          cp packaging/openwrt/files/* "$SDK/package/cudy-monitor-pro/files/"
+          cp cudy-monitor/scripts/detect-lan.sh "$SDK/package/cudy-monitor-pro/files/detect-lan.sh"
+          cp cudy-monitor/target/aarch64-unknown-linux-musl/release/cudy-monitor-pro "$SDK/package/cudy-monitor-pro/files/cudy-monitor-pro"
+          VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' cudy-monitor/Cargo.toml)"
+          grep -q "PKG_VERSION:=$VERSION" "$SDK/package/cudy-monitor-pro/Makefile"
+          cd "$SDK"
+          printf '\nCONFIG_PACKAGE_cudy-monitor-pro=y\n' >> .config
+          make defconfig
+          make package/cudy-monitor-pro/compile V=s -j2
+          mkdir -p "$GITHUB_WORKSPACE/openwrt-apk-artifacts"
+          find bin -name 'cudy-monitor-pro-*.apk' -type f -exec cp -v {} "$GITHUB_WORKSPACE/openwrt-apk-artifacts/" \;
+          test "$(find "$GITHUB_WORKSPACE/openwrt-apk-artifacts" -maxdepth 1 -type f -name '*.apk' | wc -l)" -eq 1
+          file "$GITHUB_WORKSPACE"/openwrt-apk-artifacts/*.apk
+          (cd "$GITHUB_WORKSPACE/openwrt-apk-artifacts" && sha256sum ./*.apk | tee SHA256SUMS)
+          # Check packaging tools' own metadata, not tar/ar: APK v3 is an ADB container.
+          APK_BIN="$(find "$SDK/staging_dir" -type f -path '*/bin/apk' | head -n1 || true)"
+          if [ -n "$APK_BIN" ]; then "$APK_BIN" info --help >/dev/null || true; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cudy-monitor-openwrt-25.12.6-mediatek-filogic-apk-v3
+          path: openwrt-apk-artifacts/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish experimental native OpenWrt APK release
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' cudy-monitor/Cargo.toml)"
+          TAG="cudy-monitor-openwrt-v$VERSION"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; refusing to overwrite immutable build"
+            exit 0
+          fi
+          gh release create "$TAG" openwrt-apk-artifacts/* \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "Cudy Monitor Pro $VERSION — OpenWrt 25.12 APK v3" \
+            --notes "Experimental OpenWrt 25.12.6 ARM64 package. One-command install: wget -qO /tmp/cudy-monitor-install.sh https://raw.githubusercontent.com/stub11/cudy-monitor-pro/main/packaging/openwrt/install-openwrt.sh && sh /tmp/cudy-monitor-install.sh . Auto-detects trusted LAN and opens dashboard port 8237; ambiguous LAN falls back safely to loopback. Unsigned APK; verify checksum. No WAN exposure. Cudy WBR3000UAX OpenWrt hardware testing pending; no router firmware is modified."
+,cargo,re.M)
+          assert version, 'Cargo release version missing'
+          assert f'PKG_VERSION:={version.group(1)}' in p
+          assert 'VERSION=1.2.11' in install, 'pinned installer updated without verifying checksum'
           easy=Path('scripts/easy-install.sh').read_text()
           assert 'if [ -f /etc/openwrt_release ]; then' in easy
           assert 'elif [ -d /opt/etc/init.d ] && [ -x /opt/bin/opkg ]; then' in easy
