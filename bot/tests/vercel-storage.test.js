@@ -28,7 +28,7 @@ test('Vercel Marketplace STORAGE_KV credentials enable flood storage', async () 
   };
   try {
     const update={update_id:99001,message:{message_id:8081,message_thread_id:87621,
-      text:'Привет',chat:{id:-1003834368989,type:'supergroup'},
+      text:'Тестовое сообщение без ключевых фраз',chat:{id:-1003834368989,type:'supergroup'},
       from:{id:42,first_name:'test',is_bot:false}}};
     const res={statusCode:200,setHeader(){},end(){}};
     await handler({method:'POST',headers:{'x-telegram-bot-api-secret-token':secret},body:update},res);
