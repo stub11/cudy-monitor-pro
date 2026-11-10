@@ -4,6 +4,7 @@
    version:"1.2.0-preview",cpu:12.4,mem_total:486,mem_used:198,mem_cached:48,
    disk_total:14441,disk_used:208,disk_mount:"/opt",uptime:187457,monitor_rss_mb:1.15,
    cpu_mhz:1300,connections:1834,connections_max:65536,
+   wan_iface:'eth2.4',wan_route_status:'main_ipv4_route',
    temps:[{name:"cpu-thermal",c:49.1}],
    cores:[{id:0,usage:10.2},{id:1,usage:15.3}],
    network:[{name:"eth2.4",rx:1351680,tx:225280},{name:"br0",rx:980000,tx:170000},{name:"ra9",rx:420000,tx:450000},{name:"ra1",rx:50000,tx:34000}],
@@ -15,6 +16,7 @@
  };
  if(window.location.search.includes('openwrt=1')){
    data.platform='OpenWrt';
+   data.wan_iface='wan';
    data.model='Generic OpenWrt Test Device';
    data.network=[{name:'wan',rx:1100000,tx:60000},{name:'br-lan',rx:800000,tx:50000},{name:'wlan0',rx:250000,tx:30000}];
    data.services=[{name:'D2K',detected:false,installed:false},{name:'DoQ',detected:false,installed:false},{name:'KeenKit',detected:false,installed:false}];

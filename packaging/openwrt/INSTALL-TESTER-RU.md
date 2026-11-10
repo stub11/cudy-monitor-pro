@@ -15,7 +15,7 @@ wget -qO /tmp/cudy-monitor-install.sh https://raw.githubusercontent.com/stub11/c
 Скрипт:
 1. проверяет OpenWrt, ARM64 и наличие `apk`;
 2. запрещает конкурирующую установку, если уже работает версия Entware;
-3. скачивает нативный пакет `cudy-monitor-pro-1.2.4-r1.apk` и `SHA256SUMS` с GitHub Releases;
+3. скачивает нативный пакет `cudy-monitor-pro-1.2.5-r1.apk` и `SHA256SUMS` с GitHub Releases;
 4. проверяет SHA-256 и устанавливает пакет через OpenWrt `apk`;
 5. автоматически определяет **уже существующий** LAN-адрес (не меняет IP, DNS, Wi-Fi, firewall), активирует службу и печатает ссылку.
 

@@ -1,5 +1,11 @@
 # Cudy Monitor Pro — Release notes
 
+## 1.2.5 — Active WAN route detection
+- Detect default IPv4 route interface from the kernel's main routing table; select by lowest metric and treat equally ranked different interfaces as ambiguous.
+- Follow the detected WAN in the dashboard without hard-coded interface names; retain deliberate manual selection and reset the chart on route changes.
+- Expose WAN route evidence in the status API; no claim of Internet connectivity or policy-routing verification.
+- Add routing fixtures, mock-browser WAN data, and status API smoke checks.
+
 ## 1.2.4 — CM Aurora telemetry lessons
 - Distinguish stale dashboard data from live readings after HTTP/API failures; pause live network visualization until a valid status poll returns.
 - Expose htop-like used RAM and MemAvailable separately while retaining the existing memory metric/API for compatibility.

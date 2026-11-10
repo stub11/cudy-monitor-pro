@@ -28,6 +28,35 @@ fn valid_iface(name:&str)->bool{
     !name.is_empty() && name.len()<=32 &&
     name.bytes().all(|b|b.is_ascii_alphanumeric() || matches!(b,b'-'|b'_'|b'.'|b'@'))
 }
+// /proc/net/route represents the main IPv4 table. This is NOT a proof of Internet reachability
+// or policy-routing correctness. Equal-priority routes across different devices are ambiguous.
+fn default_wan_from_routes(source:&str)->(Option<String>,&'static str){
+    let mut best:Option<(u64,String)>=None;
+    let mut ambiguous=false;
+    for line in source.lines().skip(1){
+        let fields:Vec<_>=line.split_whitespace().collect();
+        if fields.len()<8 {continue;}
+        let iface=fields[0];
+        if !valid_iface(iface)||iface=="lo" || fields[1]!="00000000" || fields[7]!="00000000" {continue;}
+        let flags=match u32::from_str_radix(fields[3],16){Ok(v)=>v,Err(_)=>continue};
+        if flags&1==0 || flags&0x200!=0 {continue;} // must be UP; ignore REJECT
+        let metric=match fields[6].parse::<u64>(){Ok(v)=>v,Err(_)=>continue};
+        match &best{
+            None=>{best=Some((metric,iface.into()));ambiguous=false;}
+            Some((old,_)) if metric<*old=>{best=Some((metric,iface.into()));ambiguous=false;}
+            Some((old,name)) if metric==*old && name!=iface=>ambiguous=true,
+            _=>{}
+        }
+    }
+    match best{
+        None=>(None,"missing"),
+        Some(_) if ambiguous=>(None,"ambiguous"),
+        Some((_,iface))=>(Some(iface),"main_ipv4_route")
+    }
+}
+fn default_wan()->(Option<String>,&'static str){
+    default_wan_from_routes(&read("/proc/net/route"))
+}
 fn num(s:&str)->u64{s.trim().parse().unwrap_or(0)}
 fn quoted(s:&str)->String {let mut v=String::from("\"");for c in s.chars(){match c {'"'=>v.push_str("\\\""),'\\'=>v.push_str("\\\\"),'\n'=>v.push_str("\\n"),'\r'=>v.push_str("\\r"),'\t'=>v.push_str("\\t"),c if c.is_control()=>{},c=>v.push(c)}}v.push('"');v}
 fn cpu()->Cpu {let line=read("/proc/stat");let vals:Vec<u64>=line.lines().next().unwrap_or("").split_whitespace().skip(1).take(10).map(num).collect();Cpu{total:vals.iter().sum(),idle:vals.get(3).copied().unwrap_or(0)+vals.get(4).copied().unwrap_or(0)}}
@@ -231,7 +260,7 @@ fn service_actions_enabled()->bool{
     std::env::var("CUDY_MONITOR_SERVICE_ACTIONS").ok().as_deref()==Some("1")
         || read("/opt/etc/cudy-monitor/service-actions").trim()=="1"
 }
-fn data(s:&Arc<Mutex<State>>)->String{let (cpu,network,core_load,pid_load)={let state=s.lock().unwrap_or_else(|e|e.into_inner());(state.current_cpu,state.current_network.clone(),state.current_cores.clone(),state.pid_usage.clone())};let (mt,mu,mc,htop_used,available)=mem_detail();let htop_json=htop_used.map(|v|v.to_string()).unwrap_or_else(||"null".into());let available_json=available.map(|v|v.to_string()).unwrap_or_else(||"null".into());let (dt,du,dm)=disk();let (connections,connections_max)=connections();let cpu_mhz=cpu_clock_mhz();let service_actions=service_actions_enabled();let up=read("/proc/uptime").split_whitespace().next().and_then(|x|x.parse::<f64>().ok()).unwrap_or(0.)as u64;let mut o=format!("{{\"model\":{},\"platform\":{},\"cpu\":{cpu:.1},\"mem_total\":{mt},\"mem_used\":{mu},\"mem_cached\":{mc},\"mem_htop_used\":{htop_json},\"mem_available\":{available_json},\"disk_total\":{dt},\"disk_used\":{du},\"disk_mount\":{},\"uptime\":{up},\"temps\":[",quoted(&device_model()),quoted(platform()),quoted(&dm));for (i,(n,c))in temps().iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"c\":{c:.1}}}",quoted(n)))}o.push_str("],\"network\":[");for(i,(n,rx,tx))in network.iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"rx\":{rx:.0},\"tx\":{tx:.0}}}",quoted(n)))}o.push_str("],\"cores\":[");for(i,(idx,percent))in core_load.iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"id\":{},\"usage\":{:.1}}}",idx,percent))}o.push_str("],\"processes\":[");for(i,(n,pid,rss))in procs().iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"pid\":{pid},\"mem\":{rss},\"cpu\":{:.1}}}",quoted(n),pid_load.get(pid).copied().unwrap_or(0.0)))}o.push_str("],\"services\":[");for(i,n)in["D2K","DoQ","KeenKit"].iter().enumerate(){if i>0{o.push(',')}let found=if *n=="KeenKit"{false}else{service_running(n)};let installed=match *n {"KeenKit"=>std::path::Path::new("/opt/bin/keenkit").exists(),"D2K"=>std::path::Path::new("/opt/etc/init.d/S99d2k").exists(),"DoQ"=>std::path::Path::new("/opt/etc/init.d/S56doqd").exists(),_=>false};o.push_str(&format!("{{\"name\":{},\"detected\":{found},\"installed\":{installed}}}",quoted(n)))}o.push_str(&format!("],\"connections\":{},\"connections_max\":{},\"cpu_mhz\":{},\"service_actions_enabled\":{},\"monitor_rss_mb\":{:.2},\"version\":{}}}",connections,connections_max,cpu_mhz,service_actions,own_rss_mb(),quoted(env!("CARGO_PKG_VERSION"))));o}
+fn data(s:&Arc<Mutex<State>>)->String{let (cpu,network,core_load,pid_load)={let state=s.lock().unwrap_or_else(|e|e.into_inner());(state.current_cpu,state.current_network.clone(),state.current_cores.clone(),state.pid_usage.clone())};let (mt,mu,mc,htop_used,available)=mem_detail();let htop_json=htop_used.map(|v|v.to_string()).unwrap_or_else(||"null".into());let available_json=available.map(|v|v.to_string()).unwrap_or_else(||"null".into());let (dt,du,dm)=disk();let (wan_iface,wan_route_status)=default_wan();let wan_json=wan_iface.as_deref().map(quoted).unwrap_or_else(||"null".into());let (connections,connections_max)=connections();let cpu_mhz=cpu_clock_mhz();let service_actions=service_actions_enabled();let up=read("/proc/uptime").split_whitespace().next().and_then(|x|x.parse::<f64>().ok()).unwrap_or(0.)as u64;let mut o=format!("{{\"model\":{},\"platform\":{},\"cpu\":{cpu:.1},\"mem_total\":{mt},\"mem_used\":{mu},\"mem_cached\":{mc},\"mem_htop_used\":{htop_json},\"mem_available\":{available_json},\"disk_total\":{dt},\"disk_used\":{du},\"disk_mount\":{},\"uptime\":{up},\"wan_iface\":{wan_json},\"wan_route_status\":{},\"temps\":[",quoted(&device_model()),quoted(platform()),quoted(&dm),quoted(wan_route_status));for (i,(n,c))in temps().iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"c\":{c:.1}}}",quoted(n)))}o.push_str("],\"network\":[");for(i,(n,rx,tx))in network.iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"rx\":{rx:.0},\"tx\":{tx:.0}}}",quoted(n)))}o.push_str("],\"cores\":[");for(i,(idx,percent))in core_load.iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"id\":{},\"usage\":{:.1}}}",idx,percent))}o.push_str("],\"processes\":[");for(i,(n,pid,rss))in procs().iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"pid\":{pid},\"mem\":{rss},\"cpu\":{:.1}}}",quoted(n),pid_load.get(pid).copied().unwrap_or(0.0)))}o.push_str("],\"services\":[");for(i,n)in["D2K","DoQ","KeenKit"].iter().enumerate(){if i>0{o.push(',')}let found=if *n=="KeenKit"{false}else{service_running(n)};let installed=match *n {"KeenKit"=>std::path::Path::new("/opt/bin/keenkit").exists(),"D2K"=>std::path::Path::new("/opt/etc/init.d/S99d2k").exists(),"DoQ"=>std::path::Path::new("/opt/etc/init.d/S56doqd").exists(),_=>false};o.push_str(&format!("{{\"name\":{},\"detected\":{found},\"installed\":{installed}}}",quoted(n)))}o.push_str(&format!("],\"connections\":{},\"connections_max\":{},\"cpu_mhz\":{},\"service_actions_enabled\":{},\"monitor_rss_mb\":{:.2},\"version\":{}}}",connections,connections_max,cpu_mhz,service_actions,own_rss_mb(),quoted(env!("CARGO_PKG_VERSION"))));o}
 fn respond(s:&mut TcpStream,status:&str,typ:&str,body:&[u8]){let header=format!("HTTP/1.1 {status}\r\nContent-Type: {typ}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nConnection: close\r\n\r\n",body.len());let _=s.write_all(header.as_bytes());let _=s.write_all(body);}
 fn constant_time_match(a:&[u8],b:&[u8])->bool{let mut diff=a.len()^b.len();for i in 0..a.len().max(b.len()){diff|=usize::from(a.get(i).copied().unwrap_or(0)^b.get(i).copied().unwrap_or(0));}diff==0}
 fn update_command(mode:&str)->Result<String,String>{
@@ -550,6 +579,27 @@ fn main()->std::io::Result<()>{
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test] fn wan_main_route_prefers_lowest_metric(){
+        let table="Iface Destination Gateway Flags RefCnt Use Metric Mask MTU Window IRTT\n\
+br-lan 0002A8C0 00000000 0001 0 0 0 00FFFFFF 0 0 0\n\
+eth2.4 00000000 0100000A 0003 0 0 100 00000000 0 0 0\n\
+pppoe-wan 00000000 00000000 0001 0 0 10 00000000 0 0 0\n";
+        assert_eq!(default_wan_from_routes(table),(Some("pppoe-wan".into()),"main_ipv4_route"));
+    }
+    #[test] fn wan_route_ambiguous_or_unavailable(){
+        let header="Iface Destination Gateway Flags RefCnt Use Metric Mask MTU Window IRTT\n";
+        assert_eq!(default_wan_from_routes(header),(None,"missing"));
+        assert_eq!(default_wan_from_routes(&(header.to_owned()+
+            "wan0 00000000 00000000 0001 0 0 10 00000000 0 0 0\n"+
+            "wan1 00000000 00000000 0001 0 0 10 00000000 0 0 0\n")),(None,"ambiguous"));
+        assert_eq!(default_wan_from_routes(&(header.to_owned()+
+            "wan0 00000000 00000000 0000 0 0 1 00000000 0 0 0\n"+
+            "wan1 00000000 00000000 0201 0 0 1 00000000 0 0 0\n")),(None,"missing"));
+        assert_eq!(default_wan_from_routes(&(header.to_owned()+
+            "wan0 00000000 00000000 0001 0 0 1 FFFFFFFF 0 0 0\n")),(None,"missing"));
+        assert_eq!(default_wan_from_routes(&(header.to_owned()+
+            "../unsafe 00000000 00000000 0001 0 0 1 00000000 0 0 0\n")),(None,"missing"));
+    }
     #[test] fn ram_htop_vs_available_fixture(){
         let fixture="MemTotal: 239564 kB\nMemFree: 50632 kB\nMemAvailable: 73540 kB\nBuffers: 17960 kB\nCached: 51872 kB\nShmem: 3084 kB\nSReclaimable: 10868 kB\n";
         assert_eq!(htop_used_kib(fixture),Some(111316));
