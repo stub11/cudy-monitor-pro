@@ -677,7 +677,12 @@ fn handle(mut c:TcpStream,s:Arc<Mutex<State>>,token:String){
             // restarted its service; another upgrade should not mask this.
             if let Ok(output)=Command::new("/usr/bin/cudy-monitor-pro").arg("--version").output() {
                 let disk=String::from_utf8_lossy(&output.stdout);
-                if output.status.success() && disk.trim()!=format!("cudy-monitor-pro {}",env!("CARGO_PKG_VERSION")) {
+                if !output.status.success() {
+                    respond(&mut c,"503 Service Unavailable","application/json",
+                        b"{\"error\":\"installed monitor version check failed\"}");
+                    return;
+                }
+                if disk.trim()!=format!("cudy-monitor-pro {}",env!("CARGO_PKG_VERSION")) {
                     respond(&mut c,"409 Conflict","application/json",
                         b"{\"error\":\"installed binary differs from running monitor; check service restart before updating\"}");
                     return;
