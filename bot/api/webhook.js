@@ -136,7 +136,8 @@ function diagnosticKeyboard(step, complete = false) {
     tried: [['📖 Читал README','docs'],['🔄 Повторил запуск','restart'],['🆕 Ещё ничего','nothing'],['❔ Другое','other']]
   };
   if (complete) return {inline_keyboard: [
-    [{text:'📤 Опубликовать только обезличенный отчёт',callback_data:'cd:report:yes'}],
+    [{text:'✍️ Добавить или изменить описание',callback_data:'cd:describe:yes'}],
+    [{text:'📤 Опубликовать после проверки',callback_data:'cd:report:yes'}],
     [{text:'❌ Отмена',callback_data:'cd:cancel:yes'}]
   ]};
   if (!choices[step]) return undefined;
@@ -179,7 +180,7 @@ async function handleProblem(message, text, token) {
   if (!hasRedis()) return false;
   // Do not spend a Redis GET for every ordinary group message.
   if (!issueIntake.startsProblem(text) &&
-      !/^\/cudy_(?:platform|symptom|tried|report|cancel)/iu.test(String(text).trim())) return false;
+      !/^\/cudy_(?:platform|symptom|tried|report|cancel|describe)/iu.test(String(text).trim())) return false;
   const key = 'cudy:problem:' + message.chat.id + ':' +
     message.message_thread_id + ':' + message.from.id;
   const command = String(text).trim().toLowerCase();
@@ -203,9 +204,35 @@ async function handleProblem(message, text, token) {
   }
   if (!activeRaw) return false;
   const step = issueIntake.nextStep(state);
+  if (/^\/cudy_describe(?:@cudyapp)?(?:\s|$)/u.test(command) && !step) {
+    const raw = String(text).replace(/^\/cudy_describe(?:@Cudyapp)?\s*/iu,'');
+    const cleaned = issueIntake.scrubDescription(raw);
+    if (!cleaned) {
+      await problemReply(message,'Описание слишком короткое или длинное. Нужно 10–1500 символов, без паролей, IP и токенов.\n'+issueIntake.descriptionPrompt(),token);
+      return true;
+    }
+    state.description = cleaned;
+    await redis(['SET',key,JSON.stringify(state),'EX','1800']);
+    await problemReply(message,'🔎 Проверьте текст, который попадёт в ПУБЛИЧНЫЙ GitHub Issue:\n\n'+
+      issueIntake.buildIssue(state).body+'\n\nАвтоматическая очистка может пропустить личные данные. '+
+      'Для исправления отправьте /cudy_describe с новым текстом. Для публикации нажмите кнопку ниже.',
+      token,diagnosticKeyboard(null,true));
+    return true;
+  }
   if (/^\/cudy_report(?:@cudyapp)?\s*$/u.test(command) && !step) {
     const report = issueIntake.buildIssue(state);
     if (!report) return true;
+    // Always show exact public payload before publication when user opted
+    // to attach free-form text. A separate final confirmation is required.
+    const expectedDigest = crypto.createHash('sha256').update(report.body).digest('hex');
+    if (state.description && state.previewDigest !== expectedDigest) {
+      state.previewDigest = expectedDigest;
+      await redis(['SET',key,JSON.stringify(state),'EX','1800']);
+      await problemReply(message,'🔎 Финальная проверка публичного отчёта:\n\n'+report.body+
+        '\nПроверьте текст. Если он безопасен, нажмите «📤 Опубликовать после проверки» ещё раз.',
+        token,diagnosticKeyboard(null,true));
+      return true;
+    }
     if (process.env.CUDY_ISSUE_REPORTS_ENABLED !== 'true' ||
         !process.env.CUDY_GITHUB_ISSUE_TOKEN) {
       await problemReply(message,
@@ -252,8 +279,9 @@ async function handleProblem(message, text, token) {
     state[step] = value;
     await redis(['SET', key, JSON.stringify(state), 'EX', '1800']);
     const next = issueIntake.nextStep(state);
-    await problemReply(message, next ? issueIntake.prompt(next) : issueIntake.summarize(state), token,
-      next ? diagnosticKeyboard(next) : diagnosticKeyboard(null, true));
+    await problemReply(message, next ? issueIntake.prompt(next) :
+      issueIntake.summarize(state)+'\n\n'+issueIntake.descriptionPrompt(),
+      token,next ? diagnosticKeyboard(next) : diagnosticKeyboard(null,true));
     return true;
   }
   return false;
@@ -262,10 +290,16 @@ async function handleDiagnosticCallback(callback, token) {
   const m = callback.message;
   if (!m || !targetChat(m.chat) || !targetTopic(m) ||
       !callback.from || callback.from.is_bot || !config.enabled) return;
-  const match = /^cd:(platform|symptom|tried|cancel|report):([a-z]+)$/u.exec(
+  const match = /^cd:(platform|symptom|tried|cancel|report|describe):([a-z]+)$/u.exec(
     String(callback.data || ''));
   if (!match) return;
   const step=match[1], value=match[2];
+  if (step==='describe' && value==='yes') {
+    // This button only displays instructions: text must be submitted explicitly.
+    await api('answerCallbackQuery',{callback_query_id:callback.id,
+      text:'✍️ Отправьте /cudy_describe и текст одним сообщением',show_alert:true},token);
+    return;
+  }
   const data = (step==='report' || step==='cancel')
     ? (value==='yes' ? '/cudy_'+step : null)
     : (issueIntake.OPTIONS[step]?.includes(value) ? '/cudy_'+step+' '+value : null);
