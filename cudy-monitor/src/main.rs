@@ -295,7 +295,9 @@ fn create_auth_token()->std::io::Result<String>{
     let path=auth_path();
     if let Some(parent)=std::path::Path::new(&path).parent(){
         fs::create_dir_all(parent)?;
-        fs::set_permissions(parent,fs::Permissions::from_mode(0o700))?;
+        if parent==std::path::Path::new("/etc/cudy-monitor-pro") || parent==std::path::Path::new("/opt/etc/cudy-monitor") {
+            fs::set_permissions(parent,fs::Permissions::from_mode(0o700))?;
+        }
     }
     let mut raw=[0u8;32];
     fs::File::open("/dev/urandom")?.read_exact(&mut raw)?;
