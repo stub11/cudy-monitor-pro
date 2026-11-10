@@ -1,0 +1,53 @@
+name: Cudyapp single authorized message deletion 87846
+on:
+  push:
+    branches: [ops/cudyapp-delete-one-87846-20261110]
+    paths:
+      - '.github/workflows/cudyapp-delete-once-87846.yml'
+permissions:
+  contents: read
+jobs:
+  delete-one:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Delete only user-authorized Telegram message in CM Aurora topic
+        env:
+          BOT_TOKEN: ${{ secrets.CUDY_TELEGRAM_BOT_TOKEN }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, sys, json, urllib.request, urllib.error
+          token=os.environ.get('BOT_TOKEN','')
+          if not token:
+              print('Bot token unavailable'); sys.exit(2)
+          def call(method,payload):
+              url='https://api.telegram.org/bot'+token+'/'+method
+              data=json.dumps(payload).encode()
+              req=urllib.request.Request(url,data=data,headers={'Content-Type':'application/json'},method='POST')
+              try:
+                  with urllib.request.urlopen(req,timeout=15) as r:
+                      result=json.loads(r.read(65536))
+              except urllib.error.HTTPError:
+                  raise RuntimeError(method+' returned an HTTP error')
+              if not result.get('ok'):
+                  raise RuntimeError(method+' returned an API error')
+              return result.get('result')
+          try:
+              bot=call('getMe',{})
+              if bot.get('username','').lower() != 'cudyapp':
+                  raise RuntimeError('Bot identity mismatch')
+              group=call('getChat',{'chat_id':-1003834368989})
+              if group.get('id') != -1003834368989 or group.get('type') != 'supergroup':
+                  raise RuntimeError('Group mismatch')
+              member=call('getChatMember',{'chat_id':-1003834368989,'user_id':bot['id']})
+              if member.get('status') != 'administrator' or not member.get('can_delete_messages'):
+                  raise RuntimeError('Delete messages permission missing')
+              result=call('deleteMessage',{'chat_id':-1003834368989,'message_id':87846})
+              if result is not True:
+                  raise RuntimeError('Telegram did not confirm deletion')
+              print('SUCCESS: Telegram confirmed deletion of exactly message 87846 in configured Z2K group')
+          except Exception as e:
+              print('FAILED:',str(e))
+              sys.exit(1)
+          PY
