@@ -8,7 +8,8 @@ test('inline diagnostic buttons are limited to validated options and the target 
  assert.deepEqual(fn('platform').inline_keyboard[0][0],{text:'🟢 OpenWrt',callback_data:'cd:platform:openwrt'});
  assert.equal(fn('symptom').inline_keyboard.length,6);
  assert.equal(fn('tried').inline_keyboard.length,5);
- assert.equal(fn(null,true).inline_keyboard[0][0].callback_data,'cd:report:yes');
+ assert.equal(fn(null,true).inline_keyboard[0][0].callback_data,'cd:describe:yes');
+ assert.equal(fn(null,true).inline_keyboard[1][0].callback_data,'cd:report:yes');
  assert.equal(fn('unknown'),undefined);
 });
 test('callback selections require existing per-user session and never publish issues',async()=>{
@@ -65,8 +66,8 @@ test('callback selections require existing per-user session and never publish is
   await invoke(callback('cd:tried:docs'));
   const messages=seen.filter(v=>v.method==='sendMessage');
   assert.equal(messages.length,4);
-  assert.match(messages.at(-1).data.text,/обезличенн|технических параметра/u);
-  assert.equal(messages.at(-1).data.reply_markup.inline_keyboard[0][0].callback_data,'cd:report:yes');
+  assert.match(messages.at(-1).data.text,/параметры и|обезличенн|технических параметра/u);
+  assert.equal(messages.at(-1).data.reply_markup.inline_keyboard[1][0].callback_data,'cd:report:yes');
   await invoke(callback('cd:report:yes'));
   assert.equal(seen.some(v=>v.method==='issues'),false);
   assert.equal(seen.some(v=>v.method==='sendMessage'&&/отправка в GitHub пока не настроена/u.test(v.data.text)),true);
