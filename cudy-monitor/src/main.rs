@@ -378,7 +378,20 @@ fn same_origin(req:&str,c:&TcpStream,action:&str)->bool{
         .filter(|(k,_)|k.eq_ignore_ascii_case(key))
         .map(|(_,v)|v.trim().to_owned())).unwrap_or_default()};
     let host=header("Host");
-    !host.is_empty() && host==addr_for_host(c) && header("Origin")==format!("http://{host}")
+    // Some privacy-conscious clients omit Origin on same-origin POST requests.
+    // Our first-party UI sends a non-simple custom header in that case; a
+    // cross-site browser cannot send it without a CORS preflight (we do not
+    // permit CORS). Never accept a foreign Origin even with the custom header.
+    let expected=format!("http://{host}");
+    let origin=header("Origin");
+    let page_origin=header("X-Monitor-Page-Origin");
+    let fetch_site=header("Sec-Fetch-Site");
+    let origin_ok=if !origin.is_empty() {
+        origin==expected
+    } else {
+        page_origin==expected && fetch_site!="cross-site" && fetch_site!="same-site"
+    };
+    !host.is_empty() && host==addr_for_host(c) && origin_ok
         && header("X-Monitor-Action")==action
 }
 fn authorized(req:&str,token:&str)->bool{
@@ -782,6 +795,24 @@ pppoe-wan 00000000 00000000 0001 0 0 10 00000000 0 0 0\n";
             assert_eq!(update_available(invalid,"1.0.0"),None);
             assert_eq!(update_available("1.0.3",invalid),None);
         }
+    }
+    #[test] fn same_origin_fallback_requires_first_party_header(){
+        let listener=TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr=listener.local_addr().unwrap();
+        let client=TcpStream::connect(addr).unwrap();
+        let (server,_)=listener.accept().unwrap();
+        let host=addr.to_string();
+        let valid=format!("POST /api/auth/enable HTTP/1.1\r\nHost: {host}\r\nX-Monitor-Action: auth-enable\r\nX-Monitor-Page-Origin: http://{host}\r\n\r\n");
+        assert!(same_origin(&valid,&server,"auth-enable"));
+        assert!(!same_origin(&valid.replace(&format!("X-Monitor-Page-Origin: http://{host}\r\n"),""),&server,"auth-enable"));
+        assert!(!same_origin(&valid.replace(&format!("http://{host}"),"http://evil.invalid"),&server,"auth-enable"));
+        assert!(!same_origin(&valid.replace("X-Monitor-Action: auth-enable","X-Monitor-Action: auth-disable"),&server,"auth-enable"));
+        let malicious=format!("Origin: http://evil.invalid\r\n");
+        assert!(!same_origin(&valid.replace("\r\n\r\n",&format!("\r\n{malicious}\r\n")),&server,"auth-enable"));
+        assert!(!same_origin(&valid.replace("\r\n\r\n","\r\nSec-Fetch-Site: cross-site\r\n\r\n"),&server,"auth-enable"));
+        let official=format!("POST /api/auth/enable HTTP/1.1\r\nHost: {host}\r\nOrigin: http://{host}\r\nX-Monitor-Action: auth-enable\r\n\r\n");
+        assert!(same_origin(&official,&server,"auth-enable"));
+        drop(client);
     }
     #[test] fn split_http_headers(){
         use std::net::TcpListener;
