@@ -32,7 +32,7 @@ jobs:
           sh -n packaging/openwrt/files/cudy-monitor-lan
           sh -n packaging/openwrt/install-openwrt.sh
           # Offline fallback must not bypass integrity verification.
-          grep -q 'EXPECTED_SHA256=a1fe57eb09855334daccbbe6f690465ca7a9bf7a68433467c0be051561ae8a76' packaging/openwrt/install-openwrt.sh
+          grep -q 'EXPECTED_SHA256=6dc687baec34494398903eb2edbe35b54a979ead478e74e43534eb7644afed6f' packaging/openwrt/install-openwrt.sh
           grep -q 'ACTUAL_SHA256' packaging/openwrt/install-openwrt.sh
           grep -q 'download_file' packaging/openwrt/install-openwrt.sh
           grep -q '\-\-file' packaging/openwrt/install-openwrt.sh
@@ -51,9 +51,9 @@ jobs:
           assert 'ACTIONS=0' in sh and 'CUDY_MONITOR_NATIVE_APK=1' in sh
           install=Path('packaging/openwrt/install-openwrt.sh').read_text()
           assert 'apk add --allow-untrusted' in install and 'ACTUAL_SHA256=$(sha256sum' in install and 'EXPECTED_SHA256=' in install and 'cudy-monitor-lan --lan' in install
-          # The standalone installer stays pinned to the published 1.2.13 APK until 1.2.14 has a verified digest.
+          # The standalone installer pins published OpenWrt 1.2.14 with the build-verified GitHub release digest.
           assert 'PKG_VERSION:=1.2.14' in p
-          assert 'VERSION=1.2.13' in install
+          assert 'VERSION=1.2.14' in install
           easy=Path('scripts/easy-install.sh').read_text()
           assert 'if [ -f /etc/openwrt_release ]; then' in easy
           assert 'elif [ -d /opt/etc/init.d ] && [ -x /opt/bin/opkg ]; then' in easy

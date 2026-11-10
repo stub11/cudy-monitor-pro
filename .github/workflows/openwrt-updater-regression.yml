@@ -4,6 +4,8 @@ on:
     paths:
       - 'packaging/openwrt/files/update-native.sh'
       - 'packaging/openwrt/tests/**'
+      - 'packaging/openwrt/install-openwrt.sh'
+      - '.github/workflows/openwrt-25.12-apk.yml'
       - '.github/workflows/openwrt-updater-regression.yml'
 permissions:
   contents: read
@@ -30,4 +32,25 @@ jobs:
           assert s.index('running_matches "$LATEST"') < s.index('echo "UPDATED $LATEST')
           assert s.index('AFTER=$("$SELF" --version') < s.index('echo "UPDATED $LATEST')
           print("OpenWrt update success requires exact live and disk version")
+          PY
+      - name: Verify standalone installer version and immutable release digest pin
+        run: |
+          sh -n packaging/openwrt/install-openwrt.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          installer = Path("packaging/openwrt/install-openwrt.sh").read_text()
+          workflow = Path(".github/workflows/openwrt-25.12-apk.yml").read_text()
+          pkg = Path("packaging/openwrt/Makefile").read_text()
+          cargo = Path("cudy-monitor/Cargo.toml").read_text()
+          version = re.search(r'(?m)^VERSION=([0-9]+\.[0-9]+\.[0-9]+)$', installer)
+          digest = re.search(r'(?m)^EXPECTED_SHA256=([a-f0-9]{64})$', installer)
+          assert version and digest, "Installer version or pinned SHA-256 missing"
+          assert f"PKG_VERSION:={version.group(1)}" in pkg
+          assert f'version = "{version.group(1)}"' in cargo
+          assert f"EXPECTED_SHA256={digest.group(1)}" in workflow
+          assert f"VERSION={version.group(1)}" in workflow
+          assert 'ACTUAL_SHA256=$(sha256sum "$TARGET"' in installer
+          assert '[ "$ACTUAL_SHA256" = "$EXPECTED_SHA256" ]' in installer
+          print("OpenWrt installer version, checksum pin and guard consistent")
           PY
