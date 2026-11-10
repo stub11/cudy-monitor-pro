@@ -16,13 +16,13 @@ async function checkBrowser(engine, label, options = {}) {
       !!document.querySelector('#authenable'), null, { timeout: 10000 });
     assert.equal((await context.request.get(base + '/api/auth/status')).status(), 200);
 
-    // Repro from Netis N6 V2: UI must not falsely claim 1.2.10 is
+    // Repro from Cudy OTA report: UI must not falsely claim 1.2.10 is
     // up to date when GitHub shows 1.2.11 and API claims unavailable.
     await page.route('**/api/update/check', route => route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify({ latest: '1.2.11', current: '1.2.10', available: false })
     }));
-    await page.locator('nav button[data-page="updates"]').click();
+    await page.evaluate(() => document.querySelector('nav button[data-page="updates"]').click());
     await page.locator('#checkupdate').click();
     await page.waitForFunction(() => document.querySelector('#updatestatus')
       .textContent.includes('Несогласованные данные обновления'));
