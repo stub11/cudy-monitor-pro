@@ -146,8 +146,10 @@ jobs:
           URL=http://127.0.0.1:18245
           curl -fsS "$URL/api/auth/status" | python3 -c 'import json,sys;assert json.load(sys.stdin)["enabled"] is False'
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'X-Monitor-Action: auth-enable' -H 'Origin: http://evil.invalid' "$URL/api/auth/enable")" = 403
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'X-Monitor-Action: auth-enable' "$URL/api/auth/enable")" = 403
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'X-Monitor-Action: auth-enable' -H 'X-Monitor-Page-Origin: http://evil.invalid' "$URL/api/auth/enable")" = 403
           test ! -e "$KEYFILE"
-          curl -fsS -X POST -H 'X-Monitor-Action: auth-enable' -H "Origin: $URL" "$URL/api/auth/enable" > /tmp/cm-auth-response.json
+          curl -fsS -X POST -H 'X-Monitor-Action: auth-enable' -H "X-Monitor-Page-Origin: $URL" "$URL/api/auth/enable" > /tmp/cm-auth-response.json
           KEY="$(python3 -c 'import json;print(json.load(open("/tmp/cm-auth-response.json"))["key"])')"
           test "$(printf %s "$KEY" | wc -c)" -eq 64
           test "$(stat -c '%a' "$KEYFILE")" = 600
