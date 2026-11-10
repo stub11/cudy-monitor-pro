@@ -49,7 +49,7 @@ test('explicit description requires review and separate final publishing click',
  try{
   await say('/cudy_problem');
   for(const v of ['/cudy_platform openwrt','/cudy_symptom network','/cudy_tried docs'])await say(v);
-  await say('/cudy_describe После обновления график пропал, соединение работает. IP=192.168.1.1');
+  await say('/cudy_describe Монитор не работает: после обновления график пропал, соединение работает. IP=192.168.1.1');
   assert.ok(telegram.some(x=>x.body.text?.includes('Финальная') || x.body.text?.includes('Проверьте текст')));
   assert.equal(issued.length,0);
   await say('/cudy_report');
