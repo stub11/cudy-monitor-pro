@@ -118,6 +118,23 @@ class PublisherTests(TestCase):
         self.assertEqual(len(payload["reply_markup"]["inline_keyboard"]), 2)
         self.assertIn("github.com", payload["reply_markup"]["inline_keyboard"][0][0]["url"])
 
+    def test_missing_actions_secrets_fails_visibly_without_sending(self):
+        # Vercel env is not implicitly available in GitHub Actions.
+        with patch.dict(os.environ, {"CUDY_TELEGRAM_BOT_TOKEN": "",
+                                     "CUDY_TELEGRAM_CHAT_ID": "",
+                                     "CUDY_TELEGRAM_TOPIC_ID": ""}), \
+             patch.object(publisher, "telegram_send") as send:
+            with self.assertRaisesRegex(publisher.PublisherError,
+                                        "Missing GitHub Actions secrets"):
+                publisher.main()
+            send.assert_not_called()
+
+    def test_version_1_2_12_has_reviewed_russian_notes(self):
+        msg = publisher.message("1.2.12")
+        self.assertIn("сверяются версии файла", msg)
+        self.assertIn("откат", msg)
+        self.assertIn("OpenWrt", msg)
+
     def test_invalid_topic_rejected(self):
         with patch.dict(os.environ, {"CUDY_TELEGRAM_TOPIC_ID": "bad"}):
             with self.assertRaises(publisher.PublisherError):
