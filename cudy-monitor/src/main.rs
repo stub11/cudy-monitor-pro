@@ -257,7 +257,7 @@ fn log_entries(source:&str)->(String,Vec<(u64,String)>){
             if let Ok(out)=Command::new("logread").args(["-l","100"]).output(){
                 if out.status.success(){
                     let text=String::from_utf8_lossy(&out.stdout);
-                    for line in text.lines().rev().take(80).rev(){
+                    for line in text.lines().rev().take(80){
                         lines.push((0,sanitize_diag(line)));
                     }
                 }
@@ -269,7 +269,7 @@ fn log_entries(source:&str)->(String,Vec<(u64,String)>){
                 let data=fs::read("/tmp/cudy-monitor-update.log").unwrap_or_default();
                 let cut=data.len().saturating_sub(16_384);
                 let text=String::from_utf8_lossy(&data[cut..]);
-                for line in text.lines().rev().take(80).rev(){
+                for line in text.lines().rev().take(80){
                     lines.push((0,sanitize_diag(line)));
                 }
             }
@@ -491,7 +491,7 @@ fn handle(mut c:TcpStream,s:Arc<Mutex<State>>,token:String){
         let body=match source{
             "monitor"=>logs_json(&s),
             "system"|"updates"=>diagnostics_json(source),
-            _=>{respond(&mut c,"400 Bad Request","application/json",b"{"error":"invalid log source"}");return;}
+            _=>{respond(&mut c,"400 Bad Request","application/json",br#"{"error":"invalid log source"}"#);return;}
         };
         respond(&mut c,"200 OK","application/json",body.as_bytes());return;
     }
@@ -745,12 +745,12 @@ pppoe-wan 00000000 00000000 0001 0 0 10 00000000 0 0 0\n";
             "../unsafe 00000000 00000000 0001 0 0 1 00000000 0 0 0\n")),(None,"missing"));
     }
     #[test] fn diagnostic_redaction(){
-        let x="client 192.168.1.24 connected; mac=AA:BB:CC:DD:EE:FF user@host";
+        let x="client 203.0.113.24 connected; mac=AA:BB:CC:DD:EE:FF user@host";
         let safe=sanitize_diag(x);
-        assert!(!safe.contains("192.168.1.24"));
+        assert!(!safe.contains("203.0.113.24"));
         assert!(!safe.contains("AA:BB:CC:DD:EE:FF"));
         assert!(!safe.contains("user@host"));
-        assert!(!sanitize_diag("login from 192.168.1.1:5588").contains("192.168.1.1"));
+        assert!(!sanitize_diag("login from 203.0.113.1:5588").contains("203.0.113.1"));
         assert_eq!(sanitize_diag("password=hello hidden"),"[строка со служебными данными скрыта]");
         assert!(sanitize_diag("service restarted").contains("service restarted"));
     }
