@@ -1,0 +1,52 @@
+name: Browser compatibility — Brave engine and Safari WebKit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cudy-monitor/src/**'
+      - 'cudy-monitor/web/**'
+      - 'tests/browser/**'
+      - '.github/workflows/browser-compatibility.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cudy-browser-compat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Compile isolated debug server
+        working-directory: cudy-monitor
+        run: cargo build
+      - name: Install pinned Chromium and WebKit automation
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium webkit
+      - name: Real-browser authorization and updater integration test
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CUDY_MONITOR_AUTH_FILE="$RUNNER_TEMP/cudy-browser-test-auth"
+          export CUDY_MONITOR_BIND="127.0.0.1:18247"
+          export CUDY_MONITOR_NATIVE_APK=1
+          cudy-monitor/target/debug/cudy-monitor-pro &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; rm -f "$CUDY_MONITOR_AUTH_FILE"' EXIT
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:18247/health >/dev/null; then break; fi
+            sleep 0.25
+          done
+          curl -fsS http://127.0.0.1:18247/health
+          node tests/browser/browser-compat.js
