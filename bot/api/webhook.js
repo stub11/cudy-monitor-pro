@@ -209,6 +209,18 @@ async function manageMedia(message, text, token) {
   await reply('✅ Категория №'+(cmd.index+1)+' получила '+(sticker?'стикер':'GIF')+'. Действует общий лимит реакций.');
   return true;
 }
+const NATIVE_EMOJI_BY_GROUP = Object.freeze([
+  '👍','❤','😴','🙏','😎','😢','🤔','😱','🔥','👏','❤',
+  '👍','🤓','🔥','🤯','😎','😢','😭','❤','🔥','🤣','😱',
+  '🙏','🎉','😢','🤡','😱','🤯','🤓','🤔','👨‍💻','🤡','🎉'
+]);
+function nativeEmojiForText(text) {
+  for(let i=0;i<config.reactions.triggers.length;i++){
+    if(selectReaction(text,[config.reactions.triggers[i]],0))
+      return NATIVE_EMOJI_BY_GROUP[i] || '👍';
+  }
+  return null;
+}
 async function mediaReaction(message,text,entropy,token) {
   for(let index=0;index<config.reactions.triggers.length;index++){
     const rule=config.reactions.triggers[index];
@@ -488,8 +500,21 @@ async function processUpdate(update, token) {
     // Telegram-hosted media. Otherwise retain approved text response.
     const media = allowReaction(update.update_id || message.message_id, token+'|media', 0.45)
       ? await mediaReaction(message,text,update.update_id || message.message_id,token) : null;
-    try {await react(message,media||reaction,token);}
-    catch {if(media)await react(message,reaction,token);}
+    if (media) {
+      try {await react(message,media,token);}
+      catch {await react(message,reaction,token);}
+    } else if (allowReaction(update.update_id || message.message_id,token+'|native',0.20)) {
+      const emoji=nativeEmojiForText(text);
+      try {
+        if (!emoji) throw Error('No native emoji');
+        await api('setMessageReaction',{
+          chat_id:message.chat.id,message_id:message.message_id,
+          reaction:[{type:'emoji',emoji}],is_big:false
+        },token);
+      } catch {await react(message,reaction,token);}
+    } else {
+      await react(message,reaction,token);
+    }
   } catch { /* media may be unavailable; never disrupt ordinary chat */ }
 }
 module.exports = async function handler(req, res) {
@@ -523,4 +548,4 @@ module.exports = async function handler(req, res) {
   }
   res.statusCode = 200; res.end('OK');
 };
-module.exports._test = { webhookSecret, equalSecret, targetChat, targetTopic, processUpdate, allowReaction, diagnosticKeyboard, handleDiagnosticCallback, mediaCommand, mediaStoreKey, mediaReaction };
+module.exports._test = { webhookSecret, equalSecret, targetChat, targetTopic, processUpdate, allowReaction, diagnosticKeyboard, handleDiagnosticCallback, mediaCommand, mediaStoreKey, mediaReaction, nativeEmojiForText };
