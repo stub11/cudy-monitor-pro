@@ -38,7 +38,7 @@ function scrubDescription(raw) {
  let s = raw.normalize('NFKC').replace(/[\u0000-\u001f\u007f]/g,' ').trim();
  if (s.length < 10) return null;
  s=s.replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{15,}|github_pat_[A-Za-z0-9_]{15,}|\d{7,12}:[A-Za-z0-9_-]{24,})\b/giu,'[токен скрыт]');
- s=s.replace(/\b(?:token|пароль|password|passwd|secret|api[_ -]?key)\s*[:=]\s*["']?[^\s,;]{3,}/giu,'[секрет скрыт]');
+ s=s.replace(/(?:^|[\s,;])(?:token|пароль|password|passwd|secret|api[_ -]?key)\s*[:=]\s*["']?[^\s,;]{3,}/giu,' [секрет скрыт]');
  s=s.replace(/https?:\/\/\S+/giu,'[ссылка скрыта]');
  s=s.replace(/\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b/giu,'[домен скрыт]');
  s=s.replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/gu,'[IP скрыт]');
@@ -62,7 +62,7 @@ function summarize(state) {
  '\n• Симптом: '+LABELS.symptom[state.symptom]+
  '\n• Проверка: '+LABELS.tried[state.tried]+
  '\n\nСначала ознакомьтесь с инструкцией: '+GUIDE+
- '\nЕсли проблема осталась, команда /cudy_report даст согласие опубликовать указанные параметры и, если добавлено, ваше проверенное описание в общедоступном GitHub Issues. Личные данные, имена, Telegram ID и тексты сообщений туда не передаются. /cudy_cancel — отменить.';
+ '\nЕсли проблема осталась, команда /cudy_report даст согласие опубликовать указанные параметры и, если добавлено, ваше проверенное описание в общедоступном GitHub Issues. Необработанные сообщения, Telegram ID и данные профиля не передаются; очищенное описание публикуется только после вашей проверки. /cudy_cancel — отменить.';
 }
 function buildIssue(state) {
  if(!state || !steps.every(k=>OPTIONS[k].includes(state[k]))) return null;
