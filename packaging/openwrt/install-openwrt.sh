@@ -1,9 +1,9 @@
 #!/bin/sh
 # Native OpenWrt APK v3 installer. Never modifies DNS, routes or firewall.
 set -eu
-VERSION=1.2.11
+VERSION=1.2.12
 PACKAGE="cudy-monitor-pro-$VERSION-r1.apk"
-EXPECTED_SHA256=b13007302c536b91b12fdfab62b52afb6788fb318dfa1bbac618cae1d0128357
+EXPECTED_SHA256=86682301b489bfc98fa8f0131e98b55425688afd62cf493144e4e001f6958f4c
 BASE="https://github.com/stub11/cudy-monitor-pro/releases/download/cudy-monitor-openwrt-v$VERSION"
 WORKDIR=/tmp/cudy-monitor-installer.$$
 LOCAL_FILE=

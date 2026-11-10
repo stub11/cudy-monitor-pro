@@ -32,7 +32,7 @@ jobs:
           sh -n packaging/openwrt/files/cudy-monitor-lan
           sh -n packaging/openwrt/install-openwrt.sh
           # Offline fallback must not bypass integrity verification.
-          grep -q 'EXPECTED_SHA256=b13007302c536b91b12fdfab62b52afb6788fb318dfa1bbac618cae1d0128357' packaging/openwrt/install-openwrt.sh
+          grep -q 'EXPECTED_SHA256=86682301b489bfc98fa8f0131e98b55425688afd62cf493144e4e001f6958f4c' packaging/openwrt/install-openwrt.sh
           grep -q 'ACTUAL_SHA256' packaging/openwrt/install-openwrt.sh
           grep -q 'download_file' packaging/openwrt/install-openwrt.sh
           grep -q '\-\-file' packaging/openwrt/install-openwrt.sh
@@ -53,7 +53,7 @@ jobs:
           assert 'apk add --allow-untrusted' in install and 'ACTUAL_SHA256=$(sha256sum' in install and 'EXPECTED_SHA256=' in install and 'cudy-monitor-lan --lan' in install
           # The standalone offline installer remains pinned to the verified 1.2.11 digest.
           assert 'PKG_VERSION:=1.2.12' in p
-          assert 'VERSION=1.2.11' in install
+          assert 'VERSION=1.2.12' in install
           easy=Path('scripts/easy-install.sh').read_text()
           assert 'if [ -f /etc/openwrt_release ]; then' in easy
           assert 'elif [ -d /opt/etc/init.d ] && [ -x /opt/bin/opkg ]; then' in easy
