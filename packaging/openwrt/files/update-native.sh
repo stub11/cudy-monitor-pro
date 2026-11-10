@@ -77,6 +77,40 @@ download_verified(){
   [ "$actual" = "$hash" ] || die "APK SHA256 mismatch for $version"
 }
 # Must have a verified old APK before replacing a working instance.
+# Confirm the *running* executable version, not merely a responsive /health.
+# /proc/<pid>/exe still refers to the old executable after a package replacement
+# until that process really exits. Read-only, no network, safe with panel auth.
+running_matches() {
+  expected=$1
+  command -v pidof >/dev/null 2>&1 || return 1
+  pids=$(pidof cudy-monitor-pro 2>/dev/null) || return 1
+  [ -n "$pids" ] || return 1
+  checked=0
+  for pid in $pids; do
+    case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+    [ -x "/proc/$pid/exe" ] || return 1
+    value=$("/proc/$pid/exe" --version 2>/dev/null) || return 1
+    [ "$value" = "cudy-monitor-pro $expected" ] || return 1
+    checked=$((checked+1))
+  done
+  [ "$checked" -gt 0 ]
+}
+restore_old() {
+  echo "Update verification failed; attempting verified rollback to $CURRENT." >&2
+  apk add --allow-untrusted "$DIR/previous.apk" || die "ROLLBACK FAILED: previous package could not be restored"
+  # Package scripts may restart the service. Verify that the rollback is live.
+  retries=0
+  while [ "$retries" -lt 12 ]; do
+    if running_matches "$CURRENT"; then
+      echo "ROLLBACK OK: running $CURRENT" >&2
+      return 0
+    fi
+    retries=$((retries+1))
+    sleep 1
+  done
+  die "ROLLBACK FAILED: previous process version not observed"
+}
+
 download_verified "$CURRENT" "$DIR/previous.apk"
 download_verified "$LATEST" "$DIR/next.apk"
 echo "Upgrading Cudy Monitor Pro $CURRENT -> $LATEST"
@@ -90,12 +124,19 @@ case "$BIND" in *[!0-9.:]*|*:*:*) die "Upgrade completed but stored LAN bind inv
 healthy=0
 tries=0
 while [ "$tries" -lt 12 ]; do
-  if wget -q -O - "http://$BIND/health" 2>/dev/null | grep -qx ok; then healthy=1; break; fi
+  if wget -q -O - "http://$BIND/health" 2>/dev/null | grep -qx ok &&
+     running_matches "$LATEST"; then healthy=1; break; fi
   tries=$((tries+1));sleep 1
 done
 if [ "$healthy" -ne 1 ]; then
-  echo "Health check failed; restoring previously verified package" >&2
-  apk add --allow-untrusted "$DIR/previous.apk" || die "ROLLBACK FAILED; manual recovery required"
-  die "Updated service failed health check; previous package restored"
+  restore_old
+  die "Updated service failed health and exact running-version checks; previous package restored"
 fi
-echo "UPDATED $LATEST"
+# Also confirm disk version after the final health check, preventing a false
+# success if an APK post-install hook reported success without replacement.
+AFTER=$("$SELF" --version 2>/dev/null || :)
+if [ "$AFTER" != "cudy-monitor-pro $LATEST" ]; then
+  restore_old
+  die "Updated file version mismatch; previous package restored"
+fi
+echo "UPDATED $LATEST (installed and running)"

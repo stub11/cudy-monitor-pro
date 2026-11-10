@@ -1,0 +1,33 @@
+name: OpenWrt updater verification (pull requests)
+on:
+  pull_request:
+    paths:
+      - 'packaging/openwrt/files/update-native.sh'
+      - 'packaging/openwrt/tests/**'
+      - '.github/workflows/openwrt-updater-regression.yml'
+permissions:
+  contents: read
+jobs:
+  update-safety:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax checks
+        run: |
+          sh -n packaging/openwrt/files/update-native.sh
+          sh -n packaging/openwrt/tests/test-running-version.sh
+      - name: Verify running version comparison with isolated synthetic processes
+        run: sh packaging/openwrt/tests/test-running-version.sh
+      - name: Require exact daemon and binary verification before UPDATE success
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('packaging/openwrt/files/update-native.sh').read_text()
+          assert 'running_matches "$LATEST"' in s
+          assert 'running_matches "$CURRENT"' in s
+          assert 'AFTER=$("$SELF" --version' in s
+          assert 'if [ "$AFTER" != "cudy-monitor-pro $LATEST" ]; then' in s
+          assert s.index('running_matches "$LATEST"') < s.index('echo "UPDATED $LATEST')
+          assert s.index('AFTER=$("$SELF" --version') < s.index('echo "UPDATED $LATEST')
+          print("OpenWrt update success requires exact live and disk version")
+          PY
