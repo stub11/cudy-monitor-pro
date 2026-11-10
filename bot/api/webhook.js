@@ -129,12 +129,28 @@ async function react(message, reaction, token) {
       text: String(reaction.text || reaction.emoji || '😄').slice(0, 500) }, token);
   }
 }
-async function problemReply(message, text, token) {
+function diagnosticKeyboard(step, complete = false) {
+  const choices = {
+    platform: [['🟢 OpenWrt','openwrt'],['🔵 Keenetic Ported','keenetic'],['❔ Другая система','other']],
+    symptom: [['📦 Установка','install'],['🌐 Панель','panel'],['⬆️ Обновление','update'],['📈 Мониторинг сети','network'],['❔ Другое','other']],
+    tried: [['📖 Читал README','docs'],['🔄 Повторил запуск','restart'],['🆕 Ещё ничего','nothing'],['❔ Другое','other']]
+  };
+  if (complete) return {inline_keyboard: [
+    [{text:'📤 Опубликовать только обезличенный отчёт',callback_data:'cd:report:yes'}],
+    [{text:'❌ Отмена',callback_data:'cd:cancel:yes'}]
+  ]};
+  if (!choices[step]) return undefined;
+  return {inline_keyboard: [
+    ...choices[step].map(([text,value])=>[{text,callback_data:'cd:'+step+':'+value}]),
+    [{text:'❌ Отмена',callback_data:'cd:cancel:yes'}]
+  ]};
+}
+async function problemReply(message, text, token, keyboard) {
   await api('sendMessage', {
     chat_id: message.chat.id, message_thread_id: message.message_thread_id,
     reply_to_message_id: message.message_id,
     disable_notification: true, disable_web_page_preview: true,
-    text
+    text, ...(keyboard ? {reply_markup: keyboard} : {})
   }, token);
 }
 async function publishSanitizedIssue(state) {
@@ -181,7 +197,7 @@ async function handleProblem(message, text, token) {
   }
   if (issueIntake.startsProblem(text)) {
     await redis(['SET', key, JSON.stringify({}), 'EX', '1800']);
-    await problemReply(message, issueIntake.prompt('platform'), token);
+    await problemReply(message, issueIntake.prompt('platform'), token, diagnosticKeyboard('platform'));
     return true;
   }
   if (!activeRaw) return false;
@@ -222,10 +238,38 @@ async function handleProblem(message, text, token) {
     state[step] = value;
     await redis(['SET', key, JSON.stringify(state), 'EX', '1800']);
     const next = issueIntake.nextStep(state);
-    await problemReply(message, next ? issueIntake.prompt(next) : issueIntake.summarize(state), token);
+    await problemReply(message, next ? issueIntake.prompt(next) : issueIntake.summarize(state), token,
+      next ? diagnosticKeyboard(next) : diagnosticKeyboard(null, true));
     return true;
   }
   return false;
+}
+async function handleDiagnosticCallback(callback, token) {
+  const m = callback.message;
+  if (!m || !targetChat(m.chat) || !targetTopic(m) ||
+      !callback.from || callback.from.is_bot || !config.enabled) return;
+  const match = /^cd:(platform|symptom|tried|cancel|report):([a-z]+)$/u.exec(
+    String(callback.data || ''));
+  if (!match) return;
+  const step=match[1], value=match[2];
+  const data = (step==='report' || step==='cancel')
+    ? (value==='yes' ? '/cudy_'+step : null)
+    : (issueIntake.OPTIONS[step]?.includes(value) ? '/cudy_'+step+' '+value : null);
+  if (!data || !hasRedis()) return;
+  const userMessage = { ...m, from:callback.from };
+  try {
+    const accepted=await handleProblem(userMessage,data,token);
+    // Always acknowledge so the Telegram client stops displaying its spinner.
+    await api('answerCallbackQuery',{
+      callback_query_id:callback.id,
+      text:accepted?'✅ Принято':'ℹ️ Опрос неактивен. Начните /cudy_problem',
+      show_alert:false
+    },token);
+  } catch {
+    try {await api('answerCallbackQuery',{callback_query_id:callback.id,
+      text:'Не получилось обработать выбор. Попробуйте ещё раз.',
+      show_alert:false},token);}catch{}
+  }
 }
 async function processUpdate(update, token) {
   const message = update.message || update.edited_message;
@@ -330,11 +374,12 @@ module.exports = async function handler(req, res) {
     }
   }
   try {
-    await processUpdate(update, token);
+    if (update.callback_query) await handleDiagnosticCallback(update.callback_query, token);
+    else await processUpdate(update, token);
   } catch {
     // Do not reveal token, messages or update contents in public logs.
     res.statusCode = 503; res.end('Temporary failure'); return;
   }
   res.statusCode = 200; res.end('OK');
 };
-module.exports._test = { webhookSecret, equalSecret, targetChat, targetTopic, processUpdate, allowReaction };
+module.exports._test = { webhookSecret, equalSecret, targetChat, targetTopic, processUpdate, allowReaction, diagnosticKeyboard, handleDiagnosticCallback };
