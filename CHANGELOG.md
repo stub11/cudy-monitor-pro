@@ -1,5 +1,10 @@
 # Cudy Monitor Pro — Release notes
 
+## 1.2.11 — Browser update origin fix
+- Fixes the `origin mismatch` error when applying a native OpenWrt APK update from the local web panel.
+- Reuses the same first-party request policy for the login and update actions, including privacy-conscious browsers that omit `Origin`.
+- Adds regression tests for authorized same-origin updates and rejection of foreign websites.
+
 ## 1.2.10 — Authorization origin compatibility
 - Fixes optional panel authorization when a LAN browser suppresses the `Origin` header on a same-origin POST.
 - The panel now sends an explicit first-party origin header for privileged actions; mismatched origins remain blocked.
