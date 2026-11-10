@@ -31,6 +31,21 @@ def register(token: str, url: str):
     validate_url(url)
     if not token:
         raise ValueError("CUDY_TELEGRAM_BOT_TOKEN must be configured in Actions secrets")
+    # Probe the public Vercel endpoint before changing Telegram's webhook.
+    # An unauthorized POST MUST be rejected with HTTP 401.
+    from urllib.error import HTTPError
+    try:
+        with urlopen(Request(url, data=b'{"update_id":7}',
+                             headers={"Content-Type": "application/json"},
+                             method="POST"), timeout=15):
+            raise RuntimeError("Webhook is not protected")
+    except HTTPError as exc:
+        if exc.code != 401:
+            raise RuntimeError("Webhook preflight failed (unexpected HTTP status)") from None
+    except RuntimeError:
+        raise
+    except Exception:
+        raise RuntimeError("Webhook preflight failed (unreachable)") from None
     secret = hashlib.sha256((token + SALT).encode("utf-8")).hexdigest()
     payload = json.dumps({
         "url": url,
