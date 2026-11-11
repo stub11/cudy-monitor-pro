@@ -1,5 +1,12 @@
 # Cudy Monitor Pro — Release notes
 
+## 1.2.20 — Correct system-log source labels on OpenWrt
+- Show «Системный журнал (logread)» on native OpenWrt instead of incorrectly mentioning KeeneticOS.
+- Hide KeeneticOS-specific ndmc session controls and descriptions on OpenWrt.
+- Keep the ndmc/logread selection and optional session details on Entware/Keenetic Ported.
+- Add Chromium and WebKit regression tests for both firmware types.
+
+
 ## 1.2.19 — Honest RAM and storage readings
 - Show «Нет данных» instead of a misleading 0% when router RAM or storage totals are unavailable.
 - Keep circular meters, progress bars, storage summaries and process memory breakdowns consistent with missing measurements.

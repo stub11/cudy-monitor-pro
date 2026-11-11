@@ -52,7 +52,7 @@ jobs:
           install=Path('packaging/openwrt/install-openwrt.sh').read_text()
           assert 'apk add --allow-untrusted' in install and 'ACTUAL_SHA256=$(sha256sum' in install and 'EXPECTED_SHA256=' in install and 'cudy-monitor-lan --lan' in install
           # The standalone installer pins published OpenWrt 1.2.18 with the build-verified GitHub release digest.
-          assert 'PKG_VERSION:=1.2.19' in p
+          assert 'PKG_VERSION:=1.2.20' in p
           assert 'VERSION=1.2.18' in install 
           easy=Path('scripts/easy-install.sh').read_text()
           assert 'if [ -f /etc/openwrt_release ]; then' in easy
