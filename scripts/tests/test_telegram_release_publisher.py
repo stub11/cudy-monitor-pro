@@ -146,7 +146,7 @@ class PublisherTests(TestCase):
         for version, keyword in expected.items():
             with self.subTest(version=version):
                 body = publisher.message(version)
-                changes = body.split("<b>Что нового:</b>\\n", 1)[1].split("\\n\\n", 1)[0]
+                changes = body.split("<b>Что нового:</b>\n", 1)[1].split("\n\n", 1)[0]
                 self.assertIn(keyword, changes)
                 self.assertLessEqual(len(changes.splitlines()), 3)
                 self.assertTrue(all(line.startswith("• ") for line in changes.splitlines()))
