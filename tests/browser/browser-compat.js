@@ -135,6 +135,27 @@ async function checkBrowser(engine, label, options = {}) {
     // Authenticated wrapper sends token, and should work on both browser engines.
     const ok = await page.evaluate(async () => (await fetch('/api/status')).status);
     assert.equal(ok, 200, label + ' authenticated access');
+
+    // A revoked/changed access key must never leave an apparently live dashboard.
+    await page.route('**/api/status', route => route.fulfill({
+      status: 401, contentType: 'application/json',
+      body: JSON.stringify({error: 'unauthorized'})
+    }));
+    await page.evaluate(() => poll());
+    await page.waitForFunction(() => document.querySelector('#online')
+      .textContent.includes('Требуется ключ') &&
+      document.body.classList.contains('telemetry-stale'));
+    assert.equal(await page.locator('#online').getAttribute('class'), 'bad',
+      label + ' access denied must show warning status, not healthy status');
+    assert.match(await page.locator('#healthsummary').textContent(), /устарели/u);
+    assert.match(await page.locator('#networkgraph').textContent(), /Нет доступа/u);
+    assert.match(await page.locator('#netpagegraph').textContent(), /Нет доступа/u);
+    await page.unroute('**/api/status');
+    await page.evaluate(() => poll());
+    await page.waitForFunction(() => document.querySelector('#online')
+      .textContent.includes('Работает') &&
+      !document.body.classList.contains('telemetry-stale'));
+
     // Browser-side update action must pass same-origin checks even without Origin.
     await page.route('**/api/update/apply', route => {
       const headers = { ...route.request().headers() };
