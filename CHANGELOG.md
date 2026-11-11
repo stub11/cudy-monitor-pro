@@ -1,5 +1,13 @@
 # Cudy Monitor Pro — Release notes
 
+## 1.2.15 — Mobile dashboard text and browser compatibility
+- Remove an unnecessary separator next to the dashboard connection status on small screens.
+- Avoid duplicate Entware platform labels in the header.
+- Keep detailed memory and storage readings readable inside mobile KPI tiles, including narrow phone widths.
+- Extend real-browser regression checks to validate mobile KPI overflow and status labels.
+- Preserve the existing monitoring, API, OpenWrt rollback verification, and router configuration behavior.
+
+
 ## 1.2.11 — Browser update origin fix
 - Fixes the `origin mismatch` error when applying a native OpenWrt APK update from the local web panel.
 - Reuses the same first-party request policy for the login and update actions, including privacy-conscious browsers that omit `Origin`.
