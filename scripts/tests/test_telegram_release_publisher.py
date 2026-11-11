@@ -118,6 +118,8 @@ class PublisherTests(TestCase):
     def test_russian_message_and_buttons(self):
         body = publisher.message("1.2.11")
         self.assertIn("Что нового", body)
+        self.assertNotIn("Пакеты OpenWrt и Entware опубликованы", body)
+        self.assertNotIn("Сборки прошли автоматические проверки GitHub Actions", body)
         self.assertIn("Исправлено обновление", body)
         self.assertNotIn("Fixes the", body)
         buttons = publisher.telegram_keyboard("1.2.11")["inline_keyboard"]
@@ -128,12 +130,35 @@ class PublisherTests(TestCase):
         self.assertIn("cudy-monitor-v1.2.11", buttons[0][1]["url"])
         self.assertIn("github.com/stub11/cudy-monitor-pro", buttons[1][0]["url"])
 
-    def test_unreviewed_release_uses_russian_fallback(self):
-        content = publisher.message("9.9.9")
-        self.assertIn("Список изменений", content)
-        self.assertNotIn("Fixes the", content)
+    def test_unreviewed_release_requires_real_reviewed_changes(self):
+        with self.assertRaisesRegex(publisher.PublisherError, "No reviewed Russian changelog"):
+            publisher.message("9.9.9")
         with self.assertRaises(publisher.PublisherError):
             publisher.telegram_keyboard("version/unsafe")
+
+    def test_recent_releases_have_specific_short_highlights(self):
+        expected = {
+            "1.2.15": "памяти",
+            "1.2.16": "KeeneticOS",
+            "1.2.17": "Многострочные",
+            "1.2.18": "ndmc",
+        }
+        for version, keyword in expected.items():
+            with self.subTest(version=version):
+                body = publisher.message(version)
+                changes = body.split("<b>Что нового:</b>\\n", 1)[1].split("\\n\\n", 1)[0]
+                self.assertIn(keyword, changes)
+                self.assertLessEqual(len(changes.splitlines()), 3)
+                self.assertTrue(all(line.startswith("• ") for line in changes.splitlines()))
+                self.assertNotIn("Пакеты OpenWrt и Entware опубликованы", body)
+                self.assertNotIn("GitHub Actions", body)
+                self.assertNotIn("Доступна новая версия монитора", body)
+                self.assertIn("Выберите платформу", body)
+
+    def test_announcement_escapes_reviewed_notes(self):
+        with patch.dict(publisher.RELEASE_NOTES_RU, {"9.9.8": ["Исправлено <устройство> & панель"]}):
+            result = publisher.changelog("9.9.8")
+        self.assertIn("&lt;устройство&gt; &amp;", result)
 
     def test_telegram_payload_uses_inline_buttons_and_topic(self):
         import json
