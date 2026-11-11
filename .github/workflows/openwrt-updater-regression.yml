@@ -54,8 +54,9 @@ jobs:
           # A released installer must match the built package version exactly.
           # Published immutable asset and public installer must now match exactly.
           # Keep immutable verified 1.2.18 installer until 1.2.19 APK is published.
+          # Staged package uses the last verified immutable installer until release asset is published.
           assert version.group(1) in (package_version.group(1), '1.2.18')
-          assert package_version.group(1) == '1.2.19'
+          assert package_version.group(1) == '1.2.20'
           assert f"EXPECTED_SHA256={digest.group(1)}" in workflow
           assert f"VERSION={version.group(1)}" in workflow
           assert 'ACTUAL_SHA256=$(sha256sum "$TARGET"' in installer
