@@ -4,6 +4,7 @@ on:
     paths:
       - 'packaging/openwrt/files/update-native.sh'
       - 'packaging/openwrt/tests/**'
+      - 'packaging/openwrt/migrate-legacy.sh'
       - 'packaging/openwrt/install-openwrt.sh'
       - '.github/workflows/openwrt-25.12-apk.yml'
       - '.github/workflows/openwrt-updater-regression.yml'
@@ -17,6 +18,7 @@ jobs:
       - name: Shell syntax checks
         run: |
           sh -n packaging/openwrt/files/update-native.sh
+          sh -n packaging/openwrt/migrate-legacy.sh
           sh -n packaging/openwrt/tests/test-running-version.sh
           sh -n packaging/openwrt/tests/test-release-fallback.sh
           sh -n packaging/openwrt/tests/test-upgrade-verification.sh
@@ -29,6 +31,21 @@ jobs:
         run: sh packaging/openwrt/tests/test-upgrade-verification.sh
       - name: Safely activate only a matching installed APK (offline)
         run: sh packaging/openwrt/tests/test-upgrade-activation.sh
+      - name: Legacy OpenWrt migration safety guards
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('packaging/openwrt/migrate-legacy.sh').read_text()
+          assert 'raw.githubusercontent.com/stub11/cudy-monitor-pro/81360c8077e6c5f9bae739d92120ab46e836e8bc/packaging/openwrt/files/update-native.sh' in s
+          assert "curl --proto '=https' --tlsv1.2 -fsSL" in s
+          assert '"/bin/sh" "$TMP" --check' not in s
+          assert '/bin/sh "$TMP" --check' in s
+          assert '/bin/sh "$TMP" --apply' in s
+          assert 'trap ' in s and 'rm -f "$TMP"' in s
+          assert '1.2.21' in s and '1.2.22' in s and '1.2.23' in s
+          assert 'apk add' not in s and 'wget' not in s
+          print("Legacy migration uses immutable HTTPS script and verified updater")
+          PY
       - name: Require exact daemon and binary verification before UPDATE success
         run: |
           python3 - <<'PY'
