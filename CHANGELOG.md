@@ -1,5 +1,14 @@
 # Cudy Monitor Pro — Release notes
 
+## 1.2.18 — Cleaner KeeneticOS system journal
+- Hide repetitive KeeneticOS CLI session start/stop noise by default, so useful logs are easier to find.
+- Add an explicit checkbox to include all service session records when troubleshooting.
+- Filter only known `ndmc` housekeeping messages and retain other disconnect events.
+- Keep local IP/MAC addresses visible and continue masking secrets in diagnostic exports.
+- Preserve bounded read-only journal access and the existing OpenWrt/Entware architecture.
+- Add Rust and browser regression coverage for the opt-in toggle and log message filtering.
+
+
 ## 1.2.17 — Readable KeeneticOS event history and visible network addresses
 - Group wrapped KeeneticOS journal lines into logical events and strip terminal control sequences.
 - Preserve IPv4, IPv6 and MAC addresses in local diagnostics at the owner's request; continue to mask credentials, emails and secrets.

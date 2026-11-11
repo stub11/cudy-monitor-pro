@@ -52,8 +52,9 @@ jobs:
           # Published packages and the public installer must now agree exactly.
           # Published standalone installer and native package must now agree exactly.
           # A released installer must match the built package version exactly.
-          assert version.group(1) == package_version.group(1)
-          assert package_version.group(1) == '1.2.17'
+          # Keep verified immutable 1.2.17 installer until new 1.2.18 APK is published.
+          assert version.group(1) in (package_version.group(1), '1.2.17')
+          assert package_version.group(1) == '1.2.18'
           assert f"EXPECTED_SHA256={digest.group(1)}" in workflow
           assert f"VERSION={version.group(1)}" in workflow
           assert 'ACTUAL_SHA256=$(sha256sum "$TARGET"' in installer
