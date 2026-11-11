@@ -88,6 +88,10 @@ def validated_release(meta: object, tag: str, expected_asset: str) -> bool:
 # Short human-reviewed Russian summaries. Never publish raw English CHANGELOG
 # lines as Telegram announcements. Add a new entry when preparing each release.
 RELEASE_NOTES_RU = {
+    "1.2.19": [
+        "Если роутер не передаёт данные RAM или накопителя, панель показывает «Нет данных» вместо ложных 0%.",
+        "Индикаторы и графические шкалы автоматически возвращаются к правильным значениям после восстановления замеров.",
+    ],
     "1.2.18": [
         "Журнал KeeneticOS больше не засоряется служебными подключениями ndmc.",
         "Добавлен переключатель для просмотра всех служебных событий.",
