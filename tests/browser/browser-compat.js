@@ -123,7 +123,7 @@ async function checkBrowser(engine, label, options = {}) {
       await route.fulfill({ response, body: JSON.stringify(snapshot) });
     });
     await page.evaluate(() => poll());
-    await page.waitForFunction(() => window.logPlatform === 'entware');
+    await page.waitForFunction(() => logPlatform === 'entware');
     assert.match(await page.locator('#systemlogoption').textContent(), /ndmc.*logread/u);
     assert.equal(await page.locator('#logclisessionsrow').isVisible(), true,
       label + ' ndmc option must appear only on Entware system log');
@@ -143,7 +143,7 @@ async function checkBrowser(engine, label, options = {}) {
       label + ' ndmc-only toggle must not appear for monitor events');
     await page.unroute('**/api/status');
     await page.evaluate(() => poll());
-    await page.waitForFunction(() => window.logPlatform === 'openwrt');
+    await page.waitForFunction(() => logPlatform === 'openwrt');
     assert.match(await page.locator('#systemlogoption').textContent(), /logread/u);
     assert.doesNotMatch(await page.locator('#systemlogoption').textContent(), /ndmc|KeeneticOS/u);
 
