@@ -249,18 +249,35 @@ fn sanitize_diag(line:&str)->String{
     }
     line.split_whitespace().take(28).map(diagnostic_token).collect::<Vec<_>>().join(" ").chars().take(240).collect()
 }
-fn log_entries(source:&str)->(String,Vec<(u64,String)>){
+fn log_entries(source:&str)->(String,Vec<(u64,String)>,bool){
     let mut lines=Vec::new();
+    let mut available=true;
     match source{
         "system"=>{
-            // logread -l exists on OpenWrt. No shell or user-supplied arguments.
-            if let Ok(out)=Command::new("logread").args(["-l","100"]).output(){
-                if out.status.success(){
-                    let text=String::from_utf8_lossy(&out.stdout);
-                    for line in text.lines().rev().take(80){
-                        lines.push((0,sanitize_diag(line)));
-                    }
+            // KeeneticOS has a separate system journal from Entware syslog.
+            // Prefer this fixed read-only CLI command on Entware even if
+            // logread succeeds with an empty unrelated local buffer.
+            let native=std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1");
+            let keenetic=if native{None}else{
+                Command::new("ndmc").args(["-c","show log once"]).output().ok()
+                    .filter(|out|out.status.success()&&!out.stdout.is_empty())
+            };
+            // OpenWrt supports -l; other Linux variants may not.
+            // No shell and no user-controlled arguments are ever executed.
+            let output=keenetic.or_else(||{
+                let limited=Command::new("logread").args(["-l","100"]).output();
+                match limited {
+                    Ok(out) if out.status.success()=>Some(out),
+                    _=>Command::new("logread").output().ok().filter(|out|out.status.success()),
                 }
+            });
+            if let Some(out)=output {
+                let text=String::from_utf8_lossy(&out.stdout);
+                for line in text.lines().rev().take(80){
+                    lines.push((0,sanitize_diag(line)));
+                }
+            }else{
+                available=false;
             }
         }
         "updates"=>{
@@ -272,15 +289,17 @@ fn log_entries(source:&str)->(String,Vec<(u64,String)>){
                 for line in text.lines().rev().take(80){
                     lines.push((0,sanitize_diag(line)));
                 }
+            }else{
+                available=false; // OpenWrt-only update journal is unavailable on Entware.
             }
         }
         _=>{}
     }
-    (source.to_string(),lines)
+    (source.to_string(),lines,available)
 }
 fn diagnostics_json(source:&str)->String{
-    let (source,events)=log_entries(source);
-    let mut out=format!("{{\"source\":{},\"max_events\":80,\"redacted\":true,\"events\":[",quoted(&source));
+    let (source,events,available)=log_entries(source);
+    let mut out=format!("{{\"source\":{},\"max_events\":80,\"redacted\":true,\"available\":{available},\"events\":[",quoted(&source));
     for (i,(ts,msg)) in events.iter().enumerate(){
         if i>0{out.push(',');}
         out.push_str(&format!("[{},{}]",ts,quoted(msg)));
