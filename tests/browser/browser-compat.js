@@ -69,6 +69,10 @@ async function checkBrowser(engine, label, options = {}) {
     assert.match(await page.locator('#updatestatus').textContent(), /установлен 1\.2\.11.*запущен 1\.2\.10/u);
     await page.unroute('**/api/update/check');
 
+    // The updater compares its API version to the live monitor badge. Keep
+    // the isolated test's synthetic 1.2.12 status consistent with that badge.
+    await page.evaluate(() => { document.querySelector('#sidebarversion').textContent = '1.2.12'; });
+
     // A successful 202 Accepted only starts an OTA. The UI must wait for
     // the running daemon's exact target version before claiming success.
     await page.route('**/api/update/check', route => route.fulfill({
