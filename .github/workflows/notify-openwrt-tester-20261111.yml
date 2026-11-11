@@ -1,0 +1,57 @@
+name: One-time OpenWrt tester follow-up
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/notify-openwrt-tester-20261111.yml'
+permissions:
+  contents: read
+jobs:
+  notify:
+    if: github.event.head_commit.message == 'chore: request OpenWrt 1.2.22 update test in Telegram'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Send to existing Cudy Monitor Telegram topic
+        env:
+          BOT_TOKEN: ${{ secrets.CUDY_TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CUDY_TELEGRAM_CHAT_ID }}
+          TOPIC_ID: ${{ secrets.CUDY_TELEGRAM_TOPIC_ID }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          token = os.environ.get('BOT_TOKEN', '')
+          chat = os.environ.get('CHAT_ID', '')
+          topic = os.environ.get('TOPIC_ID', '')
+          if not token or not chat or not topic:
+              raise SystemExit('Missing Telegram bot/group/topic secrets; nothing sent')
+          message = (
+              'Никита, спасибо за подробные проверки Cudy Monitor Pro на OpenWrt! 👋\n\n'
+              'Выпустили 1.2.22. Судя по последнему скриншоту, панель уже видит обновление с 1.2.21. '
+              'Можешь проверить установку кнопкой «Установить обновление» и прислать результат?\n\n'
+              'Интересует: 1) стала ли установленная версия 1.2.22; '
+              '2) отображается ли график WAN после нескольких измерений; '
+              '3) если появится ошибка — её полный текст (без токенов, cookie и подписанных ссылок).\n\n'
+              'DNS, DoH/DoT, PPPoE и прошивку менять не нужно. '
+              'Ранее ошибка HTTP 403 была именно при запросе api.github.com; '
+              'сейчас проверка релизов снова сработала. '
+              'Если установка не удастся, не удаляй работающий монитор — разберём лог и откат.\n\n'
+              'Спасибо за помощь в тестировании! 🦊'
+          )
+          payload = json.dumps({
+              'chat_id': chat, 'message_thread_id': int(topic),
+              'text': message, 'disable_web_page_preview': True
+          }).encode()
+          req = urllib.request.Request(
+              'https://api.telegram.org/bot' + token + '/sendMessage',
+              data=payload, headers={'Content-Type': 'application/json'}, method='POST'
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=15) as response:
+                  data = json.load(response)
+          except Exception:
+              raise SystemExit('Telegram send failed; see bot/group permissions (details intentionally redacted)')
+          if not data.get('ok'):
+              raise SystemExit('Telegram did not confirm delivery')
+          print('Telegram delivery confirmed, message_id=' + str(data['result']['message_id']))
+          PY
