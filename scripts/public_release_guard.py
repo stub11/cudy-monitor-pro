@@ -36,6 +36,17 @@ for path in paths:
     except UnicodeDecodeError:
         bad.append((rel, "non-UTF8 content"))
         continue
+    # Telegram/Cudyapp operations belong to private documentation only.
+    # Limit this rule to Markdown: do not break the public bot's runtime,
+    # release publisher, or CI tests that still rely on public source code.
+    if path.suffix.lower() == ".md":
+        private_ops = re.compile(
+            r"telegram|cudyapp|upstash|redis|webhook|"
+            r"телеграм|телеграм-бот|анонс(?:ы|ов)?\\s+релизов",
+            re.I,
+        )
+        if private_ops.search(content):
+            bad.append((rel, "Telegram operational documentation must remain private"))
     for name, regex in secrets:
         if regex.search(content):
             bad.append((rel, name))
