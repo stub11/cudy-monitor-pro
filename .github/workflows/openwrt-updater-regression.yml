@@ -46,6 +46,23 @@ jobs:
           assert 'apk add' not in s and 'wget' not in s
           print("Legacy migration uses immutable HTTPS script and verified updater")
           PY
+      - name: Verify LAN bind cannot abort after APK replacement
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('packaging/openwrt/files/update-native.sh').read_text()
+          bind=s.index('BIND=$(head -n 1 /etc/cudy-monitor-pro/bind')
+          old=s.index('download_verified "$CURRENT" "$DIR/previous.apk"')
+          new=s.index('download_verified "$LATEST" "$DIR/next.apk"')
+          change=s.index('if ! apk add --allow-untrusted "$DIR/next.apk"; then')
+          validate=s.index('die "Stored LAN bind invalid; update not started"')
+          empty=s.index('die "Stored LAN bind empty; update not started"')
+          assert bind < validate < old < new < change
+          assert bind < empty < old
+          assert s.count('BIND=$(head -n 1 /etc/cudy-monitor-pro/bind') == 1
+          assert 'Upgrade completed but stored LAN bind invalid' not in s
+          print('PASS: invalid panel bind fails before APK installation')
+          PY
       - name: Require exact daemon and binary verification before UPDATE success
         run: |
           python3 - <<'PY'
