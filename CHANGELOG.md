@@ -1,5 +1,14 @@
 # Cudy Monitor Pro — Release notes
 
+## 1.2.16 — Keenetic Ported logs and UI reliability
+- Prefer the KeeneticOS read-only system journal on Entware/Ported; fall back to `logread` when required.
+- Show clearly whether system and update logs are unavailable, empty, or filtered; do not export unavailable log sources as valid reports.
+- Use a platform-neutral system-log source label and a readable touch-friendly mobile selector.
+- Mark status metrics and network charts stale when the monitor API loses authorization (merged after 1.2.15).
+- Add Chromium/WebKit regression coverage for log availability, mobile layout, and 401 recovery.
+- Add optional UI-design guidance for development agents, without introducing router runtime dependencies.
+
+
 ## 1.2.15 — Mobile dashboard text and browser compatibility
 - Remove an unnecessary separator next to the dashboard connection status on small screens.
 - Avoid duplicate Entware platform labels in the header.
