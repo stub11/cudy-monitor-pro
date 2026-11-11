@@ -61,7 +61,7 @@ jobs:
           assert package_version and cargo_version and cargo_version.group(1) == package_version.group(1)
           # Stage v1.2.23 while standalone installer stays pinned to the
           # already published and verified v1.2.22 APK.
-          assert package_version.group(1) == '1.2.23'
+          assert package_version.group(1) == '1.2.24'
           assert version.group(1) == '1.2.22'
           assert digest.group(1) == 'e10284939d7b74b44d34e61bc1059660b473e71796fac28228f7ac6558f66525'
           assert f"EXPECTED_SHA256={digest.group(1)}" in workflow
