@@ -1,11 +1,14 @@
 #!/bin/sh
-# Native OpenWrt Cudy Monitor updater. Only signed-by-GitHub-API digest releases
-# from stub11/cudy-monitor-pro. No arbitrary command/url is accepted.
+# Native OpenWrt Cudy Monitor updater. Only project-published releases
+# verified against official GitHub API asset digests or the maintainer's
+# HTTPS-hosted, release-pinned SHA256 list. No arbitrary URLs are accepted.
 set -eu
 MODE=${1:---check}
 case "$MODE" in --check|--apply) ;; *) echo "unsupported mode" >&2; exit 2;; esac
 REPO=https://api.github.com/repos/stub11/cudy-monitor-pro
 RELEASE=https://github.com/stub11/cudy-monitor-pro/releases/download
+# Fixed official repository file: entries must be version + published SHA256.
+FALLBACK=https://raw.githubusercontent.com/stub11/cudy-monitor-pro/main/packaging/openwrt/release-digests.txt
 SELF=/usr/bin/cudy-monitor-pro
 LOCK=/tmp/.cudy-monitor-native-update.lock
 DIR=/tmp/cudy-monitor-native-update.$$
@@ -36,13 +39,39 @@ valid_version "$CURRENT" || die "installed version is invalid"
 newer(){
   awk -F. -v a="$1" -v b="$2" 'BEGIN{split(a,x,".");split(b,y,".");for(i=1;i<=3;i++){if(x[i]+0>y[i]+0)exit 0;if(x[i]+0<y[i]+0)exit 1}exit 1}'
 }
-fetch "$REPO/releases?per_page=50" "$DIR/releases.json" || die "cannot retrieve GitHub release metadata"
+# In restricted networks api.github.com can return HTTP 403 even when
+# GitHub Release asset downloads succeed. The fallback is a fixed HTTPS file
+# from the same maintained repository; never accept arbitrary URL input.
+# Reject malformed or duplicate entries and retain checksum verification.
+read_fallback(){
+  fetch "$FALLBACK" "$DIR/release-digests.txt" || die "GitHub API unavailable and pinned release list inaccessible. Installed version unchanged"
+  awk '
+    /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+    NF != 2 || $1 !~ /^[0-9]+\.[0-9]+\.[0-9]+$/ || length($2) != 64 || $2 !~ /^[a-f0-9]+$/ { bad=1; exit 1 }
+    seen[$1]++ { bad=1; exit 1 }
+    { entries++ }
+    END { if (bad || entries == 0) exit 1 }
+  ' "$DIR/release-digests.txt" || die "Invalid pinned release list. Installed version unchanged"
+}
+fallback_digest(){
+  awk -v version="$1" '$1 == version { print $2 }' "$DIR/release-digests.txt"
+}
 LATEST=$CURRENT
-for tag in $(jsonfilter -i "$DIR/releases.json" -e '@[*].tag_name'); do
-  case "$tag" in cudy-monitor-openwrt-v*) ver=${tag#cudy-monitor-openwrt-v} ;; *) continue;; esac
-  valid_version "$ver" || continue
-  if newer "$ver" "$LATEST"; then LATEST=$ver; fi
-done
+USE_FALLBACK=0
+if fetch "$REPO/releases?per_page=50" "$DIR/releases.json"; then
+  for tag in $(jsonfilter -i "$DIR/releases.json" -e '@[*].tag_name'); do
+    case "$tag" in cudy-monitor-openwrt-v*) ver=${tag#cudy-monitor-openwrt-v} ;; *) continue;; esac
+    valid_version "$ver" || continue
+    if newer "$ver" "$LATEST"; then LATEST=$ver; fi
+  done
+else
+  echo "GitHub API release listing unavailable; trying verified maintainer-pinned SHA256 list" >&2
+  read_fallback
+  USE_FALLBACK=1
+  for ver in $(awk '!/^[[:space:]]*(#|$)/ {print $1}' "$DIR/release-digests.txt"); do
+    if newer "$ver" "$LATEST"; then LATEST=$ver; fi
+  done
+fi
 if [ "$MODE" = --check ]; then
   printf '%s %s\n' "$LATEST" "$CURRENT"
   exit 0
@@ -51,7 +80,20 @@ newer "$LATEST" "$CURRENT" || { echo "Already up to date: $CURRENT"; exit 0; }
 # Fetch the GitHub API digest for this exact asset, never an untrusted URL.
 package_digest(){
   version=$1
-  fetch "$REPO/releases/tags/cudy-monitor-openwrt-v$version" "$DIR/metadata.json" || die "cannot read $version release metadata"
+  if [ "$USE_FALLBACK" = 1 ]; then
+    value=$(fallback_digest "$version")
+    [ -n "$value" ] || die "No verified pinned digest for $version; refusing update"
+    printf '%s\n' "$value"
+    return 0
+  fi
+  if ! fetch "$REPO/releases/tags/cudy-monitor-openwrt-v$version" "$DIR/metadata.json"; then
+    echo "GitHub API digest unavailable; verifying official pinned digest instead" >&2
+    [ -f "$DIR/release-digests.txt" ] || read_fallback
+    value=$(fallback_digest "$version")
+    [ -n "$value" ] || die "No verified pinned digest for $version; refusing update"
+    printf '%s\n' "$value"
+    return 0
+  fi
   index=0
   while [ "$index" -lt 20 ]; do
     name=$(jsonfilter -i "$DIR/metadata.json" -e "@.assets[$index].name" 2>/dev/null || :)

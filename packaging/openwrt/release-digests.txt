@@ -1,0 +1,5 @@
+# Native OpenWrt APK releases approved by the project maintainer.
+# Format: semver sha256 (hex). SHA256 values are copied from published GitHub
+# release asset digests. NEVER use an unverified candidate or skip hash checks.
+1.2.21 50bd6b65ddabb2456a9e561efc3c0624c5f56788f0590ff471a9ee87ffea63c3
+1.2.22 e10284939d7b74b44d34e61bc1059660b473e71796fac28228f7ac6558f66525
