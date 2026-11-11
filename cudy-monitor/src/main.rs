@@ -873,6 +873,24 @@ pppoe-wan 00000000 00000000 0001 0 0 10 00000000 0 0 0\n";
         assert_eq!(sanitize_diag("password=hello hidden"),"[строка со служебными данными скрыта]");
         assert!(sanitize_diag("service restarted").contains("service restarted"));
     }
+    #[test] fn keenetic_terminal_wrapping_fixture(){
+        let raw="\x1b[K\nI [Nov 11 13:54:00] ndm: 192.168.2.18 client disconnected.\n  /var/run/ndm.core.socket.\n\x1b[0mW [Nov 11 13:54:01] ndm: AA:BB:CC:DD:EE:FF joined.\n";
+        let parsed=keenetic_log_events(raw);
+        assert_eq!(parsed.len(),2,"terminal fragments must not be separate events");
+        assert!(parsed[0].contains("client disconnected. /var/run/ndm.core.socket."));
+        assert!(!parsed[0].contains("[K"));
+        assert!(parsed[0].contains("192.168.2.18"));
+        assert!(parsed[1].contains("AA:BB:CC:DD:EE:FF"));
+        let safe=sanitize_diag(&parsed[0]);
+        assert!(safe.contains("192.168.2.18"));
+    }
+    #[test] fn keenetic_truncated_and_empty_output_fixture(){
+        assert!(keenetic_log_events("\x1b[K\n\n").is_empty());
+        assert!(keenetic_log_events("some unrelated Entware data").is_empty());
+        let one=keenetic_log_events("E [Nov 11 13:54:03] error\n  password=secret\n");
+        assert_eq!(one.len(),1);
+        assert_eq!(sanitize_diag(&one[0]),"[строка со служебными данными скрыта]");
+    }
     #[test] fn ram_htop_vs_available_fixture(){
         let fixture="MemTotal: 239564 kB\nMemFree: 50632 kB\nMemAvailable: 73540 kB\nBuffers: 17960 kB\nCached: 51872 kB\nShmem: 3084 kB\nSReclaimable: 10868 kB\n";
         assert_eq!(htop_used_kib(fixture),Some(111316));
