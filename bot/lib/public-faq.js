@@ -42,6 +42,18 @@ function answerPublicQuestion(text) {
   // Never treat casual chat as a documentation request. Explicit question or mention required.
   if (!input.includes('?') && !input.includes('@cudyapp')) return null;
   const cleaned = input.replace(/@cudyapp/gu,'').trim();
+  // Answer only known roadmap gaps as "in development". A broken existing
+  // graph or OTA installation is a bug, not a feature still in development.
+  if (/(?:удаленн(?:ый|ого|ом)|облачн(?:ый|ого|ом)|из\s+интернет[а]?)/u.test(cleaned) &&
+      /(?:доступ|подключени|панел)/u.test(cleaned))
+    return '⏳ Облачное и удалённое подключение к панели пока в разработке. Монитор рассчитан на локальную сеть; подтверждённой даты выпуска этой функции пока нет.';
+  if (/(?:истори|лог|журнал)/u.test(cleaned) &&
+      /(?:после\s+(?:перезагруз|рестарт)|сохран(?:ять|ени|ить)|на\s+(?:usb|флешк|диск)|постоянн)/u.test(cleaned))
+    return '⏳ Постоянное сохранение истории мониторинга пока в разработке. Сейчас история находится в RAM и после перезапуска сбрасывается.';
+  if (/график/u.test(cleaned) &&
+      /(?:сет[ьи]|трафик|wan|интерфейс)/u.test(cleaned) &&
+      /(?:не\s+(?:показыва|отобража|работа|строи|появля)|пуст|нет\s+(?:график|данных)|ожидани[ея]\s+данных)/u.test(cleaned))
+    return '🔧 Сетевой график уже реализован. Если он пустой, проверьте получение истории и выбор интерфейса. Укажите модель роутера, прошивку, версию монитора и выбранный интерфейс — без паролей или полного журнала.';
   for (const entry of faq) if (entry.patterns.some(re=>re.test(cleaned))) return entry.answer;
   return null; // no speculation, and no echoing sensitive user-provided content
 }

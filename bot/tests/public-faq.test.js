@@ -31,6 +31,23 @@ test('FAQ comes exclusively from fixed public documentation answers',()=>{
   assert.equal(answerPublicQuestion('A'.repeat(1001)+'?'),null);
   assert.equal(answerPublicQuestion('/cudy_help'),answerPublicQuestion('/cudy_help@Cudyapp'));
 });
+test('Known unfinished features get short status, working graph failures get diagnostics',()=>{
+  const cloud=answerPublicQuestion('Когда заработает облачный доступ к панели?');
+  assert.match(cloud,/в разработке/u);
+  assert.doesNotMatch(cloud,/график/u);
+  const remote=answerPublicQuestion('Будет удаленный доступ?');
+  assert.match(remote,/в разработке/u);
+  const history=answerPublicQuestion('Можно сохранять историю на USB после перезагрузки?');
+  assert.match(history,/в разработке/u);
+  const chart=answerPublicQuestion('Почему график сети не показывает данные?');
+  assert.match(chart,/уже реализован/u);
+  assert.match(chart,/прошивку/u);
+  assert.doesNotMatch(chart,/в разработке/u);
+  const update=answerPublicQuestion('Почему обновление не работает?');
+  assert.ok(update===null || !update.includes('в разработке'));
+  assert.equal(answerPublicQuestion('график сети не работает'),null,
+    'do not interrupt unrelated chat without a question or explicit mention');
+});
 test('FAQ is limited to target chat/topic, and never replies to a bot', async()=>{
   const keys=['CUDY_TELEGRAM_BOT_TOKEN','CUDY_TELEGRAM_CHAT_ID','CUDY_TELEGRAM_TOPIC_ID','STORAGE_KV_REST_API_URL','STORAGE_KV_REST_API_TOKEN','UPSTASH_REDIS_REST_URL','UPSTASH_REDIS_REST_TOKEN'];
   const saved=Object.fromEntries(keys.map(k=>[k,process.env[k]])),original=global.fetch;
