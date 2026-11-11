@@ -69,7 +69,8 @@ jobs:
             if curl --silent --fail http://127.0.0.1:18237/health >/dev/null; then break; fi
             sleep 0.2
           done
-          curl --fail --silent http://127.0.0.1:18237/ | grep -q "Cudy Monitor Pro"
+          # Consume the full HTML response so grep -q cannot close the pipe and cause curl exit 23 under pipefail.
+          curl --fail --silent http://127.0.0.1:18237/ | grep -F "Cudy Monitor Pro" >/dev/null
           curl --fail --silent http://127.0.0.1:18237/api/status | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["version"] and isinstance(x["version"],str) and x["platform"] and x["model"]'
           curl --fail --silent http://127.0.0.1:18237/api/history | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["max_points"]==1080 and x["interval_sec"]==10 and isinstance(x["points"],list)'
           curl --fail --silent 'http://127.0.0.1:18237/api/network-history?iface=br0' | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["interface"]=="br0" and x["max_points"]==150'
