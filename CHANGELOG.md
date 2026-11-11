@@ -1,5 +1,12 @@
 # Cudy Monitor Pro — Release notes
 
+## 1.2.19 — Honest RAM and storage readings
+- Show «Нет данных» instead of a misleading 0% when router RAM or storage totals are unavailable.
+- Keep circular meters, progress bars, storage summaries and process memory breakdowns consistent with missing measurements.
+- Restore actual percentages automatically once valid data resumes.
+- Add Chromium and WebKit regressions for missing and recovered values.
+
+
 ## 1.2.18 — Cleaner KeeneticOS system journal
 - Hide repetitive KeeneticOS CLI session start/stop noise by default, so useful logs are easier to find.
 - Add an explicit checkbox to include all service session records when troubleshooting.
