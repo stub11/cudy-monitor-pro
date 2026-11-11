@@ -261,6 +261,15 @@ fn log_entries(source:&str)->(String,Vec<(u64,String)>,bool){
                 Ok(out) if out.status.success()=>Some(out),
                 _=>Command::new("logread").output().ok().filter(|out|out.status.success()),
             };
+            // KeeneticOS keeps its own system journal, separate from Entware.
+            // A fixed, read-only ndmc request is the last fallback on Ported.
+            let output=output.or_else(||{
+                if std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1"){
+                    return None;
+                }
+                Command::new("ndmc").args(["-c","show log once"]).output()
+                    .ok().filter(|out|out.status.success())
+            });
             if let Some(out)=output {
                 let text=String::from_utf8_lossy(&out.stdout);
                 for line in text.lines().rev().take(80){
