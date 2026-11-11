@@ -11,8 +11,12 @@ GITHUB="https://github.com/stub11/cudy-monitor-pro/releases/download"
 CURL="${CUDY_MONITOR_CURL:-curl}"
 SHASUM="${CUDY_MONITOR_SHASUM:-sha256sum}"
 TMP=""
+MANIFEST_TMP=""
 LOCK="$META/.update-lock"
-cleanup() { [ -z "$TMP" ] || rm -f "$TMP" "$TMP.hash" "$TMP.meta"; }
+cleanup() {
+    [ -z "$TMP" ] || rm -f "$TMP" "$TMP.hash" "$TMP.meta"
+    [ -z "$MANIFEST_TMP" ] || rm -f "$MANIFEST_TMP"
+}
 unlock() { rm -f "$LOCK"; }
 trap 'cleanup' EXIT
 fail() { echo "ERROR: $*" >&2; exit 1; }
@@ -28,8 +32,20 @@ if [ "$MODE" = "--rollback" ]; then
 fi
 command -v "$CURL" >/dev/null 2>&1 || fail "curl is required"
 command -v "$SHASUM" >/dev/null 2>&1 || fail "sha256sum is required"
-# Explicitly allow only the GitHub-hosted release manifest; never execute remote text.
-DATA=$("$CURL" --proto '=https' --tlsv1.2 -fsSL --retry 1 --connect-timeout 5 --max-time 18 "$MANIFEST") || fail "Cannot fetch release manifest"
+# Release manifests are fetched only from the official GitHub release URL.
+# Show a sanitized HTTP status rather than a vague error; never print redirect
+# URLs, signed query strings, Set-Cookie headers, or remote response bodies.
+MANIFEST_TMP=$(mktemp "${TMPDIR:-/tmp}/cudy-monitor-manifest.XXXXXX") || fail "Cannot create temporary manifest"
+HTTP_CODE=$("$CURL" --proto '=https' --tlsv1.2 -sSL --retry 1 --connect-timeout 5 --max-time 18 -o "$MANIFEST_TMP" -w '%{http_code}' "$MANIFEST") || {
+    case "$HTTP_CODE" in
+        403) fail "GitHub release metadata request returned HTTP 403 (access restriction or temporary rate limit). Installed version is unchanged. Retry later; check access to github.com and release-assets.githubusercontent.com." ;;
+        429) fail "GitHub release metadata request returned HTTP 429 (rate limit). Installed version is unchanged. Retry later." ;;
+        *) fail "Cannot fetch GitHub release metadata (HTTP ${HTTP_CODE:-unknown}). Installed version is unchanged. Check HTTPS connectivity." ;;
+    esac
+}
+[ "$HTTP_CODE" = 200 ] || fail "GitHub release metadata returned HTTP $HTTP_CODE. Installed version is unchanged."
+[ -s "$MANIFEST_TMP" ] || fail "Empty GitHub release manifest. Installed version is unchanged."
+DATA=$(cat "$MANIFEST_TMP")
 VERSION=$(printf '%s\n' "$DATA" | sed -n '1p')
 EXPECTED=$(printf '%s\n' "$DATA" | sed -n '2p')
 case "$VERSION" in
