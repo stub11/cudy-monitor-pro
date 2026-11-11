@@ -115,9 +115,15 @@ async function checkBrowser(engine, label, options = {}) {
     await page.unroute('**/api/logs?source=system');
     // Simulate the Entware status on the same browser. Model must not be
     // inferred from a hardcoded OpenWrt label or vice versa.
-    await page.evaluate(() => setLogPlatform({
-      update_mode: 'entware', platform: 'Linux / Entware'
-    }));
+    await page.route('**/api/status', async route => {
+      const response = await route.fetch();
+      const snapshot = await response.json();
+      snapshot.update_mode = 'entware';
+      snapshot.platform = 'Linux / Entware';
+      await route.fulfill({ response, body: JSON.stringify(snapshot) });
+    });
+    await page.evaluate(() => poll());
+    await page.waitForFunction(() => window.logPlatform === 'entware');
     assert.match(await page.locator('#systemlogoption').textContent(), /ndmc.*logread/u);
     assert.equal(await page.locator('#logclisessionsrow').isVisible(), true,
       label + ' ndmc option must appear only on Entware system log');
@@ -135,9 +141,9 @@ async function checkBrowser(engine, label, options = {}) {
     await page.locator('#logsource').selectOption('monitor');
     assert.equal(await page.locator('#logclisessionsrow').isVisible(), false,
       label + ' ndmc-only toggle must not appear for monitor events');
-    await page.evaluate(() => setLogPlatform({
-      update_mode: 'native_apk', platform: 'OpenWrt'
-    }));
+    await page.unroute('**/api/status');
+    await page.evaluate(() => poll());
+    await page.waitForFunction(() => window.logPlatform === 'openwrt');
     assert.match(await page.locator('#systemlogoption').textContent(), /logread/u);
     assert.doesNotMatch(await page.locator('#systemlogoption').textContent(), /ndmc|KeeneticOS/u);
 
