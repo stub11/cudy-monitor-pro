@@ -1,0 +1,39 @@
+name: One-time response to OpenWrt rollback tester
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-time-rollback-feedback-20261111.yml'
+permissions:
+  contents: read
+jobs:
+  notify:
+    if: >-
+      github.event.head_commit.message == 'chore: send verified OpenWrt rollback feedback'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Send to Cudy Monitor Pro topic
+        env:
+          TOKEN: ${{ secrets.CUDY_TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.CUDY_TELEGRAM_CHAT_ID }}
+          TOPIC: ${{ secrets.CUDY_TELEGRAM_TOPIC_ID }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          token=os.environ.get('TOKEN','')
+          chat=os.environ.get('CHAT','')
+          topic=os.environ.get('TOPIC','')
+          if not all((token,chat,topic)): raise SystemExit('Telegram secrets missing')
+          msg=('Никита, спасибо за вывод диагностики! 🦊\n\n'
+               'После отката всё выглядит штатно: установлена 1.2.21, служба работает, процесс есть. Пустой logread сам по себе не ошибка.\n\n'
+               'Проверили механизм обновления: обнаружили, что надёжнее явно перезапускать новую службу через procd после проверки установленного бинарника. Добавили эту защиту и тесты в GitHub #87; #85 остаётся открытой до проверки на реальном роутере.\n\n'
+               'Пока оставайся на 1.2.21, повторное обновление не требуется. Когда появится проверенный пакет с исправлением, сообщим отдельно. Спасибо за тестирование!')
+          body=json.dumps({'chat_id':chat,'message_thread_id':int(topic),'text':msg}).encode('utf-8')
+          req=urllib.request.Request('https://api.telegram.org/bot'+token+'/sendMessage',data=body,headers={'Content-Type':'application/json'},method='POST')
+          try:
+              with urllib.request.urlopen(req,timeout=15) as response: result=json.load(response)
+          except Exception: raise SystemExit('Telegram delivery failed; details redacted')
+          if not result.get('ok'): raise SystemExit('Delivery not confirmed')
+          print('Telegram delivery confirmed, message_id='+str(result['result']['message_id']))
+          PY
