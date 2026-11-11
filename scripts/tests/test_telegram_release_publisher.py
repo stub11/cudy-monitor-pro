@@ -144,6 +144,7 @@ class PublisherTests(TestCase):
             "1.2.18": "ndmc",
             "1.2.19": "Нет данных",
             "1.2.20": "logread",
+            "1.2.21": "WAN",
         }
         for version, keyword in expected.items():
             with self.subTest(version=version):
