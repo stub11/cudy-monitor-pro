@@ -41,6 +41,42 @@ async function checkBrowser(engine, label, options = {}) {
     }
 
 
+    // Missing totals are unavailable readings, NOT an actual zero-percent load.
+    await page.route('**/api/status', async route => {
+      const response = await route.fetch();
+      const snapshot = await response.json();
+      snapshot.mem_total = 0;
+      snapshot.mem_used = 0;
+      snapshot.disk_total = 0;
+      snapshot.disk_used = 0;
+      await route.fulfill({ response, body: JSON.stringify(snapshot) });
+    });
+    await page.evaluate(() => poll());
+    await page.waitForFunction(() => document.querySelector('#mem').textContent === 'Нет данных' &&
+      document.querySelector('#disk').textContent === 'Нет данных');
+    assert.equal(await page.locator('#memringvalue').textContent(), '—',
+      label + ' no RAM sensor reading must not be 0%');
+    assert.equal(await page.locator('#diskringvalue').textContent(), '—',
+      label + ' no disk total must not be 0%');
+    assert.match(await page.locator('#storageinfo').textContent(), /Нет данных о накопителе/u);
+    assert.match(await page.locator('#memorybreakdown').textContent(), /Данные RAM недоступны/u);
+    await page.unroute('**/api/status');
+    // CI runners may have no attached storage. Explicitly restore synthetic
+    // known totals instead of assuming their disk mount is available.
+    await page.route('**/api/status', async route => {
+      const response = await route.fetch();
+      const snapshot = await response.json();
+      snapshot.mem_total = 512;
+      snapshot.mem_used = 256;
+      snapshot.disk_total = 1024;
+      snapshot.disk_used = 512;
+      await route.fulfill({ response, body: JSON.stringify(snapshot) });
+    });
+    await page.evaluate(() => poll());
+    await page.waitForFunction(() => document.querySelector('#mem').textContent === '50.0%' &&
+      document.querySelector('#disk').textContent === '50.0%');
+    await page.unroute('**/api/status');
+
     // A Keenetic Ported system log must never be presented as OpenWrt, and
     // an unsupported logread must not be mistaken for a genuinely empty log.
     assert.match(await page.locator('#logsource option[value="system"]').textContent(),
