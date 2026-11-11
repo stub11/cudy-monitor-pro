@@ -306,7 +306,16 @@ fn keenetic_log_events(output:&str)->Vec<String>{
     if !current.is_empty(){entries.push(current);}
     entries
 }
-fn log_entries(source:&str)->(String,Vec<(u64,String)>,bool){
+// A read-only ndmc log request can itself open and close a CLI session.
+// Keep these messages available via "show service events", but do not let
+// repetitive CLI housekeeping crowd out useful recent events by default.
+fn is_ndmc_session_housekeeping(event:&str)->bool{
+    let x=event.to_ascii_lowercase();
+    x.contains("ndm: core::session: client disconnected.")
+        || (x.contains("ndm: core::server: started session")
+            && x.contains("/var/run/ndm.core.socket"))
+}
+fn log_entries(source:&str,include_cli_sessions:bool)->(String,Vec<(u64,String)>,bool){
     let mut lines=Vec::new();
     let mut available=true;
     match source{
@@ -324,7 +333,9 @@ fn log_entries(source:&str)->(String,Vec<(u64,String)>,bool){
             // OpenWrt supports -l; other Linux variants may not.
             // No shell and no user-controlled arguments are ever executed.
             if let Some(events)=keenetic {
-                for event in events.iter().rev().take(80){
+                for event in events.iter().rev()
+                    .filter(|e|include_cli_sessions || !is_ndmc_session_housekeeping(e))
+                    .take(80) {
                     lines.push((0,sanitize_diag(event)));
                 }
             } else {
@@ -360,8 +371,8 @@ fn log_entries(source:&str)->(String,Vec<(u64,String)>,bool){
     }
     (source.to_string(),lines,available)
 }
-fn diagnostics_json(source:&str)->String{
-    let (source,events,available)=log_entries(source);
+fn diagnostics_json(source:&str,include_cli_sessions:bool)->String{
+    let (source,events,available)=log_entries(source,include_cli_sessions);
     let mut out=format!("{{\"source\":{},\"max_events\":80,\"redacted\":true,\"available\":{available},\"events\":[",quoted(&source));
     for (i,(ts,msg)) in events.iter().enumerate(){
         if i>0{out.push(',');}
@@ -582,10 +593,15 @@ fn handle(mut c:TcpStream,s:Arc<Mutex<State>>,token:String){
         respond(&mut c,"200 OK","application/json",body.as_bytes());return;
     }
     if line.starts_with("GET /api/logs HTTP/") || line.starts_with("GET /api/logs?source="){
-        let source=line.split_whitespace().nth(1).unwrap_or("").strip_prefix("/api/logs?source=").unwrap_or("monitor");
+        let target=line.split_whitespace().nth(1).unwrap_or("");
+        let args=target.strip_prefix("/api/logs?source=").unwrap_or("monitor");
+        let mut values=args.split('&');
+        let source=values.next().unwrap_or("monitor");
+        // Only the explicit value "1" enables showing routine ndmc sessions.
+        let include_cli_sessions=values.any(|part|part=="include_cli_sessions=1");
         let body=match source{
             "monitor"=>logs_json(&s),
-            "system"|"updates"=>diagnostics_json(source),
+            "system"|"updates"=>diagnostics_json(source,include_cli_sessions),
             _=>{respond(&mut c,"400 Bad Request","application/json",br#"{"error":"invalid log source"}"#);return;}
         };
         respond(&mut c,"200 OK","application/json",body.as_bytes());return;
@@ -890,6 +906,19 @@ pppoe-wan 00000000 00000000 0001 0 0 10 00000000 0 0 0\n";
         let one=keenetic_log_events("E [Nov 11 13:54:03] error\n  password=secret\n");
         assert_eq!(one.len(),1);
         assert_eq!(sanitize_diag(&one[0]),"[строка со служебными данными скрыта]");
+    }
+    #[test] fn keenetic_cli_session_noise_is_optional(){
+        let disconnect="I [Nov 11 14:27:20] ndm: Core::Session: client disconnected.";
+        let connected="I [Nov 11 14:27:20] ndm: Core::Server: started Session /var/run/ndm.core.socket.";
+        let useful="I [Nov 11 14:27:21] ndm: Network::Interface: connection established.";
+        let other="I [Nov 11 14:27:22] daemon: client disconnected.";
+        assert!(is_ndmc_session_housekeeping(disconnect));
+        assert!(is_ndmc_session_housekeeping(connected));
+        assert!(!is_ndmc_session_housekeeping(useful));
+        assert!(!is_ndmc_session_housekeeping(other));
+        let events=[disconnect,connected,useful,other];
+        assert_eq!(events.iter().filter(|e|!is_ndmc_session_housekeeping(e)).count(),2);
+        assert_eq!(events.iter().filter(|_|true).count(),4);
     }
     #[test] fn ram_htop_vs_available_fixture(){
         let fixture="MemTotal: 239564 kB\nMemFree: 50632 kB\nMemAvailable: 73540 kB\nBuffers: 17960 kB\nCached: 51872 kB\nShmem: 3084 kB\nSReclaimable: 10868 kB\n";
