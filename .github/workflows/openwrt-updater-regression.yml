@@ -93,10 +93,9 @@ jobs:
           package_version = re.search(r'(?m)^PKG_VERSION:=([0-9]+\.[0-9]+\.[0-9]+)$', pkg)
           cargo_version = re.search(r'(?m)^version = "([0-9]+\.[0-9]+\.[0-9]+)"$', cargo)
           assert package_version and cargo_version and cargo_version.group(1) == package_version.group(1)
-          # Published v1.2.24 artifact SHA256 from the official GitHub Release.
-          # New package is staged while installer remains on the last verified release.
-          assert package_version.group(1) == '1.2.25'
-          assert version.group(1) == '1.2.24'
+          # Published v1.2.25 artifact SHA256 from the official GitHub Release.
+          # Published version must be identical across package and installer.
+          assert package_version.group(1) == version.group(1) == '1.2.25'
           assert digest.group(1) == 'c5f08c26b3d04e95fe18aeb98e8cf71f5683b0bb934425a48199ff32dffdb668'
           assert f"EXPECTED_SHA256={digest.group(1)}" in workflow
           assert f"VERSION={version.group(1)}" in workflow
