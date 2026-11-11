@@ -59,7 +59,11 @@ async function checkBrowser(engine, label, options = {}) {
         const reset=networkLiveIface==='br0'&&networkLivePoints.length===1;
         return {first,hasSvg:!!second,reset};
       } finally {
-        Object.assign(window,original);
+        allNetwork=original.allNetwork;
+        networkIface=original.networkIface;
+        networkLiveIface=original.networkLiveIface;
+        networkLivePoints=original.networkLivePoints;
+        netPoints=original.netPoints;
         renderNetworkChart();
       }
     });
