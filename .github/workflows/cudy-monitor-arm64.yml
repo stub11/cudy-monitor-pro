@@ -76,8 +76,8 @@ jobs:
           curl --fail --silent 'http://127.0.0.1:18237/api/network-history?iface=br0' | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["interface"]=="br0" and x["max_points"]==150'
           test "$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:18237/api/network-history?iface=untrusted')" = 400
           curl --fail --silent http://127.0.0.1:18237/api/logs | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["source"]=="monitor" and len(x["events"])<=80'
-          curl --fail --silent 'http://127.0.0.1:18237/api/logs?source=system' | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["source"]=="system" and x["redacted"] is True and len(x["events"])<=80'
-          curl --fail --silent 'http://127.0.0.1:18237/api/logs?source=updates' | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["source"]=="updates" and x["redacted"] is True'
+          curl --fail --silent 'http://127.0.0.1:18237/api/logs?source=system' | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["source"]=="system" and x["redacted"] is True and isinstance(x["available"],bool) and len(x["events"])<=80'
+          curl --fail --silent 'http://127.0.0.1:18237/api/logs?source=updates' | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["source"]=="updates" and x["redacted"] is True and isinstance(x["available"],bool)'
           test "$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:18237/api/logs?source=unknown')" = 400
           curl --fail --silent http://127.0.0.1:18237/api/service/action-status | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["action"] is None'
           curl --fail --silent http://127.0.0.1:18237/api/status | python3 -c 'import json,sys; x=json.load(sys.stdin); assert isinstance(x["cores"],list) and "connections" in x and "cpu_mhz" in x and all("cpu" in p for p in x["processes"]) and "mem_htop_used" in x and "mem_available" in x and (x["wan_iface"] is None or isinstance(x["wan_iface"],str)) and x["wan_route_status"] in ("missing","ambiguous","main_ipv4_route") and x["update_mode"]=="entware" and x["auth_enabled"] is False'
