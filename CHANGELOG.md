@@ -1,5 +1,14 @@
 # Cudy Monitor Pro — Release notes
 
+## 1.2.17 — Readable KeeneticOS event history and visible network addresses
+- Group wrapped KeeneticOS journal lines into logical events and strip terminal control sequences.
+- Preserve IPv4, IPv6 and MAC addresses in local diagnostics at the owner's request; continue to mask credentials, emails and secrets.
+- Warn explicitly that exported diagnostic reports may contain network addresses.
+- Treat reserved documentation-only IPv4 examples as safe in the public-content CI guard.
+- Retain the bounded 80-event system log view and read-only `ndmc` / `logread` behavior.
+- Expand Rust regression coverage for wrapped log records, console escapes and security-sensitive content.
+
+
 ## 1.2.16 — Keenetic Ported logs and UI reliability
 - Prefer the KeeneticOS read-only system journal on Entware/Ported; fall back to `logread` when required.
 - Show clearly whether system and update logs are unavailable, empty, or filtered; do not export unavailable log sources as valid reports.
