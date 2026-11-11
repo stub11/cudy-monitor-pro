@@ -42,7 +42,7 @@ for path in paths:
     if path.suffix.lower() == ".md":
         private_ops = re.compile(
             r"telegram|cudyapp|upstash|redis|webhook|"
-            r"телеграм|телеграм-бот|анонс(?:ы|ов)?\\s+релизов",
+            r"телеграм|телеграм-бот|анонс(?:ы|ов)?\s+релизов",
             re.I,
         )
         if private_ops.search(content):
