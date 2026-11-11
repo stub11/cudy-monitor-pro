@@ -1,5 +1,11 @@
 # Cudy Monitor Pro — Release notes
 
+## 1.2.21 — Keep active WAN network graph history
+- Always include the default-route WAN interface in bounded graph history, even on routers with many virtual/VLAN interfaces.
+- Preserve the 16-interface RAM limit and avoid extra writes to USB.
+- Add Rust regression tests for busy systems with more than 30 network interfaces.
+
+
 ## 1.2.20 — Correct system-log source labels on OpenWrt
 - Show «Системный журнал (logread)» on native OpenWrt instead of incorrectly mentioning KeeneticOS.
 - Hide KeeneticOS-specific ndmc session controls and descriptions on OpenWrt.
