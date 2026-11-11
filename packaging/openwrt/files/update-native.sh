@@ -165,6 +165,26 @@ if ! apk add --allow-untrusted "$DIR/next.apk"; then
   restore_old
   die "Upgrade failed; verified previous package restored"
 fi
+# The APK package post-upgrade hook may start a daemon while procd is still
+# transitioning. Independently restart the newly installed binary once before
+# checking /health and the live executable. Never restart a wrong disk version.
+activate_updated_service(){
+  expected=$1
+  disk=$("$SELF" --version 2>/dev/null || :)
+  if [ "$disk" != "cudy-monitor-pro $expected" ]; then
+    echo "VERIFY FAILED: installed binary version differs from $expected" >&2
+    return 1
+  fi
+  if ! /etc/init.d/cudy-monitor-pro restart >/dev/null 2>&1; then
+    echo "VERIFY FAILED: procd restart reported failure" >&2
+    return 1
+  fi
+  return 0
+}
+if ! activate_updated_service "$LATEST"; then
+  restore_old
+  die "New service activation failed; previous package restored"
+fi
 BIND=$(head -n 1 /etc/cudy-monitor-pro/bind 2>/dev/null || printf '127.0.0.1:8237')
 case "$BIND" in *[!0-9.:]*|*:*:*) die "Upgrade completed but stored LAN bind invalid";; esac
 # Keep each check distinct to explain hardware-only failures without
