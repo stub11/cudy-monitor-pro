@@ -127,4 +127,4 @@ jobs:
           gh release create "$TAG" openwrt-apk-artifacts/* \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
             --title "Cudy Monitor Pro $VERSION — OpenWrt 25.12 APK v3" \
-            --notes "Что нового: восстановление WAN-графика по реальным измерениям при отсутствии истории. Экспериментальный OpenWrt 25.12.6 ARM64 APK. One-command install: wget -qO /tmp/cudy-monitor-install.sh https://raw.githubusercontent.com/stub11/cudy-monitor-pro/main/packaging/openwrt/install-openwrt.sh && sh /tmp/cudy-monitor-install.sh . Auto-detects trusted LAN and opens dashboard port 8237; ambiguous LAN falls back safely to loopback. Unsigned APK; verify checksum. No WAN exposure. Cudy WBR3000UAX OpenWrt hardware testing pending; no router firmware is modified."
+            --notes "Что нового: резервная проверка официальных SHA-256 при временной недоступности GitHub API (HTTP 403). Экспериментальный OpenWrt 25.12 ARM64 APK; проверяйте контрольную сумму. Аппаратное тестирование продолжается."
