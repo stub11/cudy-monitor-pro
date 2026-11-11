@@ -69,8 +69,14 @@ async function checkBrowser(engine, label, options = {}) {
     assert.match(await page.locator('#updatestatus').textContent(), /установлен 1\.2\.11.*запущен 1\.2\.10/u);
     await page.unroute('**/api/update/check');
 
-    // The updater compares its API version to the live monitor badge. Keep
-    // the isolated test's synthetic 1.2.12 status consistent with that badge.
+    // Keep the synthetic test status stable even if the dashboard polls while
+    // WebKit is processing the mocked update check. Do not relax OTA safeguards.
+    await page.route('**/api/status', async route => {
+      const response = await route.fetch();
+      const data = await response.json();
+      data.version = '1.2.12';
+      await route.fulfill({ response, body: JSON.stringify(data) });
+    });
     await page.evaluate(() => { document.querySelector('#sidebarversion').textContent = '1.2.12'; });
 
     // A successful 202 Accepted only starts an OTA. The UI must wait for
@@ -83,7 +89,17 @@ async function checkBrowser(engine, label, options = {}) {
       })
     }));
     await page.locator('#checkupdate').click();
-    await page.waitForFunction(() => !document.querySelector('#applyupdate').disabled);
+    try {
+      await page.waitForFunction(() => !document.querySelector('#applyupdate').disabled,
+        null, { timeout: 12000 });
+    } catch (error) {
+      const diagnostic = await page.evaluate(() => ({
+        status: document.querySelector('#updatestatus').textContent,
+        runningVersion: document.querySelector('#sidebarversion').textContent,
+      }));
+      throw new Error(label + ' synthetic OTA check blocked: ' +
+        JSON.stringify(diagnostic) + '; ' + error.message);
+    }
     await page.route('**/api/update/apply', route => route.fulfill({
       status: 202, contentType: 'application/json',
       body: JSON.stringify({status:'started'})
