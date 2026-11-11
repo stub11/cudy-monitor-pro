@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=cudy-monitor-pro
-PKG_VERSION:=1.2.24
+PKG_VERSION:=1.2.25
 PKG_RELEASE:=1
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=Cudy Monitor Contributors
