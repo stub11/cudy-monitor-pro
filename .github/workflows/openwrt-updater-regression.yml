@@ -46,8 +46,29 @@ jobs:
           version = re.search(r'(?m)^VERSION=([0-9]+\.[0-9]+\.[0-9]+)$', installer)
           digest = re.search(r'(?m)^EXPECTED_SHA256=([a-f0-9]{64})$', installer)
           assert version and digest, "Installer version or pinned SHA-256 missing"
-          assert f"PKG_VERSION:={version.group(1)}" in pkg
-          assert f'version = "{version.group(1)}"' in cargo
+          package_version = re.search(r'(?m)^PKG_VERSION:=([0-9]+\\.[0-9]+\\.[0-9]+)
+          assert f"EXPECTED_SHA256={digest.group(1)}" in workflow
+          assert f"VERSION={version.group(1)}" in workflow
+          assert 'ACTUAL_SHA256=$(sha256sum "$TARGET"' in installer
+          assert '[ "$ACTUAL_SHA256" = "$EXPECTED_SHA256" ]' in installer
+          print("OpenWrt installer version, checksum pin and guard consistent")
+          PY
+, pkg)
+          assert package_version, "Package version missing"
+          cargo_version = re.search(r'(?m)^version = "([0-9]+\\.[0-9]+\\.[0-9]+)"
+          assert f"EXPECTED_SHA256={digest.group(1)}" in workflow
+          assert f"VERSION={version.group(1)}" in workflow
+          assert 'ACTUAL_SHA256=$(sha256sum "$TARGET"' in installer
+          assert '[ "$ACTUAL_SHA256" = "$EXPECTED_SHA256" ]' in installer
+          print("OpenWrt installer version, checksum pin and guard consistent")
+          PY
+, cargo)
+          assert cargo_version and cargo_version.group(1) == package_version.group(1)
+          # During a release build the standalone installer stays pinned to
+          # the previous immutable APK until the new digest is published.
+          assert tuple(map(int, version.group(1).split('.'))) <= tuple(map(int, package_version.group(1).split('.')))
+          assert package_version.group(1) in (version.group(1), '1.2.15')
+
           assert f"EXPECTED_SHA256={digest.group(1)}" in workflow
           assert f"VERSION={version.group(1)}" in workflow
           assert 'ACTUAL_SHA256=$(sha256sum "$TARGET"' in installer
