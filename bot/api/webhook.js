@@ -10,6 +10,7 @@ const { checkMessage, selectReaction } = require('../lib/moderation.js');
 const { answerPublicQuestion } = require('../lib/public-faq.js');
 const issueIntake = require('../lib/problem-intake.js');
 const otaFollowup = require('../lib/update-followup.js');
+const issueReply = require('../lib/issue-reply-target.js');
 
 const SECRET_SALT = '|cudyapp-topic-webhook-v1';
 
@@ -332,6 +333,64 @@ async function handleOtaFollowup(message, text, token) {
   await redis(['SET',session,JSON.stringify({}),'EX','1800']);
   return true;
 }
+async function handleIssueReplyTarget(message,text,token){
+  const request=issueReply.command(text);
+  if(!request)return false;
+  if(!hasRedis())return true;
+  let member;
+  try {
+    member=await api('getChatMember',{
+      chat_id:message.chat.id,user_id:message.from.id
+    },token);
+  }catch{return true;}
+  if(!['creator','administrator'].includes(member?.status))return true;
+  const key=issueReply.mappingKey(message.chat.id,message.message_thread_id,request.issue);
+  if(request.action==='bind_issue'){
+    const source=message.reply_to_message;
+    if(!issueReply.validMessage(source,message.message_thread_id)){
+      await problemReply(message,
+        'Ответьте командой /cudy_bind_issue НОМЕР именно на сообщение тестера в этой теме.',token);
+      return true;
+    }
+    // No personal details or message text in storage. Metadata expires.
+    await redis(['SET',key,JSON.stringify({
+      messageId:source.message_id,testerId:source.from.id
+    }),'EX',String(issueReply.TTL)]);
+    await problemReply(message,
+      '✅ Issue #'+request.issue+' связан с исходным сообщением тестера. '
+      +'Привязка действует 30 дней. Команда /cudy_answer_issue '+request.issue
+      +' ответит прямо под ним.',token);
+    return true;
+  }
+  const target=issueReply.parseMapping(await redis(['GET',key]));
+  if(!target){
+    await problemReply(message,
+      'Не удалось найти действующую привязку Issue #'+request.issue+
+      '. Ответьте /cudy_bind_issue '+request.issue+
+      ' на исходное сообщение тестера.',token);
+    return true;
+  }
+  const lock='cudy:issue-reply:lock:v1:'+message.chat.id+':'+
+    message.message_thread_id+':'+request.issue+':'+target.messageId;
+  if(!await once(lock,7200))return true;
+  try{
+    await api('sendMessage',{
+      chat_id:message.chat.id,
+      message_thread_id:message.message_thread_id,
+      reply_parameters:{message_id:target.messageId,allow_sending_without_reply:false},
+      disable_notification:true,
+      link_preview_options:{is_disabled:true},
+      text:issueReply.replyText(request.issue)
+    },token);
+  }catch{
+    // Never degrade to a topic-level message when the target was deleted.
+    await redis(['DEL',lock]);
+    await problemReply(message,
+      'Ответ в исходное сообщение не доставлен. Возможно, оно удалено. '
+      +'Ничего в общую тему не отправлено.',token);
+  }
+  return true;
+}
 async function problemReply(message, text, token, keyboard) {
   await api('sendMessage', {
     chat_id: message.chat.id, message_thread_id: message.message_thread_id,
@@ -557,6 +616,12 @@ async function processUpdate(update, token) {
     try {await manageMedia(message,text,token);}catch{}
     return;
   }
+  // Admin-only correlation: link an Issue to a specific tester message and
+  // reply to that exact message later, never to an unrelated thread.
+  if(update.message && issueReply.command(text)){
+    try {await handleIssueReplyTarget(message,text,token);}catch{}
+    return;
+  }
   // Continue a prior OTA diagnostic after the same tester supplies a short
   // technical value, with a contextual explanation or the next question.
   if(update.message && hasRedis()){
@@ -663,4 +728,4 @@ module.exports = async function handler(req, res) {
   }
   res.statusCode = 200; res.end('OK');
 };
-module.exports._test = { webhookSecret, equalSecret, targetChat, targetTopic, processUpdate, allowReaction, diagnosticKeyboard, handleDiagnosticCallback, mediaCommand, mediaStoreKey, mediaReaction, nativeEmojiForText, handleOtaFollowup, handleOtaStructuredStatus, handleOtaDialogue };
+module.exports._test = { webhookSecret, equalSecret, targetChat, targetTopic, processUpdate, allowReaction, diagnosticKeyboard, handleDiagnosticCallback, mediaCommand, mediaStoreKey, mediaReaction, nativeEmojiForText, handleOtaFollowup, handleOtaStructuredStatus, handleOtaDialogue, handleIssueReplyTarget };
