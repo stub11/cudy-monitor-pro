@@ -36,7 +36,7 @@ command -v "$SHASUM" >/dev/null 2>&1 || fail "sha256sum is required"
 # Show a sanitized HTTP status rather than a vague error; never print redirect
 # URLs, signed query strings, Set-Cookie headers, or remote response bodies.
 MANIFEST_TMP=$(mktemp "${TMPDIR:-/tmp}/cudy-monitor-manifest.XXXXXX") || fail "Cannot create temporary manifest"
-HTTP_CODE=$("$CURL" --proto '=https' --tlsv1.2 -sSL --retry 1 --connect-timeout 5 --max-time 18 -o "$MANIFEST_TMP" -w '%{http_code}' "$MANIFEST") || {
+HTTP_CODE=$("$CURL" --proto '=https' --tlsv1.2 -fsSL --retry 1 --connect-timeout 5 --max-time 18 -o "$MANIFEST_TMP" -w '%{http_code}' "$MANIFEST") || {
     case "$HTTP_CODE" in
         403) fail "GitHub release metadata request returned HTTP 403 (access restriction or temporary rate limit). Installed version is unchanged. Retry later; check access to github.com and release-assets.githubusercontent.com." ;;
         429) fail "GitHub release metadata request returned HTTP 429 (rate limit). Installed version is unchanged. Retry later." ;;
