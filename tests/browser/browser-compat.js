@@ -77,12 +77,11 @@ async function checkBrowser(engine, label, options = {}) {
       document.querySelector('#disk').textContent === '50.0%');
     await page.unroute('**/api/status');
 
-    // A Keenetic Ported system log must never be presented as OpenWrt, and
-    // an unsupported logread must not be mistaken for a genuinely empty log.
-    assert.match(await page.locator('#logsource option[value="system"]').textContent(),
-      /Системный журнал/u);
-    assert.doesNotMatch(await page.locator('#logsource option[value="system"]').textContent(),
-      /OpenWrt/u);
+    // Native OpenWrt must never be mislabeled as KeeneticOS or show ndmc controls.
+    await page.waitForFunction(() => document.querySelector('#online')
+      .textContent.includes('Работает'));
+    assert.match(await page.locator('#systemlogoption').textContent(), /logread/u);
+    assert.doesNotMatch(await page.locator('#systemlogoption').textContent(), /KeeneticOS|ndmc/u);
     await page.route('**/api/logs?source=system', route => route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify({source:'system',max_events:80,redacted:true,available:false,events:[]})
@@ -97,6 +96,8 @@ async function checkBrowser(engine, label, options = {}) {
         sourceBounds.height >= 44, label + ' log source must fit mobile width and touch target');
     }
     await page.locator('#logsource').selectOption('system');
+    assert.equal(await page.locator('#logclisessionsrow').isVisible(), false,
+      label + ' OpenWrt should not expose KeeneticOS session toggles');
     await page.waitForFunction(() => document.querySelector('#logrows')
       .textContent.includes('Системный журнал недоступен'));
     assert.equal(await page.locator('#exportlogs').isDisabled(), true,
@@ -112,8 +113,20 @@ async function checkBrowser(engine, label, options = {}) {
     assert.equal(await page.locator('#exportlogs').isDisabled(), false,
       label + ' genuinely empty available log remains exportable');
     await page.unroute('**/api/logs?source=system');
+    // Simulate the Entware status on the same browser. Model must not be
+    // inferred from a hardcoded OpenWrt label or vice versa.
+    await page.route('**/api/status', async route => {
+      const response = await route.fetch();
+      const snapshot = await response.json();
+      snapshot.update_mode = 'entware';
+      snapshot.platform = 'Linux / Entware';
+      await route.fulfill({ response, body: JSON.stringify(snapshot) });
+    });
+    await page.evaluate(() => poll());
+    await page.waitForFunction(() => logPlatform === 'entware');
+    assert.match(await page.locator('#systemlogoption').textContent(), /ndmc.*logread/u);
     assert.equal(await page.locator('#logclisessionsrow').isVisible(), true,
-      label + ' option to show ndmc sessions must be available in system log');
+      label + ' ndmc option must appear only on Entware system log');
     await page.route('**/api/logs?source=system&include_cli_sessions=1', route => route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify({source:'system',max_events:80,redacted:true,available:true,
@@ -128,6 +141,11 @@ async function checkBrowser(engine, label, options = {}) {
     await page.locator('#logsource').selectOption('monitor');
     assert.equal(await page.locator('#logclisessionsrow').isVisible(), false,
       label + ' ndmc-only toggle must not appear for monitor events');
+    await page.unroute('**/api/status');
+    await page.evaluate(() => poll());
+    await page.waitForFunction(() => logPlatform === 'openwrt');
+    assert.match(await page.locator('#systemlogoption').textContent(), /logread/u);
+    assert.doesNotMatch(await page.locator('#systemlogoption').textContent(), /ndmc|KeeneticOS/u);
 
     // Repro from Cudy OTA report: UI must not falsely claim 1.2.10 is
     // up to date when GitHub shows 1.2.11 and API claims unavailable.
