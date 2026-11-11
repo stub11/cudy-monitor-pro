@@ -52,7 +52,9 @@ jobs:
           install=Path('packaging/openwrt/install-openwrt.sh').read_text()
           assert 'apk add --allow-untrusted' in install and 'ACTUAL_SHA256=$(sha256sum' in install and 'EXPECTED_SHA256=' in install and 'cudy-monitor-lan --lan' in install
           # The standalone installer pins published OpenWrt 1.2.21 with the build-verified GitHub release digest.
-          assert 'PKG_VERSION:=1.2.21' in p
+          assert 'PKG_VERSION:='+Path('cudy-monitor/Cargo.toml').read_text().split('version = "',1)[1].split('"',1)[0] in p
+          # Installer is deliberately pinned to the LAST PUBLISHED, digest-verified APK.
+          # It is advanced only after this version's GitHub release publishes its real SHA256.
           assert 'VERSION=1.2.21' in install 
           easy=Path('scripts/easy-install.sh').read_text()
           assert 'if [ -f /etc/openwrt_release ]; then' in easy
@@ -125,4 +127,4 @@ jobs:
           gh release create "$TAG" openwrt-apk-artifacts/* \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
             --title "Cudy Monitor Pro $VERSION — OpenWrt 25.12 APK v3" \
-            --notes "Experimental OpenWrt 25.12.6 ARM64 package. One-command install: wget -qO /tmp/cudy-monitor-install.sh https://raw.githubusercontent.com/stub11/cudy-monitor-pro/main/packaging/openwrt/install-openwrt.sh && sh /tmp/cudy-monitor-install.sh . Auto-detects trusted LAN and opens dashboard port 8237; ambiguous LAN falls back safely to loopback. Unsigned APK; verify checksum. No WAN exposure. Cudy WBR3000UAX OpenWrt hardware testing pending; no router firmware is modified."
+            --notes "Что нового: восстановление WAN-графика по реальным измерениям при отсутствии истории. Экспериментальный OpenWrt 25.12.6 ARM64 APK. One-command install: wget -qO /tmp/cudy-monitor-install.sh https://raw.githubusercontent.com/stub11/cudy-monitor-pro/main/packaging/openwrt/install-openwrt.sh && sh /tmp/cudy-monitor-install.sh . Auto-detects trusted LAN and opens dashboard port 8237; ambiguous LAN falls back safely to loopback. Unsigned APK; verify checksum. No WAN exposure. Cudy WBR3000UAX OpenWrt hardware testing pending; no router firmware is modified."

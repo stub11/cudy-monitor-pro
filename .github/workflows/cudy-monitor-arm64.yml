@@ -298,5 +298,5 @@ jobs:
           printf '%s\n%s\n' "$VERSION" "$HASH" > /tmp/latest.txt
           gh release create "$TAG" /tmp/cudy-monitor-pro-aarch64 /tmp/latest.txt /tmp/cudy-package/*.ipk \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Cudy Monitor Pro $VERSION" \
-            --notes "Standalone ARM64 monitor for OpenWrt/Entware and KeeneticOS. Hardware validation still required." \
+            --notes "Что нового: WAN-график строится по реальным измерениям при отсутствии истории; уточнены сообщения об ошибках HTTP 403/429 при обновлении Entware. Автоматические тесты пройдены; проверка на устройствах продолжается." \
             --latest
