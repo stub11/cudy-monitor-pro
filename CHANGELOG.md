@@ -1,5 +1,25 @@
 # Cudy Monitor Pro — Release notes
 
+## 1.2.25 — Safe native OpenWrt update preflight
+- Check saved LAN panel binding before downloading or replacing a native OpenWrt APK.
+- Reject missing or invalid bind settings without disturbing the working installation.
+- Preserve SHA-256 verification, exact running-version checks and rollback.
+- Extend offline regression tests to enforce the preflight-before-install ordering.
+
+## 1.2.24 — Safer OpenWrt updater activation
+- Distinguish running-process version failures from HTTP health failures after APK updates.
+- Explicitly restart the new verified monitor through procd before checking health and process version.
+- Add a one-time, pinned updater migration path for older native OpenWrt installations.
+
+## 1.2.23 — GitHub API fallback
+- If GitHub's release API responds with HTTP 403, use a fixed project-maintained digest index for native OpenWrt updates.
+- Continue to verify official APK downloads against published SHA-256 before installation.
+
+## 1.2.22 — WAN graph and release diagnostics
+- Recover the live traffic graph from measured WAN speed while history samples are not yet available.
+- Show clearer diagnostic HTTP status when the Entware updater cannot fetch release metadata.
+
+
 ## 1.2.21 — Keep active WAN network graph history
 - Always include the default-route WAN interface in bounded graph history, even on routers with many virtual/VLAN interfaces.
 - Preserve the 16-interface RAM limit and avoid extra writes to USB.
