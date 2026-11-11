@@ -254,21 +254,22 @@ fn log_entries(source:&str)->(String,Vec<(u64,String)>,bool){
     let mut available=true;
     match source{
         "system"=>{
-            // OpenWrt supports -l; other Linux/Keenetic Ported variants may not.
-            // Do not invoke a shell or accept any user-supplied command arguments.
-            let limited=Command::new("logread").args(["-l","100"]).output();
-            let output=match limited {
-                Ok(out) if out.status.success()=>Some(out),
-                _=>Command::new("logread").output().ok().filter(|out|out.status.success()),
+            // KeeneticOS has a separate system journal from Entware syslog.
+            // Prefer this fixed read-only CLI command on Entware even if
+            // logread succeeds with an empty unrelated local buffer.
+            let native=std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1");
+            let keenetic=if native{None}else{
+                Command::new("ndmc").args(["-c","show log once"]).output().ok()
+                    .filter(|out|out.status.success()&&!out.stdout.is_empty())
             };
-            // KeeneticOS keeps its own system journal, separate from Entware.
-            // A fixed, read-only ndmc request is the last fallback on Ported.
-            let output=output.or_else(||{
-                if std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1"){
-                    return None;
+            // OpenWrt supports -l; other Linux variants may not.
+            // No shell and no user-controlled arguments are ever executed.
+            let output=keenetic.or_else(||{
+                let limited=Command::new("logread").args(["-l","100"]).output();
+                match limited {
+                    Ok(out) if out.status.success()=>Some(out),
+                    _=>Command::new("logread").output().ok().filter(|out|out.status.success()),
                 }
-                Command::new("ndmc").args(["-c","show log once"]).output()
-                    .ok().filter(|out|out.status.success())
             });
             if let Some(out)=output {
                 let text=String::from_utf8_lossy(&out.stdout);
