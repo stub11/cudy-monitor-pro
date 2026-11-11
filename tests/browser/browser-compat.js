@@ -46,6 +46,11 @@ async function checkBrowser(engine, label, options = {}) {
     // stuck at 'Накапливаем измерения' indefinitely.
     const liveFallback = await page.evaluate(() => {
       const original = {allNetwork,networkIface,networkLiveIface,networkLivePoints,netPoints};
+      // Model successive status polls deterministically instead of depending on
+      // two synchronous samples landing in different real milliseconds.
+      const realNow = Date.now;
+      let testNow = realNow();
+      Date.now = () => (testNow += 2000);
       try {
         allNetwork=[{name:'eth2.30',rx:125000,tx:50000}];
         networkIface='eth2.30';networkLiveIface='';networkLivePoints=[];netPoints=[];
@@ -59,6 +64,7 @@ async function checkBrowser(engine, label, options = {}) {
         const reset=networkLiveIface==='br0'&&networkLivePoints.length===1;
         return {first,hasSvg:!!second,reset};
       } finally {
+        Date.now = realNow;
         allNetwork=original.allNetwork;
         networkIface=original.networkIface;
         networkLiveIface=original.networkLiveIface;
