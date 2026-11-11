@@ -145,6 +145,10 @@ class PublisherTests(TestCase):
             "1.2.19": "Нет данных",
             "1.2.20": "logread",
             "1.2.21": "WAN",
+            "1.2.22": "Сетевой",
+            "1.2.23": "SHA-256",
+            "1.2.24": "запуск",
+            "1.2.25": "OpenWrt",
         }
         for version, keyword in expected.items():
             with self.subTest(version=version):
