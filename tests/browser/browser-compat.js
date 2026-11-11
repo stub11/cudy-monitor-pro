@@ -47,6 +47,14 @@ async function checkBrowser(engine, label, options = {}) {
       /Системный журнал/u);
     assert.doesNotMatch(await page.locator('#logsource option[value="system"]').textContent(),
       /OpenWrt/u);
+    if (options.isMobile) {
+      const sourceBounds = await page.locator('#logsource').evaluate(node => {
+        const r = node.getBoundingClientRect();
+        return { left:r.left, right:r.right, viewport:window.innerWidth, height:r.height };
+      });
+      assert.ok(sourceBounds.left >= 0 && sourceBounds.right <= sourceBounds.viewport + 2 &&
+        sourceBounds.height >= 44, label + ' log source must fit mobile width and touch target');
+    }
     await page.route('**/api/logs?source=system', route => route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify({source:'system',max_events:80,redacted:true,available:false,events:[]})
