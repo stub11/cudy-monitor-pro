@@ -298,5 +298,5 @@ jobs:
           printf '%s\n%s\n' "$VERSION" "$HASH" > /tmp/latest.txt
           gh release create "$TAG" /tmp/cudy-monitor-pro-aarch64 /tmp/latest.txt /tmp/cudy-package/*.ipk \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Cudy Monitor Pro $VERSION" \
-            --notes "Что нового: внутренние проверки выпуска 1.2.23; код обновлятора OpenWrt поддерживает резервный список официальных SHA-256 при HTTP 403 GitHub API. Проверка на реальных устройствах продолжается." \
+            --notes "Что нового: улучшена диагностика обновления OpenWrt и безопасный запуск службы после установки APK. Проверка на реальных роутерах продолжается." \
             --latest
