@@ -47,9 +47,10 @@ read_fallback(){
   fetch "$FALLBACK" "$DIR/release-digests.txt" || die "GitHub API unavailable and pinned release list inaccessible. Installed version unchanged"
   awk '
     /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
-    NF != 2 || $1 !~ /^[0-9]+\.[0-9]+\.[0-9]+$/ || length($2) != 64 || $2 !~ /^[a-f0-9]+$/ { exit 1 }
-    seen[$1]++ { exit 1 }
-    END { if (NR == 0) exit 1 }
+    NF != 2 || $1 !~ /^[0-9]+\.[0-9]+\.[0-9]+$/ || length($2) != 64 || $2 !~ /^[a-f0-9]+$/ { bad=1; exit 1 }
+    seen[$1]++ { bad=1; exit 1 }
+    { entries++ }
+    END { if (bad || entries == 0) exit 1 }
   ' "$DIR/release-digests.txt" || die "Invalid pinned release list. Installed version unchanged"
 }
 fallback_digest(){
