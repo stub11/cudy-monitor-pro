@@ -88,6 +88,10 @@ def validated_release(meta: object, tag: str, expected_asset: str) -> bool:
 # Short human-reviewed Russian summaries. Never publish raw English CHANGELOG
 # lines as Telegram announcements. Add a new entry when preparing each release.
 RELEASE_NOTES_RU = {
+    "1.2.21": [
+        "График сети теперь сохраняет измерения активного WAN даже на роутерах с большим числом интерфейсов.",
+        "Ограничение памяти монитора сохранено; добавлены проверки для сложных сетевых конфигураций.",
+    ],
     "1.2.20": [
         "На OpenWrt системный журнал теперь правильно обозначен как logread, без упоминаний KeeneticOS.",
         "Настройки служебных подключений ndmc показываются только на совместимых системах Entware.",
