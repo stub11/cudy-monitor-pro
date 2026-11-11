@@ -18,8 +18,11 @@ jobs:
         run: |
           sh -n packaging/openwrt/files/update-native.sh
           sh -n packaging/openwrt/tests/test-running-version.sh
+          sh -n packaging/openwrt/tests/test-release-fallback.sh
       - name: Verify running version comparison with isolated synthetic processes
         run: sh packaging/openwrt/tests/test-running-version.sh
+      - name: Offline GitHub API 403 and SHA-256 fallback regression
+        run: sh packaging/openwrt/tests/test-release-fallback.sh
       - name: Require exact daemon and binary verification before UPDATE success
         run: |
           python3 - <<'PY'
