@@ -1,0 +1,39 @@
+name: One-time OpenWrt 1.2.24 verification follow-up
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/one-time-openwrt-124-success-20261111.yml']
+permissions:
+  contents: read
+jobs:
+  send:
+    if: >-
+      github.event.head_commit.message == 'chore: confirm OpenWrt 1.2.24 migration with tester'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Post follow-up to Cudy Monitor Telegram topic
+        env:
+          TOKEN: ${{ secrets.CUDY_TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.CUDY_TELEGRAM_CHAT_ID }}
+          TOPIC: ${{ secrets.CUDY_TELEGRAM_TOPIC_ID }}
+        run: |
+          python3 - <<'PY'
+          import os,json,urllib.request
+          token=os.environ.get('TOKEN','')
+          chat=os.environ.get('CHAT','')
+          topic=os.environ.get('TOPIC','')
+          if not all((token,chat,topic)): raise SystemExit('Telegram destination unavailable')
+          msg=('Никита, отлично, спасибо! 🦊🎉\n\nПо скриншоту подтверждено: переход с 1.2.21 на 1.2.24 прошёл успешно — UPDATED 1.2.24 (installed and running), без отката. Результат занесли в GitHub #85.\n\n'
+               'Можешь теперь без изменения настроек проверить:\n'
+               '1) открывается ли веб-панель и показывает ли 1.2.24;\n'
+               '2) строится ли график WAN спустя несколько измерений;\n'
+               '3) кнопка «Проверить обновления» сообщает, что версия актуальна, или выдаёт ошибку?\n\n'
+               'Если всё работает — достаточно короткого ответа. Если есть сбой — пришли скриншот без IP/токенов. DNS, прошивку и PPPoE трогать не нужно. Спасибо за тестирование!')
+          req=urllib.request.Request('https://api.telegram.org/bot'+token+'/sendMessage',data=json.dumps({'chat_id':chat,'message_thread_id':int(topic),'text':msg}).encode(),headers={'Content-Type':'application/json'},method='POST')
+          try:
+              with urllib.request.urlopen(req,timeout=15) as r: result=json.load(r)
+          except Exception: raise SystemExit('Telegram send failed; details redacted')
+          if not result.get('ok'): raise SystemExit('Telegram delivery not confirmed')
+          print('Telegram delivery confirmed, message_id='+str(result['result']['message_id']))
+          PY
