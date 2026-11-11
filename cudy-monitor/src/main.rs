@@ -230,14 +230,17 @@ fn diagnostic_token(token:&str)->String{
     let lower=t.to_ascii_lowercase();
     let sensitive_key=["password","passwd","token","secret","cookie","authorization","apikey","api_key","private","credential","ssid","psk","bearer"];
     if sensitive_key.iter().any(|x|lower.contains(x)) {return "[скрыто]".into();}
-    if lower.contains("://") || t.contains('@') || t.len()>36{return "[скрыто]".into();}
-    let addr=t.split(':').next().unwrap_or(t);
-    let chunks:Vec<_>=addr.split('.').collect();
-    if chunks.len()==4 && chunks.iter().all(|v|!v.is_empty()&&v.len()<=3&&v.bytes().all(|c|c.is_ascii_digit())){
-        return "[IP скрыт]".into();
-    }
-    if t.matches(':').count()>=2 && t.bytes().any(|c|c.is_ascii_hexdigit()){
-        return "[адрес скрыт]".into();
+    // IP and MAC addresses are useful for the owner's local diagnostics.
+    // Keep credential/email/URL masking, including overlong non-address values.
+    let address_like=t.parse::<std::net::IpAddr>().is_ok()
+        || t.split(':').next().unwrap_or("").parse::<std::net::Ipv4Addr>().is_ok()
+        || {
+            let octets:Vec<_>=t.split(':').collect();
+            octets.len()==6 && octets.iter().all(|x|
+                x.len()==2 && x.bytes().all(|c|c.is_ascii_hexdigit()))
+        };
+    if lower.contains("://") || t.contains('@') || (t.len()>36 && !address_like){
+        return "[скрыто]".into();
     }
     token.chars().filter(|c|!c.is_control()).take(160).collect()
 }
@@ -801,10 +804,12 @@ pppoe-wan 00000000 00000000 0001 0 0 10 00000000 0 0 0\n";
     #[test] fn diagnostic_redaction(){
         let x="client 192.168.1.1 connected; mac=AA:BB:CC:DD:EE:FF user@host";
         let safe=sanitize_diag(x);
-        assert!(!safe.contains("192.168.1.1"));
-        assert!(!safe.contains("AA:BB:CC:DD:EE:FF"));
-        assert!(!safe.contains("user@host"));
-        assert!(!sanitize_diag("login from 10.0.0.1:5588").contains("10.0.0.1"));
+        assert!(safe.contains("192.168.1.1"),"IPv4 addresses remain visible");
+        assert!(safe.contains("AA:BB:CC:DD:EE:FF"),"MAC addresses remain visible");
+        assert!(!safe.contains("user@host"),"Email addresses remain masked");
+        assert!(sanitize_diag("login from 10.0.0.1:5588").contains("10.0.0.1"));
+        assert!(sanitize_diag("client 2001:db8:85a3:0000:0000:8a2e:0370:7334").contains("2001:db8:85a3:0000:0000:8a2e:0370:7334"));
+        assert!(sanitize_diag("ndm: client disconnected").contains("client disconnected"));
         assert_eq!(sanitize_diag("password=hello hidden"),"[строка со служебными данными скрыта]");
         assert!(sanitize_diag("service restarted").contains("service restarted"));
     }
