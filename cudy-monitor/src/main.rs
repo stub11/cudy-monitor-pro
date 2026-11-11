@@ -104,6 +104,22 @@ fn pid_ticks()->HashMap<u64,u64>{
  out
 }
 fn cpu_percent(dt:u64,di:u64)->f64{if dt==0{0.0}else{(100.0*dt.saturating_sub(di) as f64/dt as f64).clamp(0.0,100.0)}}
+// Keep the active default-route WAN in bounded network history even on
+// firmware exposing dozens of VLANs, Wi-Fi radios and virtual interfaces.
+fn select_history_interfaces(mut available:Vec<(String,f64,f64)>,wan:Option<&str>)->Vec<(String,f64,f64)>{
+    available.retain(|x|valid_iface(&x.0));
+    available.sort_by(|a,b|{
+        let rank=|v:&str| if Some(v)==wan{0}
+            else if v=="eth2.4"||v=="wan"||v=="pppoe-wan"{1}
+            else if v=="br-lan"||v=="br0"{2}
+            else if v.starts_with("wlan")||v.starts_with("ra"){3}else{4};
+        rank(&a.0).cmp(&rank(&b.0))
+            .then_with(||(b.1+b.2).total_cmp(&(a.1+a.2)))
+            .then_with(||a.0.cmp(&b.0))
+    });
+    available.truncate(16);
+    available
+}
 fn sample(state:&Arc<Mutex<State>>){
     let now=Instant::now();
     let nc=cpu();
@@ -149,16 +165,8 @@ fn sample(state:&Arc<Mutex<State>>){
     s.high_cpu=cpu_hot;s.high_ram=ram_hot;
     let event_sec=now.duration_since(s.boot).as_secs();for note in notes {if s.events.len()>=80{s.events.pop_front();}s.events.push_back((event_sec,note.to_string()));}
     // Auto-discover OpenWrt/Keenetic network devices with bounded RAM use.
-    let mut available=s.current_network.clone();
-    available.sort_by(|a,b|{
-        let rank=|v:&str| if v=="eth2.4"||v=="wan"||v=="pppoe-wan"{0}
-            else if v=="br-lan"||v=="br0"{1}
-            else if v.starts_with("wlan")||v.starts_with("ra"){2}else{3};
-        rank(&a.0).cmp(&rank(&b.0))
-            .then_with(||(b.1+b.2).total_cmp(&(a.1+a.2)))
-    });
-    let tracked:Vec<_>=available.into_iter().filter(|x|valid_iface(&x.0))
-        .take(16).collect();
+    let (route_wan,_)=default_wan();
+    let tracked=select_history_interfaces(s.current_network.clone(),route_wan.as_deref());
     let allowed:std::collections::HashSet<_>=tracked.iter().map(|x|x.0.clone()).collect();
     s.net_histories.retain(|k,_|allowed.contains(k));
     let traffic_sec=now.duration_since(s.boot).as_secs();
@@ -856,6 +864,18 @@ fn main()->std::io::Result<()>{
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test] fn network_history_includes_active_wan_among_many_interfaces(){
+        let mut traffic=(0..32).map(|i|(format!("eth0.{}",i),5000.,5000.))
+            .collect::<Vec<_>>();
+        traffic.push(("eth2.30".to_owned(),12.,25.));
+        let tracked=select_history_interfaces(traffic,Some("eth2.30"));
+        assert_eq!(tracked.len(),16);
+        assert_eq!(tracked[0].0,"eth2.30");
+        assert!(tracked.iter().any(|(name,_,_)|name=="eth2.30"));
+        let generic=(0..3).map(|i|(format!("eth0.{}",i),10.,20.)).collect();
+        let all=select_history_interfaces(generic,None);
+        assert_eq!(all.len(),3);
+    }
     #[test] fn wan_main_route_prefers_lowest_metric(){
         let table="Iface Destination Gateway Flags RefCnt Use Metric Mask MTU Window IRTT\n\
 br-lan 0002A8C0 00000000 0001 0 0 0 00FFFFFF 0 0 0\n\
