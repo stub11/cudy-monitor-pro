@@ -167,16 +167,37 @@ if ! apk add --allow-untrusted "$DIR/next.apk"; then
 fi
 BIND=$(head -n 1 /etc/cudy-monitor-pro/bind 2>/dev/null || printf '127.0.0.1:8237')
 case "$BIND" in *[!0-9.:]*|*:*:*) die "Upgrade completed but stored LAN bind invalid";; esac
+# Keep each check distinct to explain hardware-only failures without
+# logging addresses, auth tokens, process arguments or private configuration.
+verify_updated(){
+  expected=$1
+  disk=$("$SELF" --version 2>/dev/null || :)
+  if [ "$disk" != "cudy-monitor-pro $expected" ]; then
+    VERIFY_FAILURE="installed binary version differs from $expected"
+    return 1
+  fi
+  if ! wget -q -O - "http://$BIND/health" 2>/dev/null | grep -qx ok; then
+    VERIFY_FAILURE="health endpoint did not return ok"
+    return 1
+  fi
+  if ! running_matches "$expected"; then
+    VERIFY_FAILURE="running daemon version differs from $expected"
+    return 1
+  fi
+  VERIFY_FAILURE=
+  return 0
+}
 healthy=0
 tries=0
-while [ "$tries" -lt 12 ]; do
-  if wget -q -O - "http://$BIND/health" 2>/dev/null | grep -qx ok &&
-     running_matches "$LATEST"; then healthy=1; break; fi
-  tries=$((tries+1));sleep 1
+VERIFY_FAILURE="verification did not start"
+while [ "$tries" -lt 18 ]; do
+  if verify_updated "$LATEST"; then healthy=1; break; fi
+  tries=$((tries+1)); sleep 1
 done
 if [ "$healthy" -ne 1 ]; then
+  echo "VERIFY FAILED: $VERIFY_FAILURE after $tries attempts; attempting rollback" >&2
   restore_old
-  die "Updated service failed health and exact running-version checks; previous package restored"
+  die "Updated service failed verification; previous package restored"
 fi
 # Also confirm disk version after the final health check, preventing a false
 # success if an APK post-install hook reported success without replacement.

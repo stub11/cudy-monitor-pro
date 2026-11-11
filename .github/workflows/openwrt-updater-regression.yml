@@ -19,20 +19,24 @@ jobs:
           sh -n packaging/openwrt/files/update-native.sh
           sh -n packaging/openwrt/tests/test-running-version.sh
           sh -n packaging/openwrt/tests/test-release-fallback.sh
+          sh -n packaging/openwrt/tests/test-upgrade-verification.sh
       - name: Verify running version comparison with isolated synthetic processes
         run: sh packaging/openwrt/tests/test-running-version.sh
       - name: Offline GitHub API 403 and SHA-256 fallback regression
         run: sh packaging/openwrt/tests/test-release-fallback.sh
+      - name: Separate disk, health and process checks (offline)
+        run: sh packaging/openwrt/tests/test-upgrade-verification.sh
       - name: Require exact daemon and binary verification before UPDATE success
         run: |
           python3 - <<'PY'
           from pathlib import Path
           s=Path('packaging/openwrt/files/update-native.sh').read_text()
-          assert 'running_matches "$LATEST"' in s
+          assert 'running_matches "$expected"' in s
+          assert 'verify_updated "$LATEST"' in s
           assert 'running_matches "$CURRENT"' in s
           assert 'AFTER=$("$SELF" --version' in s
           assert 'if [ "$AFTER" != "cudy-monitor-pro $LATEST" ]; then' in s
-          assert s.index('running_matches "$LATEST"') < s.index('echo "UPDATED $LATEST')
+          assert s.index('verify_updated "$LATEST"') < s.index('echo "UPDATED $LATEST')
           assert s.index('AFTER=$("$SELF" --version') < s.index('echo "UPDATED $LATEST')
           print("OpenWrt update success requires exact live and disk version")
           PY
