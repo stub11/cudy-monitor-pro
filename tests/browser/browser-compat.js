@@ -41,6 +41,32 @@ async function checkBrowser(engine, label, options = {}) {
     }
 
 
+    // If the history endpoint is still empty but live WAN rates exist, the
+    // graph must recover from genuine /api/status observations, not remain
+    // stuck at 'Накапливаем измерения' indefinitely.
+    const liveFallback = await page.evaluate(() => {
+      const original = {allNetwork,networkIface,networkLiveIface,networkLivePoints,netPoints};
+      try {
+        allNetwork=[{name:'eth2.30',rx:125000,tx:50000}];
+        networkIface='eth2.30';networkLiveIface='';networkLivePoints=[];netPoints=[];
+        updateNetworkLiveSample();
+        const first=document.querySelector('#networkgraph').textContent;
+        allNetwork=[{name:'eth2.30',rx:140000,tx:52000}];
+        updateNetworkLiveSample();
+        const second=document.querySelector('#networkgraph').querySelector('svg');
+        networkIface='br0';allNetwork=[{name:'br0',rx:1000,tx:1000}];
+        updateNetworkLiveSample();
+        const reset=networkLiveIface==='br0'&&networkLivePoints.length===1;
+        return {first,hasSvg:!!second,reset};
+      } finally {
+        Object.assign(window,original);
+        renderNetworkChart();
+      }
+    });
+    assert.match(liveFallback.first,/Накапливаем измерения/u);
+    assert.ok(liveFallback.hasSvg,label+' must draw real WAN live samples');
+    assert.ok(liveFallback.reset,label+' must not mix different interfaces');
+
     // Missing totals are unavailable readings, NOT an actual zero-percent load.
     await page.route('**/api/status', async route => {
       const response = await route.fetch();
