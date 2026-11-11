@@ -55,8 +55,8 @@ jobs:
           # Published immutable asset and public installer must now match exactly.
           # Keep immutable verified 1.2.18 installer until 1.2.19 APK is published.
           # The published installer must match Cargo and package versions exactly.
-          # Staged 1.2.21: installer stays pinned to verified published 1.2.20 APK.
-          assert version.group(1) in (package_version.group(1), '1.2.20')
+          # Released package and verified immutable installer must agree exactly.
+          assert version.group(1) == package_version.group(1)
           assert package_version.group(1) == '1.2.21'
           assert f"EXPECTED_SHA256={digest.group(1)}" in workflow
           assert f"VERSION={version.group(1)}" in workflow
