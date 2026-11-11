@@ -32,7 +32,7 @@ jobs:
           sh -n packaging/openwrt/files/cudy-monitor-lan
           sh -n packaging/openwrt/install-openwrt.sh
           # Offline fallback must not bypass integrity verification.
-          grep -q 'EXPECTED_SHA256=e10284939d7b74b44d34e61bc1059660b473e71796fac28228f7ac6558f66525' packaging/openwrt/install-openwrt.sh
+          grep -q 'EXPECTED_SHA256=c5f08c26b3d04e95fe18aeb98e8cf71f5683b0bb934425a48199ff32dffdb668' packaging/openwrt/install-openwrt.sh
           grep -q 'ACTUAL_SHA256' packaging/openwrt/install-openwrt.sh
           grep -q 'download_file' packaging/openwrt/install-openwrt.sh
           grep -q '\-\-file' packaging/openwrt/install-openwrt.sh
@@ -51,11 +51,11 @@ jobs:
           assert 'ACTIONS=0' in sh and 'CUDY_MONITOR_NATIVE_APK=1' in sh
           install=Path('packaging/openwrt/install-openwrt.sh').read_text()
           assert 'apk add --allow-untrusted' in install and 'ACTUAL_SHA256=$(sha256sum' in install and 'EXPECTED_SHA256=' in install and 'cudy-monitor-lan --lan' in install
-          # The standalone installer pins published OpenWrt 1.2.22 with the official release asset digest.
+          # The standalone installer pins published OpenWrt 1.2.24 with the official release asset digest.
           assert 'PKG_VERSION:='+Path('cudy-monitor/Cargo.toml').read_text().split('version = "',1)[1].split('"',1)[0] in p
           # Installer is deliberately pinned to the LAST PUBLISHED, digest-verified APK.
           # It is advanced only after this version's GitHub release publishes its real SHA256.
-          assert 'VERSION=1.2.22' in install 
+          assert 'VERSION=1.2.24' in install 
           easy=Path('scripts/easy-install.sh').read_text()
           assert 'if [ -f /etc/openwrt_release ]; then' in easy
           assert 'elif [ -d /opt/etc/init.d ] && [ -x /opt/bin/opkg ]; then' in easy
