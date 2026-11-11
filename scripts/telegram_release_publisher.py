@@ -88,6 +88,25 @@ def validated_release(meta: object, tag: str, expected_asset: str) -> bool:
 # Short human-reviewed Russian summaries. Never publish raw English CHANGELOG
 # lines as Telegram announcements. Add a new entry when preparing each release.
 RELEASE_NOTES_RU = {
+    "1.2.18": [
+        "Журнал KeeneticOS больше не засоряется служебными подключениями ndmc.",
+        "Добавлен переключатель для просмотра всех служебных событий.",
+        "Сохранены полезные сообщения об ошибках и отключениях.",
+    ],
+    "1.2.17": [
+        "Многострочные события KeeneticOS теперь отображаются целиком.",
+        "Убраны лишние символы терминала из журнала.",
+        "IP- и MAC-адреса видны; пароли и токены по-прежнему скрыты.",
+    ],
+    "1.2.16": [
+        "Добавлено чтение системного журнала KeeneticOS.",
+        "Журнал теперь различает пустой и недоступный источник.",
+        "При потере авторизации устаревшие показатели больше не выглядят актуальными.",
+    ],
+    "1.2.15": [
+        "Улучшено отображение показателей памяти на смартфонах.",
+        "Убраны дубли названий платформы и лишние разделители в панели.",
+    ],
     "1.2.14": [
         "Усилена проверка отката обновления OpenWrt: сверяются версия установленного файла и запущенного процесса.",
         "Неудачное восстановление пакета теперь сопровождается предупреждением вместо неподтверждённого успеха.",
@@ -124,14 +143,14 @@ RELEASE_NOTES_RU = {
 
 
 def changelog(version: str) -> str:
-    """Return only reviewed Russian release notes; never machine-guess changes."""
+    """Return concise reviewed changes; never replace them with generic release text."""
     points = RELEASE_NOTES_RU.get(version)
-    if not points:
-        return (
-            "Доступна новая версия монитора для OpenWrt и Entware.\n"
-            "Список изменений и подробности — на страницах релизов."
+    if not points or not all(isinstance(item, str) and item.strip() for item in points):
+        raise PublisherError(
+            f"No reviewed Russian changelog for v{version}; add release highlights before announcing"
         )
-    return "\n".join("• " + html.escape(item) for item in points[:3])
+    # Keep Telegram previews brief and safely escaped.
+    return "\n".join("• " + html.escape(item.strip()) for item in points[:3])
 
 
 def release_links(version: str) -> dict[str, str]:
@@ -149,8 +168,6 @@ def message(version: str) -> str:
     return (
         f"🚀 <b>Cudy Monitor Pro {safe_version} — новый релиз!</b>\n\n"
         f"<b>Что нового:</b>\n{changelog(version)}\n\n"
-        "✅ Пакеты OpenWrt и Entware опубликованы. "
-        "Сборки прошли автоматические проверки GitHub Actions.\n\n"
         "📦 <b>Выберите платформу с помощью кнопок ниже.</b>\n\n"
         "⚠️ Автоматические тесты не заменяют проверку на реальном роутере. "
         "Не открывайте порт панели в интернет.\n"
