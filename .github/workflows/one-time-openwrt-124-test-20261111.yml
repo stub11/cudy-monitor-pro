@@ -9,7 +9,7 @@ permissions:
 jobs:
   notify:
     if: >-
-      github.event.head_commit.message == 'chore: send verified OpenWrt 1.2.24 test invitation'
+      github.event.head_commit.message == 'chore: activate verified OpenWrt 1.2.24 invitation'
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
@@ -29,7 +29,7 @@ jobs:
           text=('Никита, спасибо за помощь с обновлением! 🦊\n\n'
                 'Выпустили проверенный сборкой OpenWrt APK 1.2.24. Исправили этап перезапуска службы и сохранили строгие проверки и откат. Но работа на твоём устройстве ещё требует подтверждения.\n\n'
                 'Важный нюанс: кнопка в установленной 1.2.21 запускает старый обновлятор, поэтому сейчас НЕ используй её повторно. Если готов на один контролируемый тест по SSH, можно запустить новый проверенный обновлятор из закреплённого коммита:\n\n'
-                + "command+"
+                + command +
                 '\n\nОн сначала проверит версию, скачает контрольные суммы и сохранит возможность отката. DNS, PPPoE и прошивку менять не нужно.\n\n'
                 'Пришли итог: UPDATED или ROLLBACK, установленную версию и последние строки вывода (без IP и токенов). Если пока не хочешь тестировать — просто оставайся на рабочей 1.2.21.')
           payload=json.dumps({'chat_id':chat,'message_thread_id':int(topic),'text':text}).encode()
