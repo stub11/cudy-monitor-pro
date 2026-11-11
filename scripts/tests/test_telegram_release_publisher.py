@@ -143,6 +143,7 @@ class PublisherTests(TestCase):
             "1.2.17": "Многострочные",
             "1.2.18": "ndmc",
             "1.2.19": "Нет данных",
+            "1.2.20": "logread",
         }
         for version, keyword in expected.items():
             with self.subTest(version=version):
