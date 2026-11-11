@@ -157,6 +157,11 @@ restore_old() {
   die "ROLLBACK FAILED: previous process version not observed"
 }
 
+# Validate the persisted LAN bind before making ANY package changes.
+# Failing here leaves the original installed and running version untouched.
+BIND=$(head -n 1 /etc/cudy-monitor-pro/bind 2>/dev/null || printf '127.0.0.1:8237')
+case "$BIND" in *[!0-9.:]*|*:*:*) die "Stored LAN bind invalid; update not started" ;; esac
+[ -n "$BIND" ] || die "Stored LAN bind empty; update not started"
 download_verified "$CURRENT" "$DIR/previous.apk"
 download_verified "$LATEST" "$DIR/next.apk"
 echo "Upgrading Cudy Monitor Pro $CURRENT -> $LATEST"
@@ -185,8 +190,6 @@ if ! activate_updated_service "$LATEST"; then
   restore_old
   die "New service activation failed; previous package restored"
 fi
-BIND=$(head -n 1 /etc/cudy-monitor-pro/bind 2>/dev/null || printf '127.0.0.1:8237')
-case "$BIND" in *[!0-9.:]*|*:*:*) die "Upgrade completed but stored LAN bind invalid";; esac
 # Keep each check distinct to explain hardware-only failures without
 # logging addresses, auth tokens, process arguments or private configuration.
 verify_updated(){
