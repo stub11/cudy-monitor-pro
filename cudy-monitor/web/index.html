@@ -544,7 +544,7 @@ async function fetchLogs(){
    logUnavailable=d.available===false;
    el('exportlogs').disabled=logUnavailable;
    const description=source==='monitor'?'Внутренние события (только RAM)':source==='updates'?'Журнал обновлений':'Системные записи (logread) с частичной маскировкой';
-   el('lognotice').textContent=description+' · '+(logUnavailable?'источник недоступен':logCache.length+' записей')+'. Перед публикацией экспорта проверьте скрытие личных данных.';
+   el('lognotice').textContent=description+' · '+(logUnavailable?'источник недоступен':logCache.length+' записей')+'. IP и MAC-адреса отображаются без маскировки. Перед отправкой отчёта проверьте личные данные.';
    renderLogRows();
  }catch(e){logCache=[];logUnavailable=true;logSourceActive=source;el('exportlogs').disabled=true;el('lognotice').textContent='Не удалось получить журнал';el('logrows').textContent='Ошибка получения журнала: '+e.message;}
 }
@@ -552,7 +552,7 @@ el('refreshlogs').onclick=fetchLogs;
 el('logsource').onchange=fetchLogs;
 el('logfilter').oninput=renderLogRows;
 el('exportlogs').onclick=()=>{
- const text=['Cudy Monitor Pro — диагностический отчёт','Источник: '+logSourceActive,'Внимание: проверьте данные перед отправкой','',...logCache.map(e=>String(e[1]))].join('\n');
+ const text=['Cudy Monitor Pro — диагностический отчёт','Источник: '+logSourceActive,'Внимание: IP и MAC-адреса не скрываются; проверьте данные перед отправкой','',...logCache.map(e=>String(e[1]))].join('\n');
  const blob=new Blob([text],{type:'text/plain;charset=utf-8'});
  const url=URL.createObjectURL(blob);const a=document.createElement('a');
  a.href=url;a.download='cudy-monitor-diagnostics-'+logSourceActive+'.txt';
