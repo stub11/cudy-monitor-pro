@@ -252,6 +252,60 @@ fn sanitize_diag(line:&str)->String{
     }
     line.split_whitespace().take(28).map(diagnostic_token).collect::<Vec<_>>().join(" ").chars().take(240).collect()
 }
+// KeeneticOS `ndmc` prints terminal control sequences and sometimes wraps one
+// logical log event over several physical lines. Do not show those fragments as
+// separate records. This parser only accepts fixed read-only ndmc output.
+fn strip_console_escapes(input:&str)->String{
+    let mut out=String::with_capacity(input.len());
+    let mut chars=input.chars().peekable();
+    while let Some(c)=chars.next(){
+        if c=='\x1b' {
+            if chars.peek()==Some(&'[') {
+                chars.next();
+                // Consume terminal CSI parameters until its final byte.
+                for code in chars.by_ref() {
+                    if ('@'..='~').contains(&code){break;}
+                }
+            } else {
+                // Bare ESC control commands have a single following character.
+                chars.next();
+            }
+        } else if c=='\r' {
+            // CR updates the current terminal line; treat it as a newline.
+            out.push('\n');
+        } else if !c.is_control() || c=='\n' || c=='\t' {
+            out.push(c);
+        }
+    }
+    out
+}
+fn keenetic_log_starts_event(line:&str)->bool {
+    let s=line.trim_start().as_bytes();
+    s.len()>4 && matches!(s[0],b'I'|b'E'|b'W'|b'D'|b'N'|b'C'|b'F')
+        && s[1]==b' ' && s[2]==b'['
+}
+fn keenetic_log_events(output:&str)->Vec<String>{
+    let clean=strip_console_escapes(output);
+    let mut entries=Vec::new();
+    let mut current=String::new();
+    for raw in clean.lines(){
+        let line=raw.trim();
+        if line.is_empty(){continue;}
+        if keenetic_log_starts_event(line){
+            if !current.is_empty(){entries.push(std::mem::take(&mut current));}
+            current.push_str(line);
+        } else if !current.is_empty() {
+            // Append a wrapped continuation only to an already detected event.
+            // Cap work and output even with a malformed or enormous CLI response.
+            if current.len()<512 {
+                current.push(' ');
+                current.push_str(line.chars().take(512-current.len()).collect::<String>().as_str());
+            }
+        }
+    }
+    if !current.is_empty(){entries.push(current);}
+    entries
+}
 fn log_entries(source:&str)->(String,Vec<(u64,String)>,bool){
     let mut lines=Vec::new();
     let mut available=true;
@@ -264,23 +318,29 @@ fn log_entries(source:&str)->(String,Vec<(u64,String)>,bool){
             let keenetic=if native{None}else{
                 Command::new("ndmc").args(["-c","show log once"]).output().ok()
                     .filter(|out|out.status.success()&&!out.stdout.is_empty())
+                    .map(|out|keenetic_log_events(&String::from_utf8_lossy(&out.stdout)))
+                    .filter(|events|!events.is_empty())
             };
             // OpenWrt supports -l; other Linux variants may not.
             // No shell and no user-controlled arguments are ever executed.
-            let output=keenetic.or_else(||{
+            if let Some(events)=keenetic {
+                for event in events.iter().rev().take(80){
+                    lines.push((0,sanitize_diag(event)));
+                }
+            } else {
                 let limited=Command::new("logread").args(["-l","100"]).output();
-                match limited {
+                let output=match limited {
                     Ok(out) if out.status.success()=>Some(out),
                     _=>Command::new("logread").output().ok().filter(|out|out.status.success()),
+                };
+                if let Some(out)=output {
+                    let text=String::from_utf8_lossy(&out.stdout);
+                    for line in text.lines().rev().take(80){
+                        if !line.trim().is_empty(){lines.push((0,sanitize_diag(line)));}
+                    }
+                }else{
+                    available=false;
                 }
-            });
-            if let Some(out)=output {
-                let text=String::from_utf8_lossy(&out.stdout);
-                for line in text.lines().rev().take(80){
-                    lines.push((0,sanitize_diag(line)));
-                }
-            }else{
-                available=false;
             }
         }
         "updates"=>{
@@ -812,6 +872,24 @@ pppoe-wan 00000000 00000000 0001 0 0 10 00000000 0 0 0\n";
         assert!(sanitize_diag("ndm: client disconnected").contains("client disconnected"));
         assert_eq!(sanitize_diag("password=hello hidden"),"[строка со служебными данными скрыта]");
         assert!(sanitize_diag("service restarted").contains("service restarted"));
+    }
+    #[test] fn keenetic_terminal_wrapping_fixture(){
+        let raw="\x1b[K\nI [Nov 11 13:54:00] ndm: 192.0.2.18 client disconnected.\n  /var/run/ndm.core.socket.\n\x1b[0mW [Nov 11 13:54:01] ndm: AA:BB:CC:DD:EE:FF joined.\n";
+        let parsed=keenetic_log_events(raw);
+        assert_eq!(parsed.len(),2,"terminal fragments must not be separate events");
+        assert!(parsed[0].contains("client disconnected. /var/run/ndm.core.socket."));
+        assert!(!parsed[0].contains("[K"));
+        assert!(parsed[0].contains("192.0.2.18"));
+        assert!(parsed[1].contains("AA:BB:CC:DD:EE:FF"));
+        let safe=sanitize_diag(&parsed[0]);
+        assert!(safe.contains("192.0.2.18"));
+    }
+    #[test] fn keenetic_truncated_and_empty_output_fixture(){
+        assert!(keenetic_log_events("\x1b[K\n\n").is_empty());
+        assert!(keenetic_log_events("some unrelated Entware data").is_empty());
+        let one=keenetic_log_events("E [Nov 11 13:54:03] error\n  password=secret\n");
+        assert_eq!(one.len(),1);
+        assert_eq!(sanitize_diag(&one[0]),"[строка со служебными данными скрыта]");
     }
     #[test] fn ram_htop_vs_available_fixture(){
         let fixture="MemTotal: 239564 kB\nMemFree: 50632 kB\nMemAvailable: 73540 kB\nBuffers: 17960 kB\nCached: 51872 kB\nShmem: 3084 kB\nSReclaimable: 10868 kB\n";
