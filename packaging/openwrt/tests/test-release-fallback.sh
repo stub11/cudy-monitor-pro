@@ -23,8 +23,8 @@ printf '1.2.21 %s\n1.2.22 %s\n' "$GOOD" "$GOOD" > "$ROOT/good-list"
 fetch(){
   case "$1" in
     "$FALLBACK")
-      [ "\${API_BLOCKED:-0}" = 1 ] || return 1
-      cp "$ROOT/\${LIST_FILE:-good-list}" "$2" ;;
+      [ "${API_BLOCKED:-0}" = 1 ] || return 1
+      cp "$ROOT/${LIST_FILE:-good-list}" "$2" ;;
     "$RELEASE"/*)
       cp "$ROOT/payload" "$2" ;;
     *) return 22 ;; # Simulate api.github.com HTTP 403
