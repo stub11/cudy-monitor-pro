@@ -47,6 +47,11 @@ async function checkBrowser(engine, label, options = {}) {
       /Системный журнал/u);
     assert.doesNotMatch(await page.locator('#logsource option[value="system"]').textContent(),
       /OpenWrt/u);
+    await page.route('**/api/logs?source=system', route => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({source:'system',max_events:80,redacted:true,available:false,events:[]})
+    }));
+    await page.evaluate(() => openPage('logs'));
     if (options.isMobile) {
       const sourceBounds = await page.locator('#logsource').evaluate(node => {
         const r = node.getBoundingClientRect();
@@ -55,11 +60,6 @@ async function checkBrowser(engine, label, options = {}) {
       assert.ok(sourceBounds.left >= 0 && sourceBounds.right <= sourceBounds.viewport + 2 &&
         sourceBounds.height >= 44, label + ' log source must fit mobile width and touch target');
     }
-    await page.route('**/api/logs?source=system', route => route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify({source:'system',max_events:80,redacted:true,available:false,events:[]})
-    }));
-    await page.evaluate(() => openPage('logs'));
     await page.locator('#logsource').selectOption('system');
     await page.waitForFunction(() => document.querySelector('#logrows')
       .textContent.includes('Системный журнал недоступен'));
