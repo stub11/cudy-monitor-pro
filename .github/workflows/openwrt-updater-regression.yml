@@ -50,8 +50,8 @@ jobs:
           cargo_version = re.search(r'(?m)^version = "([0-9]+\.[0-9]+\.[0-9]+)"$', cargo)
           assert package_version and cargo_version and cargo_version.group(1) == package_version.group(1)
           # Published packages and the public installer must now agree exactly.
-          # Staged release: installer stays pinned to previously published immutable APK.
-          assert version.group(1) in (package_version.group(1), '1.2.15')
+          # Published standalone installer and native package must now agree exactly.
+          assert version.group(1) == package_version.group(1)
           assert package_version.group(1) == '1.2.16'
           assert f"EXPECTED_SHA256={digest.group(1)}" in workflow
           assert f"VERSION={version.group(1)}" in workflow
