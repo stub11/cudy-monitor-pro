@@ -20,6 +20,10 @@ secrets = [
 emails = re.compile(r"(?<![\w])[\w.+%-]+@[\w.-]+\.[A-Za-z]{2,}")
 ips = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
 allowed_ips = {"127.0.0.1", "192.168.1.1", "10.0.0.1", "0.0.0.0"}
+# RFC 5737 reserves these documentation-only IPv4 ranges for public examples.
+documentation_ips = tuple(ipaddress.ip_network(block) for block in (
+    "192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24"
+))
 for path in paths:
     rel = path.relative_to(ROOT).as_posix()
     if path.suffix.lower() in {".pem", ".p12", ".pfx", ".key", ".ppk", ".env", ".bak", ".log"}:
@@ -60,7 +64,7 @@ for path in paths:
             ip = ipaddress.ip_address(raw)
         except ValueError:
             continue
-        if ip.is_private and raw not in allowed_ips:
+        if ip.is_private and raw not in allowed_ips and not any(ip in block for block in documentation_ips):
             bad.append((rel, "non-example private IPv4"))
             break
     if re.search(r"\b(?:imei|serial.?number|router.?password)\s*[:=]\s*[A-Za-z0-9]{12,}", content, re.I):
