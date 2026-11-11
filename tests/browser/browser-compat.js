@@ -76,7 +76,22 @@ async function checkBrowser(engine, label, options = {}) {
     assert.equal(await page.locator('#exportlogs').isDisabled(), false,
       label + ' genuinely empty available log remains exportable');
     await page.unroute('**/api/logs?source=system');
+    assert.equal(await page.locator('#logclisessionsrow').isVisible(), true,
+      label + ' option to show ndmc sessions must be available in system log');
+    await page.route('**/api/logs?source=system&include_cli_sessions=1', route => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({source:'system',max_events:80,redacted:true,available:true,
+        events:[[0,'I [Nov 11 14:27:20] ndm: Core::Session: client disconnected.']]})
+    }));
+    await page.locator('#logclisessions').check();
+    await page.waitForFunction(() => document.querySelector('#logrows')
+      .textContent.includes('Core::Session: client disconnected'));
+    assert.match(await page.locator('#lognotice').textContent(), /служебные подключения показаны/u);
+    await page.locator('#logclisessions').uncheck();
+    await page.unroute('**/api/logs?source=system&include_cli_sessions=1');
     await page.locator('#logsource').selectOption('monitor');
+    assert.equal(await page.locator('#logclisessionsrow').isVisible(), false,
+      label + ' ndmc-only toggle must not appear for monitor events');
 
     // Repro from Cudy OTA report: UI must not falsely claim 1.2.10 is
     // up to date when GitHub shows 1.2.11 and API claims unavailable.
