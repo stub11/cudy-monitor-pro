@@ -49,15 +49,12 @@ jobs:
           package_version = re.search(r'(?m)^PKG_VERSION:=([0-9]+\.[0-9]+\.[0-9]+)$', pkg)
           cargo_version = re.search(r'(?m)^version = "([0-9]+\.[0-9]+\.[0-9]+)"$', cargo)
           assert package_version and cargo_version and cargo_version.group(1) == package_version.group(1)
-          # Published packages and the public installer must now agree exactly.
-          # Published standalone installer and native package must now agree exactly.
-          # A released installer must match the built package version exactly.
-          # Published immutable asset and public installer must now match exactly.
-          # Keep immutable verified 1.2.18 installer until 1.2.19 APK is published.
-          # The published installer must match Cargo and package versions exactly.
-          # Released package and verified immutable installer must agree exactly.
-          assert version.group(1) == package_version.group(1)
-          assert package_version.group(1) == '1.2.21'
+          # During staged publication the installer stays on the previously
+          # published, pinned 1.2.21 APK until 1.2.22 has an actual release digest.
+          assert package_version.group(1) == '1.2.22'
+          assert version.group(1) in ('1.2.21', package_version.group(1))
+          if version.group(1) == '1.2.21':
+              assert digest.group(1) == '50bd6b65ddabb2456a9e561efc3c0624c5f56788f0590ff471a9ee87ffea63c3'
           assert f"EXPECTED_SHA256={digest.group(1)}" in workflow
           assert f"VERSION={version.group(1)}" in workflow
           assert 'ACTUAL_SHA256=$(sha256sum "$TARGET"' in installer
