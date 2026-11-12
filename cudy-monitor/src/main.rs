@@ -61,6 +61,19 @@ fn num(s:&str)->u64{s.trim().parse().unwrap_or(0)}
 fn quoted(s:&str)->String {let mut v=String::from("\"");for c in s.chars(){match c {'"'=>v.push_str("\\\""),'\\'=>v.push_str("\\\\"),'\n'=>v.push_str("\\n"),'\r'=>v.push_str("\\r"),'\t'=>v.push_str("\\t"),c if c.is_control()=>{},c=>v.push(c)}}v.push('"');v}
 fn cpu()->Cpu {let line=read("/proc/stat");let vals:Vec<u64>=line.lines().next().unwrap_or("").split_whitespace().skip(1).take(10).map(num).collect();Cpu{total:vals.iter().sum(),idle:vals.get(3).copied().unwrap_or(0)+vals.get(4).copied().unwrap_or(0)}}
 fn nets()->HashMap<String,Net>{let mut m=HashMap::new();for l in read("/proc/net/dev").lines().skip(2){if let Some((name,rest))=l.split_once(':'){let a:Vec<_>=rest.split_whitespace().collect();if a.len()>8 && name.trim()!="lo"{m.insert(name.trim().to_string(),Net{rx:num(a[0]),tx:num(a[8])});}}}m}
+// A driver restart, link reinitialization or counter rollover can lower RX/TX
+// counters. Never connect samples from different counter epochs in the chart.
+fn network_rates(previous:Option<&Net>,current:&Net,seconds:f64)->(f64,f64,bool){
+    match previous{
+        Some(old) if current.rx<old.rx || current.tx<old.tx => (0.0,0.0,true),
+        Some(old) => (
+            current.rx.saturating_sub(old.rx) as f64/seconds,
+            current.tx.saturating_sub(old.tx) as f64/seconds,
+            false
+        ),
+        None => (0.0,0.0,false),
+    }
+}
 fn mem_kib(source:&str,key:&str)->Option<u64>{
     source.lines().find(|line|line.starts_with(key))
         .and_then(|line|line.split_whitespace().nth(1))
@@ -148,12 +161,17 @@ fn sample(state:&Arc<Mutex<State>>){
     s.pid_ticks=pid_now;
     s.current_cores=ticks.iter().map(|(idx,t)|{let v=s.core_ticks.iter().find(|(i,_)|i==idx).map(|(_,old)|cpu_percent(t.total.saturating_sub(old.total),t.idle.saturating_sub(old.idle))).unwrap_or(0.0);(*idx,v)}).collect();
     s.core_ticks=ticks;
+    // Detect a new counter epoch for an interface before adding new points.
+    // Clear only that interface's old history: unrelated WAN/LAN traces remain.
+    let mut reset_ifaces=Vec::new();
     s.current_network=nn.iter().map(|(name,v)|{
-        let previous=s.nets.get(name);
-        let rx=previous.map(|o|v.rx.saturating_sub(o.rx) as f64/secs).unwrap_or(0.);
-        let tx=previous.map(|o|v.tx.saturating_sub(o.tx) as f64/secs).unwrap_or(0.);
+        let (rx,tx,reset)=network_rates(s.nets.get(name),v,secs);
+        if reset{reset_ifaces.push(name.clone());}
         (name.clone(),rx,tx)
     }).collect();
+    for name in reset_ifaces{
+        s.net_histories.remove(&name);
+    }
     if now.duration_since(s.history_at)>=Duration::from_secs(10) {
         // Reuse metrics collected outside the mutex; no USB writes.
         let ram=if mem_total>0 {100.0*mem_used as f64/mem_total as f64}else{0.0};
@@ -870,6 +888,25 @@ fn main()->std::io::Result<()>{
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test] fn network_rates_normal_and_new_interface(){
+        let old=Net{rx:1000,tx:2000};
+        let current=Net{rx:2000,tx:2400};
+        assert_eq!(network_rates(Some(&old),&current,2.0),(500.0,200.0,false));
+        assert_eq!(network_rates(None,&current,2.0),(0.0,0.0,false));
+    }
+    #[test] fn network_rates_detects_reset_on_either_counter(){
+        let old=Net{rx:1000,tx:2000};
+        assert_eq!(network_rates(Some(&old),&Net{rx:50,tx:3000},2.0),(0.0,0.0,true));
+        assert_eq!(network_rates(Some(&old),&Net{rx:3000,tx:50},2.0),(0.0,0.0,true));
+        assert_eq!(network_rates(Some(&old),&Net{rx:0,tx:0},2.0),(0.0,0.0,true));
+    }
+    #[test] fn network_rates_counter_epoch_restart(){
+        let before=Net{rx:1000000,tx:500000};
+        let restarted=Net{rx:200,tx:50};
+        let after=Net{rx:2600,tx:1050};
+        assert!(network_rates(Some(&before),&restarted,2.0).2);
+        assert_eq!(network_rates(Some(&restarted),&after,2.0),(1200.0,500.0,false));
+    }
     #[test] fn network_history_includes_active_wan_among_many_interfaces(){
         let mut traffic=(0..32).map(|i|(format!("eth0.{}",i),5000.,5000.))
             .collect::<Vec<_>>();
