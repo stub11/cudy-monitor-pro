@@ -126,6 +126,16 @@ fn sample(state:&Arc<Mutex<State>>){
     let ticks=core_ticks();
     let pid_now=pid_ticks();
     let nn=nets();
+    // Collect filesystem-backed metrics BEFORE taking the state mutex.
+    // API handlers also acquire this lock; slow sysfs/proc reads must not
+    // stall dashboard responses while the sampler is running.
+    let need_temp={
+        let s=state.lock().unwrap_or_else(|e|e.into_inner());
+        now.duration_since(s.history_at)>=Duration::from_secs(10)
+    };
+    let (mem_total,mem_used,_)=mem();
+    let history_temp=if need_temp {temps().first().map(|(_,v)|*v)}else{None};
+    let (route_wan,_)=default_wan();
     let mut s=state.lock().unwrap_or_else(|e|e.into_inner());
     let dt=nc.total.saturating_sub(s.cpu.total);
     let di=nc.idle.saturating_sub(s.cpu.idle);
@@ -145,18 +155,15 @@ fn sample(state:&Arc<Mutex<State>>){
         (name.clone(),rx,tx)
     }).collect();
     if now.duration_since(s.history_at)>=Duration::from_secs(10) {
-        // Read sensors only once per stored point; nothing is written to USB.
-        let (total,used,_)=mem();
-        let ram=if total>0 {100.0*used as f64/total as f64}else{0.0};
-        let temp=temps().first().map(|(_,v)|*v);
-        let point=Sample{sec:now.duration_since(s.boot).as_secs(),cpu:s.current_cpu,ram,temp};
+        // Reuse metrics collected outside the mutex; no USB writes.
+        let ram=if mem_total>0 {100.0*mem_used as f64/mem_total as f64}else{0.0};
+        let point=Sample{sec:now.duration_since(s.boot).as_secs(),cpu:s.current_cpu,ram,temp:history_temp};
         if s.history.len()==HISTORY_POINTS{s.history.pop_front();}
         s.history.push_back(point);
         s.history_at=now;
     }
     // Operational events are bounded and kept in RAM, never on USB.
-    let (total,used,_)=mem();
-    let ram_pct=if total>0{100.0*used as f64/total as f64}else{0.0};
+    let ram_pct=if mem_total>0{100.0*mem_used as f64/mem_total as f64}else{0.0};
     let cpu_hot=s.current_cpu>=90.0;
     let ram_hot=ram_pct>=90.0;
     let mut notes=Vec::new();
@@ -165,7 +172,6 @@ fn sample(state:&Arc<Mutex<State>>){
     s.high_cpu=cpu_hot;s.high_ram=ram_hot;
     let event_sec=now.duration_since(s.boot).as_secs();for note in notes {if s.events.len()>=80{s.events.pop_front();}s.events.push_back((event_sec,note.to_string()));}
     // Auto-discover OpenWrt/Keenetic network devices with bounded RAM use.
-    let (route_wan,_)=default_wan();
     let tracked=select_history_interfaces(s.current_network.clone(),route_wan.as_deref());
     let allowed:std::collections::HashSet<_>=tracked.iter().map(|x|x.0.clone()).collect();
     s.net_histories.retain(|k,_|allowed.contains(k));
