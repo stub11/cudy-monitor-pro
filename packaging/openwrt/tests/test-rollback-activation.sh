@@ -31,6 +31,8 @@ activate_updated_service(){
   [ "${RESTART_OK:-1}" = 1 ]
 }
 running_matches(){ [ "$1" = "$CURRENT" ] && [ "${LIVE_OK:-1}" = 1 ]; }
+BIND=127.0.0.1:8237
+wget(){ [ "${HEALTH_OK:-1}" = 1 ] && printf "ok\n"; }
 sleep(){ :; }
 die(){ echo "ERROR: $*" >&2; exit 1; }
 : > "$ROOT/actions"
@@ -59,5 +61,10 @@ fi
 if (LIVE_OK=0; restore_old) > "$ROOT/out" 2>"$ROOT/err"; then
   echo 'Stale running daemon incorrectly passed rollback' >&2; exit 1
 fi
-grep -q 'previous process version not observed' "$ROOT/err"
-echo 'PASS: rollback restores verified binary, restarts procd, and confirms live version'
+grep -q 'previous process version or health not observed' "$ROOT/err"
+: > "$ROOT/actions"
+if (HEALTH_OK=0; restore_old) > "$ROOT/out" 2> "$ROOT/err"; then
+  echo 'Unhealthy restored daemon incorrectly passed rollback' >&2; exit 1
+fi
+grep -q 'previous process version or health not observed' "$ROOT/err"
+echo 'PASS: rollback verifies restored binary, live daemon and HTTP health'
