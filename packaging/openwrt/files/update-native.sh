@@ -89,38 +89,47 @@ if [ "$MODE" = --check ]; then
 fi
 newer "$LATEST" "$CURRENT" || { echo "Already up to date: $CURRENT"; exit 0; }
 # Fetch the GitHub API digest for this exact asset, never an untrusted URL.
-package_digest(){
+# Parse only the exact expected APK's SHA256 from an official release.
+# Missing/invalid API asset metadata must not become an unchecked download.
+api_asset_digest(){
   version=$1
-  if [ "$USE_FALLBACK" = 1 ]; then
-    value=$(fallback_digest "$version")
-    [ -n "$value" ] || die "No verified pinned digest for $version; refusing update"
-    printf '%s\n' "$value"
-    return 0
-  fi
-  if ! fetch "$REPO/releases/tags/cudy-monitor-openwrt-v$version" "$DIR/metadata.json"; then
-    echo "GitHub API digest unavailable; verifying official pinned digest instead" >&2
-    [ -f "$DIR/release-digests.txt" ] || read_fallback
-    value=$(fallback_digest "$version")
-    [ -n "$value" ] || die "No verified pinned digest for $version; refusing update"
-    printf '%s\n' "$value"
-    return 0
-  fi
   index=0
   while [ "$index" -lt 20 ]; do
-    name=$(jsonfilter -i "$DIR/metadata.json" -e "@.assets[$index].name" 2>/dev/null || :)
-    [ -n "$name" ] || break
+    name=$(jsonfilter -i "$DIR/metadata.json" -e "@.assets[$index].name" 2>/dev/null) || return 1
+    [ -n "$name" ] || return 1
     if [ "$name" = "cudy-monitor-pro-$version-r1.apk" ]; then
-      digest=$(jsonfilter -i "$DIR/metadata.json" -e "@.assets[$index].digest" 2>/dev/null || :)
-      case "$digest" in sha256:*) value=${digest#sha256:} ;; *) die "release digest missing";; esac
-      [ "${#value}" -eq 64 ] || die "invalid release digest length"
-      printf '%s' "$value" | grep -Eq '^[a-f0-9]{64}$' || die "invalid release digest"
+      digest=$(jsonfilter -i "$DIR/metadata.json" -e "@.assets[$index].digest" 2>/dev/null) || return 1
+      case "$digest" in sha256:*) value=${digest#sha256:} ;; *) return 1 ;; esac
+      [ "${#value}" -eq 64 ] || return 1
+      printf '%s' "$value" | grep -Eq '^[a-f0-9]{64}$' || return 1
       printf '%s\n' "$value"
       return 0
     fi
     index=$((index+1))
   done
-  die "APK artifact missing in official GitHub release"
+  return 1
 }
+# A 200 response with malformed/absent asset digest is equivalent to an
+# unavailable metadata source, NOT permission to skip checksum verification.
+package_digest(){
+  version=$1
+  if [ "$USE_FALLBACK" != 1 ]; then
+    if fetch "$REPO/releases/tags/cudy-monitor-openwrt-v$version" "$DIR/metadata.json"; then
+      if value=$(api_asset_digest "$version"); then
+        printf '%s\n' "$value"
+        return 0
+      fi
+      echo "GitHub API asset SHA256 absent/invalid; checking pinned digest" >&2
+    else
+      echo "GitHub API digest unavailable; checking pinned digest" >&2
+    fi
+  fi
+  [ -f "$DIR/release-digests.txt" ] || read_fallback
+  value=$(fallback_digest "$version")
+  [ -n "$value" ] || die "No verified pinned digest for $version; refusing update"
+  printf '%s\n' "$value"
+}
+
 download_verified(){
   version=$1 output=$2
   hash=$(package_digest "$version")
