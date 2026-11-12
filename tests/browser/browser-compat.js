@@ -115,6 +115,50 @@ async function checkBrowser(engine, label, options = {}) {
     assert.ok(orderedHistory.keptLatest,label+' must ignore an older WAN history response');
     assert.ok(orderedHistory.keptAfterFailure,label+' must ignore an older WAN history error');
 
+    // A network outage must not join the previous live chart with new samples.
+    // A delayed response for the same WAN must also remain discarded.
+    const outageHistory = await page.evaluate(async () => {
+      const saved={networkIface,networkLiveIface,networkLivePoints,netPoints,netHistoryFetch,networkHistorySerial,allNetwork};
+      const oldFetch=window.fetch;
+      const wasStale=document.body.classList.contains('telemetry-stale');
+      let resolveHistory;
+      try {
+        document.body.classList.remove('telemetry-stale');
+        networkIface='eth2.30';networkLiveIface='eth2.30';
+        networkLivePoints=[[100,24000,1200],[102,40000,1800]];
+        netPoints=[[100,24000,1200],[102,40000,1800]];
+        window.fetch=(url,opts)=>typeof url==='string'&&url.startsWith('/api/network-history?')
+          ?new Promise(resolve=>{resolveHistory=resolve;})
+          :oldFetch(url,opts);
+        const waiting=fetchNetworkHistory();
+        if(!resolveHistory)throw Error('history request did not start');
+        document.body.classList.add('telemetry-stale');
+        invalidateNetworkTelemetry();
+        const erased=networkLivePoints.length===0&&netPoints.length===0&&networkLiveIface==='';
+        document.body.classList.remove('telemetry-stale');
+        networkIface='eth2.30';
+        resolveHistory({ok:true,json:async()=>({points:[[100,99999,99999],[102,99999,99999]]})});
+        await waiting;
+        const ignored=netPoints.length===0;
+        allNetwork=[{name:'eth2.30',rx:18000,tx:4000}];
+        updateNetworkLiveSample();
+        const restarted=networkLiveIface==='eth2.30'&&networkLivePoints.length===1;
+        return {erased,ignored,restarted};
+      } finally {
+        networkHistorySerial++;
+        window.fetch=oldFetch;
+        networkIface=saved.networkIface;networkLiveIface=saved.networkLiveIface;
+        networkLivePoints=saved.networkLivePoints;netPoints=saved.netPoints;
+        netHistoryFetch=saved.netHistoryFetch;allNetwork=saved.allNetwork;
+        if(wasStale)document.body.classList.add('telemetry-stale');
+        else document.body.classList.remove('telemetry-stale');
+        renderNetworkChart();
+      }
+    });
+    assert.ok(outageHistory.erased,label+' must discard pre-outage WAN samples');
+    assert.ok(outageHistory.ignored,label+' must discard in-flight same-WAN pre-outage response');
+    assert.ok(outageHistory.restarted,label+' must restart live samples without bridging outage');
+
     // Missing totals are unavailable readings, NOT an actual zero-percent load.
     await page.route('**/api/status', async route => {
       const response = await route.fetch();
