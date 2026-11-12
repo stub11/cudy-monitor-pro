@@ -480,7 +480,19 @@ async function fetchNetworkHistory(){
  const current=()=>serial===networkHistorySerial&&requested===networkIface&&!document.body.classList.contains('telemetry-stale');
  try{
   const r=await fetch('/api/network-history?iface='+encodeURIComponent(requested),{cache:'no-store'});if(!r.ok)throw Error('network unavailable');
-  const d=await r.json();if(!current())return;netPoints=Array.isArray(d.points)?d.points.slice(-150):[];renderNetworkChart();
+  const d=await r.json();if(!current())return;
+  const points=Array.isArray(d.points)?d.points.slice(-150):[];
+  // Kernel counters or the monitor process may have restarted while the
+  // interface name stayed unchanged. A shortened server history is a new
+  // measurement epoch, not a continuation of browser-local WAN samples.
+  // Normal rolling 150-point windows do not shrink.
+  const previousEnd=netPoints.length?netPoints[netPoints.length-1]?.[0]:null;
+  const nextEnd=points.length?points[points.length-1]?.[0]:null;
+  const serverRestarted=Number.isFinite(previousEnd)&&Number.isFinite(nextEnd)&&nextEnd<previousEnd;
+  if(netPoints.length>=2&&(points.length<netPoints.length||serverRestarted)){
+    networkLivePoints=[];networkLiveIface='';
+  }
+  netPoints=points;renderNetworkChart();
  }catch(_){if(current()){if(networkLivePoints.length>=2)renderNetworkChart();else{el('networkgraph').textContent='Ожидание данных графика сети';el('netpagegraph').textContent='Ожидание данных графика сети';}}}
 }
 function renderNetworkChart(){
