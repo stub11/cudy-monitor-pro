@@ -6,10 +6,12 @@ on:
     paths:
       - 'cudy-monitor/**'
       - 'scripts/easy-install.sh'
+      - 'scripts/release-issue-gate.py'
       - '.github/workflows/cudy-monitor-arm64.yml'
   workflow_dispatch:
 permissions:
   contents: write
+  issues: read
 concurrency:
   group: cudy-monitor-${{ github.ref }}
   cancel-in-progress: true
@@ -278,6 +280,11 @@ jobs:
           path: cudy-monitor/target/aarch64-unknown-linux-musl/release/cudy-monitor-pro
           if-no-files-found: error
           retention-days: 7
+      - name: Mandatory open GitHub Issues review before release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 ${{ github.workspace }}/scripts/release-issue-gate.py
       - name: Publish verified GitHub Release for panel OTA
         if: github.ref == 'refs/heads/main'
         shell: bash

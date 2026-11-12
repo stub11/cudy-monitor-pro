@@ -1,0 +1,18 @@
+name: Release Issues gate regression
+on:
+  pull_request:
+    paths:
+      - 'scripts/release-issue-gate.py'
+      - 'tests/test-release-issue-gate.py'
+      - '.github/workflows/release-issue-gate-tests.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check syntax
+        run: python3 -m py_compile scripts/release-issue-gate.py tests/test-release-issue-gate.py
+      - name: Offline release Issues gate tests
+        run: python3 tests/test-release-issue-gate.py
