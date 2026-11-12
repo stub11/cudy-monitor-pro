@@ -39,6 +39,9 @@ jobs:
           sh -n scripts/install.sh
           sh -n ../scripts/easy-install.sh
           sh -n scripts/S99cudy-monitor
+      - name: Offline Entware installer fetch regression
+        run: |
+          sh ../tests/entware-installer-fetch.sh
       - name: Offline release metadata HTTP regression
         run: |
           sh ../tests/update-manifest-http.sh
