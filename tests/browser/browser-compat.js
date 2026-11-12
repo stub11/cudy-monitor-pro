@@ -208,6 +208,8 @@ async function checkBrowser(engine, label, options = {}) {
     // Replacing the button loses keyboard focus while users navigate.
     const stableServices = await page.evaluate(async () => {
       const live = await fetch('/api/status', {cache:'no-store'}).then(r=>r.json());
+      const selectedPage=document.querySelector('.page:not(.hidden)')?.id||'overview';
+      openPage('services');
       try {
         const fixture=[{name:'D2K',detected:true,installed:true},{name:'DoQ',detected:false,installed:true}];
         renderServiceState(fixture,true);
@@ -230,6 +232,7 @@ async function checkBrowser(engine, label, options = {}) {
         serviceActionPending=false;
         serviceRowsSignature='';
         renderServiceState(live.services||[],live.service_actions_enabled===true);
+        openPage(selectedPage);
       }
     });
     assert.ok(stableServices.sameNode&&stableServices.focusKept,
