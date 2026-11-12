@@ -25,6 +25,7 @@ jobs:
           sh -n packaging/openwrt/tests/test-api-asset-digest.sh
           sh -n packaging/openwrt/tests/test-upgrade-verification.sh
           sh -n packaging/openwrt/tests/test-upgrade-activation.sh
+          sh -n packaging/openwrt/tests/test-rollback-activation.sh
       - name: Verify running version comparison with isolated synthetic processes
         run: sh packaging/openwrt/tests/test-running-version.sh
       - name: Reject corrupted GitHub release responses and false up-to-date
@@ -37,6 +38,8 @@ jobs:
         run: sh packaging/openwrt/tests/test-upgrade-verification.sh
       - name: Safely activate only a matching installed APK (offline)
         run: sh packaging/openwrt/tests/test-upgrade-activation.sh
+      - name: Verify rollback restarts only verified restored binary (offline)
+        run: sh packaging/openwrt/tests/test-rollback-activation.sh
       - name: Legacy OpenWrt migration safety guards
         run: |
           python3 - <<'PY'

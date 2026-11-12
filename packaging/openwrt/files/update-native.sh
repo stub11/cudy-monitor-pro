@@ -160,7 +160,12 @@ running_matches() {
 restore_old() {
   echo "Update verification failed; attempting verified rollback to $CURRENT." >&2
   apk add --allow-untrusted "$DIR/previous.apk" || die "ROLLBACK FAILED: previous package could not be restored"
-  # Package scripts may restart the service. Verify that the rollback is live.
+  # OpenWrt APK post-install scripts may suppress a procd restart error.
+  # Do not rely on their exit status: explicitly activate ONLY the verified
+  # restored binary, then check its live process before declaring success.
+  if ! activate_updated_service "$CURRENT"; then
+    die "ROLLBACK FAILED: restored binary could not be activated"
+  fi
   retries=0
   while [ "$retries" -lt 12 ]; do
     # A still-running old daemon is not proof the previous APK was restored.

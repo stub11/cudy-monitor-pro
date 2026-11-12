@@ -60,6 +60,11 @@ TEST_DISK_VERSION="$TEST_ROOT/disk-version"
 export TEST_DISK_VERSION
 # Fake only local package manager and sleep: no network or actual package installs.
 apk() { [ "${APK_FAIL:-0}" = 0 ]; }
+# restore_old now explicitly activates the version-verified package.
+# The separate rollback-activation regression tests procd restart behavior.
+activate_updated_service() {
+  [ "$("$SELF" --version)" = "cudy-monitor-pro $1" ]
+}
 sleep() { :; }
 die() { echo "$*" >&2; exit 1; }
 rollback_fails() {
