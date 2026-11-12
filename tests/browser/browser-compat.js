@@ -553,6 +553,25 @@ async function checkBrowser(engine, label, options = {}) {
     });
     await page.evaluate(() => { document.querySelector('#sidebarversion').textContent = '1.2.12'; });
 
+    // The sidebar can be stale after a daemon restart. A fresh /api/status
+    // version takes precedence over that cached display value.
+    await page.route('**/api/update/check', route => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        latest:'1.2.13',current:'1.2.11',running:'1.2.11',
+        available:true,restart_required:false
+      })
+    }));
+    await page.evaluate(() => { document.querySelector('#sidebarversion').textContent='1.2.11'; });
+    await page.locator('#checkupdate').click();
+    await page.waitForFunction(() => document.querySelector('#updatestatus')
+      .textContent.includes('Несогласованные данные обновления'));
+    assert.equal(await page.locator('#applyupdate').isDisabled(),true,
+      label+' must block an upgrade when fresh daemon version differs from cached sidebar');
+    assert.match(await page.locator('#updatestatus').textContent(), /работающий монитор 1\.2\.12/u);
+    await page.evaluate(() => { document.querySelector('#sidebarversion').textContent='1.2.12'; });
+    await page.unroute('**/api/update/check');
+
     // A successful 202 Accepted only starts an OTA. The UI must wait for
     // the running daemon's exact target version before claiming success.
     await page.route('**/api/update/check', route => route.fulfill({
