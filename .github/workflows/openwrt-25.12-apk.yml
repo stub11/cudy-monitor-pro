@@ -6,6 +6,7 @@ on:
     paths:
       - 'packaging/openwrt/**'
       - 'scripts/easy-install.sh'
+      - 'scripts/release-issue-gate.py'
       - '.github/workflows/openwrt-25.12-apk.yml'
       - 'cudy-monitor/src/**'
       - 'cudy-monitor/web/**'
@@ -13,6 +14,7 @@ on:
       - 'cudy-monitor/scripts/detect-lan.sh'
 permissions:
   contents: write
+  issues: read
 jobs:
   mediatek-filogic:
     runs-on: ubuntu-24.04
@@ -111,6 +113,11 @@ jobs:
           path: openwrt-apk-artifacts/
           if-no-files-found: error
           retention-days: 30
+      - name: Mandatory open GitHub Issues review before release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 ${{ github.workspace }}/scripts/release-issue-gate.py
       - name: Publish experimental native OpenWrt APK release
         if: github.ref == 'refs/heads/main'
         shell: bash
