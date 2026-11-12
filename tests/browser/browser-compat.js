@@ -358,6 +358,57 @@ async function checkBrowser(engine, label, options = {}) {
     assert.ok(stableHistory.rerendered,
       label+' must redraw CPU/RAM history when measurements change');
 
+    // If /api/network-history fails but status telemetry is available, live
+    // WAN readings must replace the old server series immediately. When the
+    // history endpoint recovers, switch cleanly to real server history.
+    const offlineHistoryFallback = await page.evaluate(async () => {
+      const saved={networkIface,networkLiveIface,networkLivePoints,netPoints,
+        networkHistoryHealthy,networkHistorySerial,allNetwork};
+      const oldFetch=window.fetch;
+      try {
+        networkIface='wan-history-offline-test';
+        networkLiveIface='wan-history-offline-test';
+        allNetwork=[{name:networkIface,rx:15,tx:10}];
+        netPoints=[[10,5000,1000],[12,7000,2000]];
+        networkLivePoints=[[100,11,10],[102,21,12]];
+        networkHistoryHealthy=true;
+        renderNetworkChart();
+        const before=el('netmetrics').textContent;
+        window.fetch=(url,opts)=>typeof url==='string'&&url.startsWith('/api/network-history?')
+          ?Promise.reject(Error('simulated history outage')):oldFetch(url,opts);
+        await fetchNetworkHistory();
+        const fallback=networkHistoryHealthy===false&&
+          el('netmetrics').textContent==='↓ '+speed(21)+'   ↑ '+speed(12);
+        // During the outage status refresh must keep updating the LIVE chart.
+        const oldLiveSvg=el('networkgraph').querySelector('svg');
+        const originalNow=Date.now;
+        try {
+          Date.now=()=>104000;
+          updateNetworkLiveSample();
+        } finally {Date.now=originalNow;}
+        const streaming=el('netmetrics').textContent==='↓ '+speed(15)+'   ↑ '+speed(10)&&
+          !!oldLiveSvg&&!!el('networkgraph').querySelector('svg');
+        window.fetch=(url,opts)=>typeof url==='string'&&url.startsWith('/api/network-history?')
+          ?Promise.resolve({ok:true,json:async()=>({points:[[20,3000,900],[22,4000,1100]]})})
+          :oldFetch(url,opts);
+        await fetchNetworkHistory();
+        const recovered=networkHistoryHealthy===true&&
+          el('netmetrics').textContent==='↓ '+speed(4000)+'   ↑ '+speed(1100);
+        return {before,fallback,streaming,recovered};
+      } finally {
+        networkHistorySerial++;
+        window.fetch=oldFetch;
+        networkIface=saved.networkIface;networkLiveIface=saved.networkLiveIface;
+        networkLivePoints=saved.networkLivePoints;netPoints=saved.netPoints;
+        networkHistoryHealthy=saved.networkHistoryHealthy;allNetwork=saved.allNetwork;
+        renderNetworkChart();
+      }
+    });
+    assert.ok(offlineHistoryFallback.fallback&&offlineHistoryFallback.streaming,
+      label+' must prefer fresh WAN status when history endpoint is unavailable');
+    assert.ok(offlineHistoryFallback.recovered,
+      label+' must restore verified WAN history when the endpoint recovers');
+
     // Missing totals are unavailable readings, NOT an actual zero-percent load.
     await page.route('**/api/status', async route => {
       const response = await route.fetch();
