@@ -187,14 +187,15 @@ restore_old() {
     # Require both the installed executable and every monitor process to match.
     installed=$("$SELF" --version 2>/dev/null || :)
     if [ "$installed" = "cudy-monitor-pro $CURRENT" ] &&
-       running_matches "$CURRENT"; then
-      echo "ROLLBACK OK: installed and running $CURRENT" >&2
+       running_matches "$CURRENT" &&
+       wget -q -O - "http://$BIND/health" 2>/dev/null | grep -qx ok; then
+      echo "ROLLBACK OK: installed, running and healthy $CURRENT" >&2
       return 0
     fi
     retries=$((retries+1))
     sleep 1
   done
-  die "ROLLBACK FAILED: previous process version not observed"
+  die "ROLLBACK FAILED: previous process version or health not observed"
 }
 
 # Validate the persisted LAN bind before making ANY package changes.
