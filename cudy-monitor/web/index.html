@@ -650,13 +650,34 @@ el('historymetric').value=el('defaultmetric').value;
 el('pollseconds').onchange=()=>{saveSetting('cudy_refresh',el('pollseconds').value);el('settingsmessage').textContent='Интервал обновления изменён'};
 el('defaultmetric').onchange=()=>{el('historymetric').value=el('defaultmetric').value;saveSetting('cudy_metric',el('defaultmetric').value);drawHistory();el('settingsmessage').textContent='Выбор графика сохранён'};
 let processSort='cpu';
+const processRowNodes=new Map();
 function renderProcesses(){
  const query=el('processfilter').value.trim().toLocaleLowerCase('ru');
  const rows=allProcesses.filter(x=>String(x.name).toLocaleLowerCase('ru').includes(query));
  if(processSort==='cpu')rows.sort((a,b)=>(b.cpu||0)-(a.cpu||0)||b.mem-a.mem);
  if(processSort==='mem')rows.sort((a,b)=>b.mem-a.mem);
  if(processSort==='name')rows.sort((a,b)=>a.name.localeCompare(b.name));
- el('procrows').innerHTML=rows.map(x=>'<tr><td>'+escape(x.name)+'</td><td>'+x.pid+'</td><td>'+Number(x.cpu||0).toFixed(1)+'%</td><td>'+x.mem+' МБ</td></tr>').join('')||'<tr><td colspan="4" class="muted">Нет процессов по фильтру</td></tr>';
+ const tbody=el('procrows');
+ const visible=new Set();
+ if(!rows.length){
+  processRowNodes.clear();
+  const empty=document.createElement('tr'),cell=document.createElement('td');
+  cell.colSpan=4;cell.className='muted';cell.textContent='Нет процессов по фильтру';
+  empty.appendChild(cell);tbody.replaceChildren(empty);
+ }else{
+  // Reuse a PID's existing cells on each poll; change only its values.
+  // Move a row only when its sorting position actually changes.
+  rows.forEach((x,index)=>{
+   const key=String(x.pid),data=[String(x.name),key,Number(x.cpu||0).toFixed(1)+'%',x.mem+' МБ'];
+   visible.add(key);
+   let row=processRowNodes.get(key);
+   if(!row){row=document.createElement('tr');for(let i=0;i<4;i++)row.appendChild(document.createElement('td'));processRowNodes.set(key,row);}
+   [...row.cells].forEach((cell,i)=>{if(cell.textContent!==data[i])cell.textContent=data[i];});
+   if(tbody.children[index]!==row)tbody.insertBefore(row,tbody.children[index]||null);
+  });
+  for(const [key,row] of processRowNodes)if(!visible.has(key)){row.remove();processRowNodes.delete(key);}
+  for(const node of [...tbody.children])if(!visible.has(String(node.cells[1]?.textContent||'')))node.remove();
+ }
  el('processcount').textContent='Показано '+rows.length+' из '+allProcesses.length+' отслеживаемых процессов';
 }
 document.querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{

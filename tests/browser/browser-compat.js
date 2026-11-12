@@ -241,6 +241,46 @@ async function checkBrowser(engine, label, options = {}) {
     assert.ok(stableServices.changed,label+' must redraw controls when service state changes');
     assert.ok(stableServices.disabled,label+' must disable existing controls during an action');
 
+    // Polling must not replace identical process rows; it should update
+    // CPU/RAM values in place, remove exited PIDs, and respect sorting/filter.
+    const processRows = await page.evaluate(() => {
+      const saved={allProcesses,processSort};
+      const input=document.querySelector('#processfilter'),oldFilter=input.value;
+      try {
+        processRowNodes.clear();input.value='';processSort='name';
+        allProcesses=[
+          {name:'alpha',pid:101,cpu:1.5,mem:12},
+          {name:'beta',pid:202,cpu:2.5,mem:20}
+        ];
+        renderProcesses();
+        const first=document.querySelector('#procrows tr');
+        const firstCell=first.cells[2];
+        allProcesses=[
+          {name:'alpha',pid:101,cpu:4.2,mem:15},
+          {name:'beta',pid:202,cpu:3.5,mem:20}
+        ];
+        renderProcesses();
+        const reused=document.querySelector('#procrows tr')===first;
+        const updated=first.cells[2]===firstCell&&firstCell.textContent==='4.2%';
+        processSort='cpu';renderProcesses();
+        const sorted=document.querySelector('#procrows tr').cells[1].textContent==='101';
+        allProcesses=[{name:'beta',pid:202,cpu:3.5,mem:20}];renderProcesses();
+        const removed=!document.querySelector('#procrows').contains(first)&&processRowNodes.size===1;
+        input.value='no-such-process';renderProcesses();
+        const empty=document.querySelector('#procrows td[colspan="4"]')?.textContent==='Нет процессов по фильтру';
+        input.value='';renderProcesses();
+        const restored=processRowNodes.size===1;
+        return {reused,updated,sorted,removed,empty,restored};
+      } finally {
+        allProcesses=saved.allProcesses;processSort=saved.processSort;input.value=oldFilter;
+        processRowNodes.clear();document.querySelector('#procrows').replaceChildren();
+        renderProcesses();
+      }
+    });
+    assert.ok(processRows.reused&&processRows.updated,label+' must reuse process rows and update values');
+    assert.ok(processRows.sorted&&processRows.removed,label+' must honor sort and process exit');
+    assert.ok(processRows.empty&&processRows.restored,label+' must recover after empty filter');
+
     // Missing totals are unavailable readings, NOT an actual zero-percent load.
     await page.route('**/api/status', async route => {
       const response = await route.fetch();
