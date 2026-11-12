@@ -35,11 +35,37 @@ fi
 fetch() {
     url=$1
     dest=$2
+    case "$url" in
+        "$REPO"/releases/latest/download/*) source_label="GitHub release metadata" ;;
+        "$REPO"/releases/download/*) source_label="GitHub release binary" ;;
+        "$BASE"/*) source_label="GitHub release support script" ;;
+        *) echo "ERROR: unexpected installer download source" >&2; return 1 ;;
+    esac
     if [ "$FETCH_TOOL" = curl ]; then
-        "$CURL" --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 120 "$url" -o "$dest"
+        # Log only the HTTP status and a fixed source category. Never print
+        # signed redirect URLs, response bodies, tokens or private IPs.
+        http_code=$("$CURL" --proto '=https' --tlsv1.2 -fsSL --connect-timeout 5 --max-time 120 -o "$dest" -w '%{http_code}' "$url") || {
+            case "$http_code" in
+                403) echo "ERROR: $source_label returned HTTP 403 (GitHub access restriction or rate limit). Existing monitor is unchanged; check access to github.com and release-assets.githubusercontent.com." >&2 ;;
+                429) echo "ERROR: $source_label returned HTTP 429 (rate limit). Existing monitor is unchanged; retry later." >&2 ;;
+                *) echo "ERROR: $source_label download failed (HTTP ${http_code:-unknown}). Existing monitor is unchanged." >&2 ;;
+            esac
+            return 1
+        }
+        [ "$http_code" = 200 ] || {
+            echo "ERROR: $source_label returned HTTP $http_code. Existing monitor is unchanged." >&2
+            return 1
+        }
     else
-        wget -q -O "$dest" "$url"
+        wget -q -O "$dest" "$url" || {
+            echo "ERROR: $source_label download failed with wget (HTTP status unavailable). Existing monitor is unchanged; check GitHub HTTPS connectivity." >&2
+            return 1
+        }
     fi
+    [ -s "$dest" ] || {
+        echo "ERROR: $source_label is empty. Existing monitor is unchanged." >&2
+        return 1
+    }
 }
 command -v "$SHASUM" >/dev/null 2>&1 || { echo "Requires sha256sum" >&2; exit 1; }
 [ "$(uname -m)" = "aarch64" ] || { echo "Expected aarch64 router" >&2; exit 1; }
