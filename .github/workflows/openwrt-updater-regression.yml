@@ -21,10 +21,13 @@ jobs:
           sh -n packaging/openwrt/migrate-legacy.sh
           sh -n packaging/openwrt/tests/test-running-version.sh
           sh -n packaging/openwrt/tests/test-release-fallback.sh
+          sh -n packaging/openwrt/tests/test-api-release-list.sh
           sh -n packaging/openwrt/tests/test-upgrade-verification.sh
           sh -n packaging/openwrt/tests/test-upgrade-activation.sh
       - name: Verify running version comparison with isolated synthetic processes
         run: sh packaging/openwrt/tests/test-running-version.sh
+      - name: Reject corrupted GitHub release responses and false up-to-date
+        run: sh packaging/openwrt/tests/test-api-release-list.sh
       - name: Offline GitHub API 403 and SHA-256 fallback regression
         run: sh packaging/openwrt/tests/test-release-fallback.sh
       - name: Separate disk, health and process checks (offline)

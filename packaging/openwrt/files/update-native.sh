@@ -56,16 +56,27 @@ read_fallback(){
 fallback_digest(){
   awk -v version="$1" '$1 == version { print $2 }' "$DIR/release-digests.txt"
 }
-LATEST=$CURRENT
-USE_FALLBACK=0
-if fetch "$REPO/releases?per_page=50" "$DIR/releases.json"; then
-  for tag in $(jsonfilter -i "$DIR/releases.json" -e '@[*].tag_name'); do
+# A proxy may reply HTTP 200 with an empty/malformed body. Treating that
+# as an empty release list would falsely report "already up to date".
+# At least one valid native OpenWrt release tag must be present.
+parse_api_releases(){
+  tags=$(jsonfilter -i "$DIR/releases.json" -e '@[*].tag_name' 2>/dev/null) || return 1
+  found=0
+  for tag in $tags; do
     case "$tag" in cudy-monitor-openwrt-v*) ver=${tag#cudy-monitor-openwrt-v} ;; *) continue;; esac
     valid_version "$ver" || continue
+    found=1
     if newer "$ver" "$LATEST"; then LATEST=$ver; fi
   done
+  [ "$found" -eq 1 ]
+}
+LATEST=$CURRENT
+USE_FALLBACK=0
+if fetch "$REPO/releases?per_page=50" "$DIR/releases.json" && parse_api_releases; then
+  :
 else
-  echo "GitHub API release listing unavailable; trying verified maintainer-pinned SHA256 list" >&2
+  echo "GitHub API release listing unavailable or invalid; trying verified maintainer-pinned SHA256 list" >&2
+  LATEST=$CURRENT
   read_fallback
   USE_FALLBACK=1
   for ver in $(awk '!/^[[:space:]]*(#|$)/ {print $1}' "$DIR/release-digests.txt"); do
