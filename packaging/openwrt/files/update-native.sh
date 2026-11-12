@@ -157,6 +157,21 @@ running_matches() {
   done
   [ "$checked" -gt 0 ]
 }
+# The rollback path can execute immediately after apk add fails, so service
+# activation must be defined BEFORE restore_old is ever called.
+activate_updated_service(){
+  expected=$1
+  disk=$("$SELF" --version 2>/dev/null || :)
+  if [ "$disk" != "cudy-monitor-pro $expected" ]; then
+    echo "VERIFY FAILED: installed binary version differs from $expected" >&2
+    return 1
+  fi
+  if ! /etc/init.d/cudy-monitor-pro restart >/dev/null 2>&1; then
+    echo "VERIFY FAILED: procd restart reported failure" >&2
+    return 1
+  fi
+  return 0
+}
 restore_old() {
   echo "Update verification failed; attempting verified rollback to $CURRENT." >&2
   apk add --allow-untrusted "$DIR/previous.apk" || die "ROLLBACK FAILED: previous package could not be restored"
@@ -198,19 +213,6 @@ fi
 # The APK package post-upgrade hook may start a daemon while procd is still
 # transitioning. Independently restart the newly installed binary once before
 # checking /health and the live executable. Never restart a wrong disk version.
-activate_updated_service(){
-  expected=$1
-  disk=$("$SELF" --version 2>/dev/null || :)
-  if [ "$disk" != "cudy-monitor-pro $expected" ]; then
-    echo "VERIFY FAILED: installed binary version differs from $expected" >&2
-    return 1
-  fi
-  if ! /etc/init.d/cudy-monitor-pro restart >/dev/null 2>&1; then
-    echo "VERIFY FAILED: procd restart reported failure" >&2
-    return 1
-  fi
-  return 0
-}
 if ! activate_updated_service "$LATEST"; then
   restore_old
   die "New service activation failed; previous package restored"
