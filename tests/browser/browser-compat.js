@@ -77,6 +77,44 @@ async function checkBrowser(engine, label, options = {}) {
     assert.ok(liveFallback.hasSvg,label+' must draw real WAN live samples');
     assert.ok(liveFallback.reset,label+' must not mix different interfaces');
 
+    // Concurrent requests can complete out of order. An older success OR
+    // failure must not replace the latest WAN graph or its status.
+    const orderedHistory = await page.evaluate(async () => {
+      const oldFetch=window.fetch, oldIface=networkIface, oldPoints=netPoints;
+      const pending=[];
+      try {
+        window.fetch=(url,opts)=>{
+          if(typeof url==='string'&&url.startsWith('/api/network-history?')){
+            return new Promise((resolve,reject)=>pending.push({resolve,reject}));
+          }
+          return oldFetch(url,opts);
+        };
+        networkIface='wan-test';netPoints=[];
+        const old=fetchNetworkHistory();
+        const latest=fetchNetworkHistory();
+        if(pending.length!==2)throw Error('expected two concurrent WAN requests');
+        pending[1].resolve({ok:true,json:async()=>({points:[[101,222,333],[102,444,555]]})});
+        await latest;
+        const afterLatest=netPoints.map(p=>p.slice());
+        pending[0].resolve({ok:true,json:async()=>({points:[[1,1,1],[2,2,2]]})});
+        await old;
+        const keptLatest=JSON.stringify(netPoints)===JSON.stringify(afterLatest);
+        const olderFailure=fetchNetworkHistory();
+        const newerSuccess=fetchNetworkHistory();
+        pending[3].resolve({ok:true,json:async()=>({points:[[103,666,777],[104,888,999]]})});
+        await newerSuccess;
+        pending[2].reject(Error('stale network failure'));
+        await olderFailure;
+        return {keptLatest,keptAfterFailure:netPoints[0]?.[1]===666};
+      } finally {
+        networkHistorySerial++;
+        window.fetch=oldFetch;networkIface=oldIface;netPoints=oldPoints;
+        renderNetworkChart();
+      }
+    });
+    assert.ok(orderedHistory.keptLatest,label+' must ignore an older WAN history response');
+    assert.ok(orderedHistory.keptAfterFailure,label+' must ignore an older WAN history error');
+
     // Missing totals are unavailable readings, NOT an actual zero-percent load.
     await page.route('**/api/status', async route => {
       const response = await route.fetch();
