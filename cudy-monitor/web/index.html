@@ -823,9 +823,17 @@ async function checkUpdate(){
     // A contradictory API status must never enable privileged installation.
     const inconsistent=typeof data.available!=='boolean'||actuallyNewer===null||
       Boolean(data.available)!==actuallyNewer;
-    const runningVersion=el('sidebarversion').textContent.trim();
-    const liveVersion=versionTuple(runningVersion)?runningVersion:null;
-    const runningMismatch=liveVersion&&data.current!==liveVersion;
+    // Do not authorize an OTA based on a version cached by an earlier
+    // dashboard poll: the daemon can restart between polls.
+    const statusResponse=await fetch('/api/status',{cache:'no-store'});
+    if(!statusResponse.ok)throw Error('Не удалось подтвердить работающую версию монитора (HTTP '+statusResponse.status+'). Установка заблокирована.');
+    const liveStatus=await statusResponse.json();
+    const liveVersion=versionTuple(liveStatus.version)?liveStatus.version:null;
+    if(!liveVersion)throw Error('Работающая версия монитора не подтверждена. Установка заблокирована.');
+    if(liveStatus.update_mode!=='native_apk'&&liveStatus.update_mode!=='entware'){
+      throw Error('Режим установки монитора не подтверждён. Установка заблокирована.');
+    }
+    const runningMismatch=data.current!==liveVersion || (data.running&&data.running!==liveVersion);
     const restartRequired=data.restart_required===true ||
       (data.running && data.current!==data.running);
     el('currentversion').textContent=liveVersion||data.current;
