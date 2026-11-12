@@ -184,7 +184,14 @@ async function checkBrowser(engine, label, options = {}) {
           :oldFetch(url,opts);
         await fetchNetworkHistory();
         const rollingPreserved=networkLivePoints.length===2&&networkLiveIface==='wan-reset-test';
-        return {cleared,rollingPreserved};
+        netPoints=[[400,10,5],[402,20,10]];
+        networkLiveIface='wan-reset-test';networkLivePoints=[[400,10,5],[402,20,10]];
+        window.fetch=(url,opts)=>typeof url==='string'&&url.startsWith('/api/network-history?')
+          ?Promise.resolve({ok:true,json:async()=>({points:[[2,0,0],[4,1,1]]})})
+          :oldFetch(url,opts);
+        await fetchNetworkHistory();
+        const restartedClock=networkLivePoints.length===0&&networkLiveIface===''&&netPoints[0]?.[0]===2;
+        return {cleared,rollingPreserved,restartedClock};
       } finally {
         networkHistorySerial++;
         window.fetch=oldFetch;
@@ -195,6 +202,7 @@ async function checkBrowser(engine, label, options = {}) {
     });
     assert.ok(epochReset.cleared,label+' must reset live graph after shorter server history');
     assert.ok(epochReset.rollingPreserved,label+' must preserve live data for rolling server history');
+    assert.ok(epochReset.restartedClock,label+' must clear live data when monitor sample clock restarts');
 
     // Missing totals are unavailable readings, NOT an actual zero-percent load.
     await page.route('**/api/status', async route => {
