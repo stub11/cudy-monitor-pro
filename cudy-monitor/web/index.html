@@ -420,7 +420,7 @@ el('disk2').textContent=diskKnown?d.disk_used+' / '+d.disk_total+' МБ':(d.disk
 el('monitorrss').textContent='Монитор: '+Number(d.monitor_rss_mb).toFixed(2)+' МБ RAM';
 const pct=(id,p)=>{const bar=el(id),known=Number.isFinite(p);bar.firstElementChild.style.width=(known?Math.max(0,Math.min(100,p)):0)+'%';bar.classList.toggle('warn',known&&p>85);bar.setAttribute('aria-label',known?p.toFixed(1)+'%':'Нет данных')};
 pct('cpubar',d.cpu);pct('membar',mp);pct('diskbar',dp);pct('storagebar',dp);const ring=(id,p,v)=>{el(id).style.setProperty('--pct',String(Number.isFinite(p)?Math.max(0,Math.min(100,p)):0));el(id+'value').textContent=v};const t=d.temps.length?d.temps[0].c:null;ring('cpuring',d.cpu,Math.round(d.cpu)+'%');ring('memring',mp,memKnown?Math.round(mp)+'%':'—');ring('diskring',dp,diskKnown?Math.round(dp)+'%':'—');ring('tempring',t===null?0:t,t===null?'—':Math.round(t)+'°');el('uptimecard').textContent=Math.floor(d.uptime/86400)+' д. '+String(Math.floor(d.uptime%86400/3600)).padStart(2,'0')+':'+String(Math.floor(d.uptime%3600/60)).padStart(2,'0');renderCoreUsage(d.cores||[],d.cpu_mhz);el('connectioncount').textContent=d.connections_max?'Соединений: '+d.connections+' из '+d.connections_max:'Соединений: нет данных';
-const statusChips=el('servicebadges');if(statusChips){statusChips.replaceChildren(...(d.services||[]).map(x=>{const b=document.createElement('span');b.className='service-chip '+(x.detected?'is-running':x.installed?'is-installed':'is-absent');b.textContent=x.name+' · '+(x.detected?'Работает':x.installed?'Установлен':'Не найден');return b}));}el('healthsummary').textContent='Время работы роутера: '+Math.floor(d.uptime/86400)+' д. '+Math.floor(d.uptime%86400/3600)+' ч. · Монитор '+(d.version||'—');if(Date.now()-historyLastFetch>=10000){historyLastFetch=Date.now();fetchHistory();}const primary=[d.wan_iface,'br-lan','br0'].filter(Boolean);const ranked=[...d.network].sort((a,b)=>{const ai=primary.indexOf(a.name),bi=primary.indexOf(b.name);if(ai>=0||bi>=0)return ai<0?1:bi<0?-1:ai-bi;return(b.rx+b.tx)-(a.rx+a.tx)||a.name.localeCompare(b.name)});el('netbrief').innerHTML=ranked.slice(0,5).map(x=>'<div class="row"><b>'+escape(x.name)+'</b><span>↓ '+speed(x.rx)+' ↑ '+speed(x.tx)+'</span></div>').join('');allNetwork=Array.isArray(d.network)?d.network:[];
+renderServiceState(d.services||[],d.service_actions_enabled===true);el('healthsummary').textContent='Время работы роутера: '+Math.floor(d.uptime/86400)+' д. '+Math.floor(d.uptime%86400/3600)+' ч. · Монитор '+(d.version||'—');if(Date.now()-historyLastFetch>=10000){historyLastFetch=Date.now();fetchHistory();}const primary=[d.wan_iface,'br-lan','br0'].filter(Boolean);const ranked=[...d.network].sort((a,b)=>{const ai=primary.indexOf(a.name),bi=primary.indexOf(b.name);if(ai>=0||bi>=0)return ai<0?1:bi<0?-1:ai-bi;return(b.rx+b.tx)-(a.rx+a.tx)||a.name.localeCompare(b.name)});el('netbrief').innerHTML=ranked.slice(0,5).map(x=>'<div class="row"><b>'+escape(x.name)+'</b><span>↓ '+speed(x.rx)+' ↑ '+speed(x.tx)+'</span></div>').join('');allNetwork=Array.isArray(d.network)?d.network:[];
 wanRouteStatus=typeof d.wan_route_status==='string'?d.wan_route_status:'missing';
 const confirmedWan=typeof d.wan_iface==='string'&&allNetwork.some(x=>x.name===d.wan_iface)?d.wan_iface:'';
 if(wanIface!==confirmedWan){
@@ -433,20 +433,7 @@ updateNetworkTabs();renderNetwork();
 updateNetworkLiveSample();
 if(!networkIface){netPoints=[];el('networkgraph').textContent='Выберите интерфейс для графика';el('netpagegraph').textContent='Выберите интерфейс для графика';el('netmetrics').textContent='Нет выбранного интерфейса';}
 el('networklabel').textContent=networkManual?'Выбран вручную · '+networkIface:(wanIface?'Маршрут IPv4 · '+wanIface:'WAN не определён');
-el('wanroutehint').textContent=wanIface?'Основной маршрут IPv4: '+wanIface+' · доступность интернета не проверяется':(wanRouteStatus==='ambiguous'?'Несколько равноприоритетных маршрутов IPv4 · выберите интерфейс вручную':'Основной маршрут IPv4 не найден · интерфейс можно выбрать вручную');if(networkIface&&Date.now()-netHistoryFetch>=10000){netHistoryFetch=Date.now();fetchNetworkHistory();}el('tempdetail').innerHTML=d.temps.length?d.temps.map(x=>'<div class="row"><span>'+escape(x.name)+'</span><b>'+x.c.toFixed(1)+' °C</b></div>').join(''):'Датчики не обнаружены';const svc=d.services.map(x=>{const label=x.detected?'● Работает':(x.installed?'○ Установлен':'○ Не определён');return '<div class="row"><b>'+escape(x.name)+'</b><span class="'+(x.detected?'status':'bad')+'">'+label+'</span></div>'}).join('');el('servicebrief').innerHTML=svc;
-el('servicerows').innerHTML=d.services.map(x=>{
- const supported=x.name==='D2K'||x.name==='DoQ';
- const id=x.name.toLowerCase();
- const allowed=d.service_actions_enabled===true;
- const controls=supported&&allowed?'<span class="service-buttons">'+
-  (x.detected?'<button class="service-restart" type="button" data-service="'+id+'" data-action="stop" title="'+(id==='doq'?'Временная остановка на 90 секунд':'Остановить службу')+'">■ '+(id==='doq'?'Пауза 90 с':'Выключить')+'</button>':'<button class="service-restart" type="button" data-service="'+id+'" data-action="start">▶ Включить</button>')+
-  (x.detected?'<button class="service-restart" type="button" data-service="'+id+'" data-action="restart">↻ Перезапуск</button>':'')+
- '</span>':(supported?'<span class="muted service-locked">Управление отключено</span>':'');
- const label=x.detected?'● Работает':(x.installed?'○ Установлен':'○ Не определён');
- return '<div class="row service-row"><b>'+escape(x.name)+'</b><span class="'+(x.detected?'status':'bad')+'">'+label+'</span>'+controls+'</div>';
- }).join('');
-document.querySelectorAll('[data-service]').forEach(btn=>btn.onclick=()=>controlService(btn.dataset.service,btn.dataset.action));
-document.querySelectorAll('[data-service]').forEach(btn=>btn.disabled=serviceActionPending);allProcesses=d.processes;renderProcesses();renderMemorySummary(d);el('storageinfo').textContent=diskKnown?d.disk_mount+': '+d.disk_used+' / '+d.disk_total+' МБ, загрузка '+dp.toFixed(1)+'%, uptime '+Math.floor(d.uptime/3600)+' ч.':'Нет данных о накопителе · '+(d.disk_mount||'точка монтирования не определена');}catch(e){el('online').textContent='● Нет связи';el('online').className='bad';document.body.classList.add('telemetry-stale');invalidateNetworkTelemetry();el('networkgraph').textContent='Нет связи · прежний график приостановлен';el('netpagegraph').textContent='Нет связи · прежний график приостановлен';el('netmetrics').textContent='Нет текущих данных сети';el('lastseen').textContent=lastSuccess?'последний ответ '+Math.floor((Date.now()-lastSuccess)/1000)+' с назад':'нет данных';el('healthsummary').textContent='Нет связи с монитором. Данные могут быть устаревшими.'}finally{pollBusy=false}}
+el('wanroutehint').textContent=wanIface?'Основной маршрут IPv4: '+wanIface+' · доступность интернета не проверяется':(wanRouteStatus==='ambiguous'?'Несколько равноприоритетных маршрутов IPv4 · выберите интерфейс вручную':'Основной маршрут IPv4 не найден · интерфейс можно выбрать вручную');if(networkIface&&Date.now()-netHistoryFetch>=10000){netHistoryFetch=Date.now();fetchNetworkHistory();}el('tempdetail').innerHTML=d.temps.length?d.temps.map(x=>'<div class="row"><span>'+escape(x.name)+'</span><b>'+x.c.toFixed(1)+' °C</b></div>').join(''):'Датчики не обнаружены';allProcesses=d.processes;renderProcesses();renderMemorySummary(d);el('storageinfo').textContent=diskKnown?d.disk_mount+': '+d.disk_used+' / '+d.disk_total+' МБ, загрузка '+dp.toFixed(1)+'%, uptime '+Math.floor(d.uptime/3600)+' ч.':'Нет данных о накопителе · '+(d.disk_mount||'точка монтирования не определена');}catch(e){el('online').textContent='● Нет связи';el('online').className='bad';document.body.classList.add('telemetry-stale');invalidateNetworkTelemetry();el('networkgraph').textContent='Нет связи · прежний график приостановлен';el('netpagegraph').textContent='Нет связи · прежний график приостановлен';el('netmetrics').textContent='Нет текущих данных сети';el('lastseen').textContent=lastSuccess?'последний ответ '+Math.floor((Date.now()-lastSuccess)/1000)+' с назад':'нет данных';el('healthsummary').textContent='Нет связи с монитором. Данные могут быть устаревшими.'}finally{pollBusy=false}}
 // Live telemetry fallback: a valid /api/status speed is a real observation,
 // even when the history endpoint has not populated this interface yet.
 // Keep it only in browser RAM, bounded to the same five-minute window.
@@ -527,6 +514,33 @@ function renderMemorySummary(d){
  if(!(Number.isFinite(d.mem_total)&&d.mem_total>0)){el('memorybreakdown').textContent='Данные RAM недоступны';el('topprocbrief').textContent='Нет подтверждённых данных RAM';return;}
  el('memorybreakdown').innerHTML=top.map((p,i)=>'<span title="'+escape(p.name)+'" style="width:'+(100*p.mem/total).toFixed(2)+'%;background:'+colors[i]+'"></span>').join('')+'<span style="flex:1;background:#637791"></span>';
  el('topprocbrief').innerHTML=top.map((p,i)=>'<span class="memory-pill"><i style="background:'+colors[i]+'"></i>'+escape(p.name)+' · '+p.mem+' МБ</span>').join('');
+}
+let serviceRowsSignature='';
+function renderServiceState(services,actionsEnabled){
+ // Service state usually does not change every two-second poll. Keep the
+ // existing nodes and focused buttons until an actual state change occurs.
+ const signature=JSON.stringify([actionsEnabled,...services.map(x=>[x.name,!!x.detected,!!x.installed])]);
+ if(serviceRowsSignature!==signature){
+  serviceRowsSignature=signature;
+  const statusChips=el('servicebadges');
+  if(statusChips){statusChips.replaceChildren(...services.map(x=>{const b=document.createElement('span');b.className='service-chip '+(x.detected?'is-running':x.installed?'is-installed':'is-absent');b.textContent=x.name+' · '+(x.detected?'Работает':x.installed?'Установлен':'Не найден');return b}));}
+  const svc=services.map(x=>{const label=x.detected?'● Работает':(x.installed?'○ Установлен':'○ Не определён');return '<div class="row"><b>'+escape(x.name)+'</b><span class="'+(x.detected?'status':'bad')+'">'+label+'</span></div>'}).join('');el('servicebrief').innerHTML=svc;
+  el('servicerows').innerHTML=services.map(x=>{
+   const supported=x.name==='D2K'||x.name==='DoQ';
+   const id=x.name.toLowerCase();
+   const allowed=actionsEnabled;
+   const controls=supported&&allowed?'<span class="service-buttons">'+
+    (x.detected?'<button class="service-restart" type="button" data-service="'+id+'" data-action="stop" title="'+(id==='doq'?'Временная остановка на 90 секунд':'Остановить службу')+'">■ '+(id==='doq'?'Пауза 90 с':'Выключить')+'</button>':'<button class="service-restart" type="button" data-service="'+id+'" data-action="start">▶ Включить</button>')+
+    (x.detected?'<button class="service-restart" type="button" data-service="'+id+'" data-action="restart">↻ Перезапуск</button>':'')+
+   '</span>':(supported?'<span class="muted service-locked">Управление отключено</span>':'');
+   const label=x.detected?'● Работает':(x.installed?'○ Установлен':'○ Не определён');
+   return '<div class="row service-row"><b>'+escape(x.name)+'</b><span class="'+(x.detected?'status':'bad')+'">'+label+'</span>'+controls+'</div>';
+   }).join('');
+  
+  document.querySelectorAll('[data-service]').forEach(btn=>btn.onclick=()=>controlService(btn.dataset.service,btn.dataset.action));
+ }
+ // A pending action may change without a service-state change.
+ document.querySelectorAll('[data-service]').forEach(btn=>btn.disabled=serviceActionPending);
 }
 async function controlService(name,action){
  if(serviceActionPending)return;

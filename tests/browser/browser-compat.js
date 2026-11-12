@@ -204,6 +204,43 @@ async function checkBrowser(engine, label, options = {}) {
     assert.ok(epochReset.rollingPreserved,label+' must preserve live data for rolling server history');
     assert.ok(epochReset.restartedClock,label+' must clear live data when monitor sample clock restarts');
 
+    // Polls every two seconds must not replace unchanged service buttons.
+    // Replacing the button loses keyboard focus while users navigate.
+    const stableServices = await page.evaluate(async () => {
+      const live = await fetch('/api/status', {cache:'no-store'}).then(r=>r.json());
+      const selectedPage=document.querySelector('.page:not(.hidden)')?.id||'overview';
+      openPage('services');
+      try {
+        const fixture=[{name:'D2K',detected:true,installed:true},{name:'DoQ',detected:false,installed:true}];
+        renderServiceState(fixture,true);
+        const before=document.querySelector('#servicerows [data-service]');
+        if(!before)throw Error('expected service action button');
+        before.focus();
+        renderServiceState(fixture.map(s=>({...s})),true);
+        const sameNode=document.querySelector('#servicerows [data-service]')===before;
+        const focusKept=document.activeElement===before;
+        const chips=document.querySelector('#servicebadges').firstElementChild;
+        renderServiceState(fixture.map(s=>({...s})),true);
+        const chipsStable=document.querySelector('#servicebadges').firstElementChild===chips;
+        renderServiceState([{name:'D2K',detected:false,installed:true},{name:'DoQ',detected:false,installed:true}],true);
+        const changed=document.querySelector('#servicerows [data-service]')!==before;
+        serviceActionPending=true;
+        renderServiceState([{name:'D2K',detected:false,installed:true},{name:'DoQ',detected:false,installed:true}],true);
+        const disabled=[...document.querySelectorAll('#servicerows [data-service]')].every(b=>b.disabled);
+        return {sameNode,focusKept,chipsStable,changed,disabled};
+      } finally {
+        serviceActionPending=false;
+        serviceRowsSignature='';
+        renderServiceState(live.services||[],live.service_actions_enabled===true);
+        openPage(selectedPage);
+      }
+    });
+    assert.ok(stableServices.sameNode&&stableServices.focusKept,
+      label+' must preserve focused service controls across identical polls');
+    assert.ok(stableServices.chipsStable,label+' must preserve service chips across identical polls');
+    assert.ok(stableServices.changed,label+' must redraw controls when service state changes');
+    assert.ok(stableServices.disabled,label+' must disable existing controls during an action');
+
     // Missing totals are unavailable readings, NOT an actual zero-percent load.
     await page.route('**/api/status', async route => {
       const response = await route.fetch();
