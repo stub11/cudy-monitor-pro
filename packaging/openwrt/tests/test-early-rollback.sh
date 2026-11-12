@@ -52,8 +52,10 @@ apk(){
   return 0
 }
 running_matches(){ [ "$1" = "$CURRENT" ]; }
+BIND=127.0.0.1:8237
+wget(){ printf "ok\n"; }
 restore_old > "$ROOT/stdout" 2> "$ROOT/stderr"
-grep -q 'ROLLBACK OK: installed and running 1.2.21' "$ROOT/stderr"
+grep -q 'ROLLBACK OK: installed, running and healthy 1.2.21' "$ROOT/stderr"
 [ "$(wc -l < "$TEST_RESTART_LOG")" -eq 1 ]
 [ "$("$SELF" --version)" = "cudy-monitor-pro 1.2.21" ]
 echo 'PASS: early APK failure can restore previous package and activate old daemon'
