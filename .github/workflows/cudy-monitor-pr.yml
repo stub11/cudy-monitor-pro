@@ -58,7 +58,9 @@ jobs:
           ui = Path("web/index.html").read_text()
           assert "AURORA DASHBOARD v2" in ui
           assert "servicebadges" in ui
-          assert "replaceChildren(...(d.services||[])" in ui
+          assert "renderServiceState(d.services||[],d.service_actions_enabled===true)" in ui
+          assert "if(serviceRowsSignature!==signature)" in ui
+          assert "statusChips.replaceChildren(...services.map(" in ui
           assert ui.count('class="nav-symbol" aria-hidden="true"') == 8
           assert "@media(max-width:650px)" in ui
           assert "prefers-reduced-motion:reduce" in ui
