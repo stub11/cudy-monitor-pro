@@ -505,9 +505,43 @@ function renderNetworkChart(){
  el('networkgraph').innerHTML=graph;el('netpagegraph').innerHTML=graph;
  const last=p[p.length-1];el('netmetrics').textContent='↓ '+speed(last[1])+'   ↑ '+speed(last[2]);
 }
+let coreNodeSignature='';
 function renderCoreUsage(cores,mhz){
- el('coreusage').innerHTML=cores.length?cores.map(c=>'<div class="core-row"><div>Ядро '+(Number(c.id)+1)+' <strong>'+Number(c.usage).toFixed(0)+'%</strong></div><div class="core-track"><i style="width:'+Math.max(0,Math.min(100,c.usage))+'%"></i></div></div>').join(''):'Нет данных по ядрам';
- el('corehint').textContent=cores.length?'Ядер: '+cores.length+(mhz>0?' · '+mhz+' МГц':''):'Данные недоступны';
+ const container=el('coreusage');
+ // Preserve meter DOM nodes between two-second status polls to avoid layout
+ // churn. Rebuild only when the actual set/order of CPU core IDs changes.
+ const signature=cores.map(c=>String(c.id)).join('|');
+ if(coreNodeSignature!==signature||(!cores.length&&container.textContent!=='Нет данных по ядрам')){
+  coreNodeSignature=signature;
+  if(!cores.length){container.textContent='Нет данных по ядрам';}
+  else{
+   const fragment=document.createDocumentFragment();
+   for(const c of cores){
+    const row=document.createElement('div');row.className='core-row';
+    const heading=document.createElement('div');
+    heading.appendChild(document.createTextNode('Ядро '+(Number(c.id)+1)+' '));
+    heading.appendChild(document.createElement('strong'));
+    const track=document.createElement('div');track.className='core-track';
+    track.appendChild(document.createElement('i'));
+    row.append(heading,track);fragment.appendChild(row);
+   }
+   container.replaceChildren(fragment);
+  }
+ }
+ if(cores.length){
+  [...container.children].forEach((row,i)=>{
+   const usage=Number(cores[i].usage);
+   const value=Number.isFinite(usage)?Math.max(0,Math.min(100,usage)):0;
+   const label=row.querySelector('strong');
+   const text=Math.round(value)+'%';
+   if(label.textContent!==text)label.textContent=text;
+   const bar=row.querySelector('.core-track i');
+   const width=value+'%';
+   if(bar.style.width!==width)bar.style.width=width;
+  });
+ }
+ const hint=cores.length?'Ядер: '+cores.length+(mhz>0?' · '+mhz+' МГц':''):'Данные недоступны';
+ if(el('corehint').textContent!==hint)el('corehint').textContent=hint;
 }
 function renderMemorySummary(d){
  const top=d.processes.slice(0,5),colors=['#0abaff','#986aff','#00d69a','#ffac47','#9cb6d8'],total=Math.max(1,d.mem_total);
