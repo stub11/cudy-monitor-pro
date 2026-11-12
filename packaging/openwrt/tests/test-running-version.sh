@@ -68,7 +68,7 @@ activate_updated_service() {
 sleep() { :; }
 # Restore must also verify the HTTP panel is healthy, using an offline fixture.
 BIND=127.0.0.1:8237
-wget() { [ "${HEALTH_FAIL:-0}" = 0 ] && printf 'ok\\n'; }
+wget() { [ "${HEALTH_FAIL:-0}" = 0 ] && printf 'ok\n'; }
 die() { echo "$*" >&2; exit 1; }
 rollback_fails() {
   if (restore_old > "$TEST_ROOT/rollback.log" 2>&1); then
@@ -88,6 +88,7 @@ printf '%s\n' '1.2.12' > "$TEST_ROOT/disk-version"
 mock_exe 102 1.2.13
 (rollback_fails process-mismatch)
 # Matching disk/process versions are insufficient if the restored HTTP panel is down.
+mock_exe 102 1.2.12
 HEALTH_FAIL=1
 export HEALTH_FAIL
 (rollback_fails panel-unhealthy)
