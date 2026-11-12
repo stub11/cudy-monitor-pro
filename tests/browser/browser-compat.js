@@ -281,6 +281,37 @@ async function checkBrowser(engine, label, options = {}) {
     assert.ok(processRows.sorted&&processRows.removed,label+' must honor sort and process exit');
     assert.ok(processRows.empty&&processRows.restored,label+' must recover after empty filter');
 
+    // Refresh CPU values in place without replacing meter DOM nodes.
+    const stableCoreMeters = await page.evaluate(() => {
+      const original=document.querySelector('#coreusage').innerHTML;
+      const hint=document.querySelector('#corehint').textContent;
+      const signature=coreNodeSignature;
+      try{
+        renderCoreUsage([{id:0,usage:12.4},{id:1,usage:50.1}],1200);
+        const row=document.querySelector('#coreusage .core-row');
+        const strong=row.querySelector('strong');
+        const bar=row.querySelector('.core-track i');
+        renderCoreUsage([{id:0,usage:33.3},{id:1,usage:80.1}],1200);
+        const reused=document.querySelector('#coreusage .core-row')===row&&row.querySelector('strong')===strong&&row.querySelector('.core-track i')===bar;
+        const updated=strong.textContent==='33%'&&bar.style.width==='33.3%';
+        renderCoreUsage([{id:0,usage:33.3},{id:1,usage:80.1}],1200);
+        const identical=document.querySelector('#coreusage .core-row')===row;
+        renderCoreUsage([{id:0,usage:41}],1200);
+        const resized=document.querySelectorAll('#coreusage .core-row').length===1&&document.querySelector('#coreusage .core-row')!==row;
+        renderCoreUsage([],0);
+        const empty=document.querySelector('#coreusage').textContent==='Нет данных по ядрам';
+        return {reused,updated,identical,resized,empty};
+      }finally{
+        coreNodeSignature=signature;
+        document.querySelector('#coreusage').innerHTML=original;
+        document.querySelector('#corehint').textContent=hint;
+      }
+    });
+    assert.ok(stableCoreMeters.reused&&stableCoreMeters.updated,
+      label+' must preserve CPU meter nodes while updating values');
+    assert.ok(stableCoreMeters.identical&&stableCoreMeters.resized&&stableCoreMeters.empty,
+      label+' must handle identical polls, CPU count changes and missing cores');
+
     // Missing totals are unavailable readings, NOT an actual zero-percent load.
     await page.route('**/api/status', async route => {
       const response = await route.fetch();
