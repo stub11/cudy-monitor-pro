@@ -312,6 +312,52 @@ async function checkBrowser(engine, label, options = {}) {
     assert.ok(stableCoreMeters.identical&&stableCoreMeters.resized&&stableCoreMeters.empty,
       label+' must handle identical polls, CPU count changes and missing cores');
 
+    // Repeated identical CPU/RAM history must preserve chart SVG nodes.
+    // Out-of-order API responses must not overwrite a newer sample window.
+    const stableHistory = await page.evaluate(async () => {
+      const saved={historyPoints,historyFetchSerial,historyDataSignature};
+      const oldFetch=window.fetch;
+      const waiting=[];
+      const sampleA=[[10,20,30,40],[20,22,31,41]];
+      const sampleB=[[20,22,31,41],[30,25,32,42]];
+      try {
+        window.fetch=(url,opts)=>typeof url==='string'&&url==='/api/history'
+          ?new Promise(resolve=>waiting.push(resolve))
+          :oldFetch(url,opts);
+        const first=fetchHistory();
+        const second=fetchHistory();
+        if(waiting.length!==2)throw Error('expected overlapping history requests');
+        waiting[1]({ok:true,json:async()=>({points:sampleB})});
+        await second;
+        const svg=document.querySelector('#graph svg');
+        const accepted=!!svg&&historyPoints[1]?.[0]===30;
+        waiting[0]({ok:true,json:async()=>({points:sampleA})});
+        await first;
+        const newerKept=historyPoints[1]?.[0]===30;
+        const duplicate=fetchHistory();
+        waiting[2]({ok:true,json:async()=>({points:sampleB})});
+        await duplicate;
+        const nodeReused=document.querySelector('#graph svg')===svg;
+        const changed=fetchHistory();
+        waiting[3]({ok:true,json:async()=>({points:sampleA})});
+        await changed;
+        const rerendered=document.querySelector('#graph svg')!==svg&&historyPoints[1]?.[0]===20;
+        return {accepted,newerKept,nodeReused,rerendered};
+      } finally {
+        historyFetchSerial++;
+        historyPoints=saved.historyPoints;
+        historyDataSignature=saved.historyDataSignature;
+        window.fetch=oldFetch;
+        drawHistory();
+      }
+    });
+    assert.ok(stableHistory.accepted&&stableHistory.newerKept,
+      label+' must keep the latest CPU/RAM response after overlapping requests');
+    assert.ok(stableHistory.nodeReused,
+      label+' must not redraw identical CPU/RAM history');
+    assert.ok(stableHistory.rerendered,
+      label+' must redraw CPU/RAM history when measurements change');
+
     // Missing totals are unavailable readings, NOT an actual zero-percent load.
     await page.route('**/api/status', async route => {
       const response = await route.fetch();
