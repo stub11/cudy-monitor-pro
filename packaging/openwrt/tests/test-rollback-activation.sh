@@ -45,7 +45,7 @@ fi
 grep -q 'restored binary could not be activated' "$ROOT/err"
 : > "$ROOT/actions"
 printf '1.2.24\n' > "$TEST_ROLLBACK_VERSION"
-if restore_old > "$ROOT/out" 2>"$ROOT/err"; then
+if (restore_old) > "$ROOT/out" 2>"$ROOT/err"; then
   echo 'Wrong disk version incorrectly passed rollback' >&2; exit 1
 fi
 [ "$(cat "$ROOT/actions")" = 'restored' ] || exit 1
