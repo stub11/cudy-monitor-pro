@@ -486,7 +486,10 @@ async function fetchNetworkHistory(){
   // interface name stayed unchanged. A shortened server history is a new
   // measurement epoch, not a continuation of browser-local WAN samples.
   // Normal rolling 150-point windows do not shrink.
-  if(netPoints.length>=2&&points.length<netPoints.length){
+  const previousEnd=netPoints.length?netPoints[netPoints.length-1]?.[0]:null;
+  const nextEnd=points.length?points[points.length-1]?.[0]:null;
+  const serverRestarted=Number.isFinite(previousEnd)&&Number.isFinite(nextEnd)&&nextEnd<previousEnd;
+  if(netPoints.length>=2&&(points.length<netPoints.length||serverRestarted)){
     networkLivePoints=[];networkLiveIface='';
   }
   netPoints=points;renderNetworkChart();
