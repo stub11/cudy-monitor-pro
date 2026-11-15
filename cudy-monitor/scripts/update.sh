@@ -22,12 +22,51 @@ trap 'cleanup' EXIT
 fail() { echo "ERROR: $*" >&2; exit 1; }
 [ "$MODE" = "--check" ] || [ "$MODE" = "--apply" ] || [ "$MODE" = "--rollback" ] || fail "Unsupported action"
 if [ "$MODE" = "--rollback" ]; then
-    [ -f "$BIN.previous" ] || fail "No previous version"
+    [ -x "$BIN.previous" ] || fail "No executable previous version"
+    [ -x "$BIN" ] || fail "Current binary is missing"
     [ -x "$INIT" ] || fail "Init script is missing"
-    mv "$BIN" "$BIN.failed"
-    mv "$BIN.previous" "$BIN"
-    "$INIT" restart || fail "Rollback restart failed"
-    echo "Previous version restored"
+    command -v "$CURL" >/dev/null 2>&1 || fail "curl is required to verify rollback"
+    previous_version=$("$BIN.previous" --version 2>/dev/null || :)
+    current_version=$("$BIN" --version 2>/dev/null || :)
+    printf '%s\n' "$previous_version" | grep -Eq '^cudy-monitor-pro [0-9]+\.[0-9]+\.[0-9]+$' ||
+        fail "Previous binary version could not be verified"
+    printf '%s\n' "$current_version" | grep -Eq '^cudy-monitor-pro [0-9]+\.[0-9]+\.[0-9]+$' ||
+        fail "Current binary version could not be verified"
+    [ "$previous_version" != "$current_version" ] || fail "Previous and current versions are identical"
+    # Validate persisted bind before changing any binaries; no arbitrary URL.
+    HEALTH_BIND=127.0.0.1:8237
+    [ ! -s "$ROOT/etc/cudy-monitor/bind" ] ||
+        HEALTH_BIND=$(cat "$ROOT/etc/cudy-monitor/bind")
+    case "$HEALTH_BIND" in *[!0-9.:]*|*:*:*) fail "Invalid rollback health address" ;; esac
+    IP=${HEALTH_BIND%:*}; PORT=${HEALTH_BIND##*:}
+    printf '%s\n' "$IP" | awk -F. 'NF!=4{exit 1}{for(i=1;i<=4;i++)if($i !~ /^[0-9]+$/ || $i<0 || $i>255)exit 1}' ||
+        fail "Invalid rollback health IP"
+    case "$IP" in
+        127.*|10.*|192.168.*) ;;
+        172.*) SECOND=$(printf '%s\n' "$IP" | cut -d. -f2)
+            [ "$SECOND" -ge 16 ] && [ "$SECOND" -le 31 ] || fail "Not a local rollback address" ;;
+        *) fail "Not a local rollback address" ;;
+    esac
+    case "$PORT" in ''|*[!0-9]*) fail "Invalid rollback health port" ;; esac
+    [ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || fail "Invalid rollback health port"
+    cp -p "$BIN" "$BIN.failed" || fail "Cannot back up currently installed binary"
+    cp -p "$BIN.previous" "$BIN" || fail "Cannot activate previous binary"
+    # A successful restart may still leave an unresponsive or wrong daemon.
+    # Preserve the previous backup and put the original binary back on error.
+    rollback_healthy() {
+        [ "$("$BIN" --version 2>/dev/null || :)" = "$previous_version" ] &&
+            "$CURL" -fsS --connect-timeout 2 --max-time 4 "http://$HEALTH_BIND/health" 2>/dev/null | grep -qx ok
+    }
+    if ! "$INIT" restart || ! rollback_healthy; then
+        cp -p "$BIN.failed" "$BIN" || fail "ROLLBACK FAILED: could not restore original binary"
+        "$INIT" restart || fail "ROLLBACK FAILED: original binary restored but service restart failed"
+        [ "$("$BIN" --version 2>/dev/null || :)" = "$current_version" ] ||
+            fail "ROLLBACK FAILED: original binary version not restored"
+        "$CURL" -fsS --connect-timeout 2 --max-time 4 "http://$HEALTH_BIND/health" 2>/dev/null | grep -qx ok ||
+            fail "ROLLBACK FAILED: original service health could not be restored"
+        fail "Rollback verification failed; original version restored"
+    fi
+    echo "Previous version restored and healthy"
     exit 0
 fi
 command -v "$CURL" >/dev/null 2>&1 || fail "curl is required"
