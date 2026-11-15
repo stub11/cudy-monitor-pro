@@ -4,6 +4,7 @@ on:
     paths:
       - 'cudy-monitor/**'
       - 'tests/update-manifest-http.sh'
+      - 'tests/entware-rollback-health.sh'
       - '.github/workflows/cudy-monitor-pr.yml'
 permissions:
   contents: read
@@ -45,6 +46,10 @@ jobs:
       - name: Offline release metadata HTTP regression
         run: |
           sh ../tests/update-manifest-http.sh
+      - name: Offline Entware rollback version and health verification
+        run: |
+          sh -n ../tests/entware-rollback-health.sh
+          sh ../tests/entware-rollback-health.sh
       - name: Front-end syntax validation
         run: |
           python3 - <<'PY'
