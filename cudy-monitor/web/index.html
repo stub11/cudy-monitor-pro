@@ -746,9 +746,16 @@ el('processfilter').oninput=renderProcesses;
 function updateNetworkTabs(){
  const all=Array.isArray(allNetwork)?allNetwork:[];
  const preferred=n=>n===wanIface?0:n==='br-lan'||n==='br0'?1:n.startsWith('wlan')||n.startsWith('ra')?2:3;
- const names=all.map(x=>x.name).filter(x=>/^[a-zA-Z0-9_.@-]{1,32}$/.test(x))
-  .sort((a,b)=>preferred(a)-preferred(b)||a.localeCompare(b,undefined,{numeric:true})).slice(0,16);
- if(!names.includes(networkIface)){networkIface=wanIface&&names.includes(wanIface)?wanIface:'';networkManual=false;netPoints=[];netHistoryFetch=0;}
+ const available=all.map(x=>x.name).filter(x=>/^[a-zA-Z0-9_.@-]{1,32}$/.test(x))
+  .sort((a,b)=>preferred(a)-preferred(b)||a.localeCompare(b,undefined,{numeric:true}));
+ // Limit visual tabs, but never hide a manually selected interface when
+ // many VLAN/tunnel names exist. The selected interface must remain visible
+ // and operable for manual WAN diagnosis on unknown hardware.
+ const names=available.slice(0,16);
+ if(networkManual&&available.includes(networkIface)&&!names.includes(networkIface)){
+  names[names.length-1]=networkIface;
+ }
+ if(!available.includes(networkIface)){networkIface=wanIface&&available.includes(wanIface)?wanIface:'';networkManual=false;invalidateNetworkTelemetry();}
  const auto=el('wan-auto');auto.setAttribute('aria-pressed',String(!networkManual));el('wan-mode-hint').textContent=networkManual?'Ручной выбор: '+networkIface:(wanIface?'Автоматически: '+wanIface+' · основной маршрут IPv4':'Автоопределение: маршрут IPv4 не найден или неоднозначен');const signature=names.join('|')+':'+networkIface+':'+wanIface+':'+networkManual;
  if(networkTabSignature===signature)return;
  networkTabSignature=signature;
