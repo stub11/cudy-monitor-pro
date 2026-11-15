@@ -62,6 +62,7 @@ jobs:
           node tests/browser/header-clock.js
           node tests/browser/redacted-export.js
           node tests/browser/network-history-validity.js
+          node tests/browser/unknown-wan-selection.js
           export CUDY_SCREENSHOT_OUTPUT="$RUNNER_TEMP/cudy-ui-screenshots"
           node tests/browser/capture-ui-screenshots.js
       - name: Upload synthetic UI screenshot evidence
