@@ -133,6 +133,19 @@ restore() {
         rm -f "$2" || true
     fi
 }
+# Stage files next to their destination and rename only after a complete
+# write. This keeps a power loss or I/O failure from exposing truncated
+# bind/version files. Do not touch existing values on staging failure.
+write_atomic() {
+    dest=$1; value=$2; perms=$3
+    staged=$(mktemp "$dest.new.XXXXXX") || return 1
+    if ! printf '%s\n' "$value" > "$staged" ||
+       ! chmod "$perms" "$staged" ||
+       ! mv -f "$staged" "$dest"; then
+        rm -f "$staged"
+        return 1
+    fi
+}
 backup binary "$BIN"
 backup init "$INIT"
 backup updater "$UPD"
@@ -170,7 +183,7 @@ chmod 700 /opt/etc/cudy-monitor
 # Version 0.4.4+ runs without a login token; preserve any legacy token file but do not use it.
 # Explicit --lan/--bind-ip refresh an existing stale bind; --local preserves it.
 if [ ! -f "$BIND" ] || [ "$MODE" = --lan ] || [ "$MODE" = --bind-ip ]; then
-    printf '%s:8237\n' "$SELECTED_IP" > "$BIND"
+    write_atomic "$BIND" "$SELECTED_IP:8237" 600 || { echo "Cannot safely save LAN bind" >&2; exit 1; }
 fi
 chmod 600 /opt/etc/cudy-monitor/bind
 cp "$TMP/monitor" /opt/bin/cudy-monitor-pro
@@ -191,7 +204,7 @@ HEALTH_BIND=$(cat /opt/etc/cudy-monitor/bind)
     echo "Health check failed" >&2
     exit 1
 }
-printf '%s\n' "$VER" > "$META"
+write_atomic "$META" "$VER" 644 || { echo "Cannot safely save installed version" >&2; exit 1; }
 if [ -f "$TMP/backup/binary" ]; then
     cp -p "$TMP/backup/binary" "$PREV"
 fi
