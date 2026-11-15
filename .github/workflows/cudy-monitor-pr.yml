@@ -8,6 +8,7 @@ on:
       - 'tests/easy-install-platform-check.sh'
       - 'tests/entware-rollback-health.sh'
       - 'tests/entware-manual-rollback.sh'
+      - 'tests/entware-atomic-install.sh'
       - '.github/workflows/cudy-monitor-pr.yml'
 permissions:
   contents: read
@@ -46,6 +47,10 @@ jobs:
       - name: Offline Entware installer fetch regression
         run: |
           sh ../tests/entware-installer-fetch.sh
+      - name: Atomic Entware bind and VERSION configuration writes
+        run: |
+          sh -n ../tests/entware-atomic-install.sh
+          sh ../tests/entware-atomic-install.sh
       - name: Read-only platform diagnostics on unsupported host
         run: |
           sh -n ../scripts/easy-install.sh
