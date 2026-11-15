@@ -28,14 +28,280 @@ if [ "$MODE" = "--rollback" ]; then
     command -v "$CURL" >/dev/null 2>&1 || fail "curl is required to verify rollback"
     previous_version=$("$BIN.previous" --version 2>/dev/null || :)
     current_version=$("$BIN" --version 2>/dev/null || :)
-    case "$previous_version" in
-        "cudy-monitor-pro "[0-9]*.[0-9]*.[0-9]*) ;;
-        *) fail "Previous binary version could not be verified" ;;
+    printf '%s\n' "$previous_version" | grep -Eq '^cudy-monitor-pro [0-9]+\.[0-9]+\.[0-9]+
+    [ "$previous_version" != "$current_version" ] || fail "Previous and current versions are identical"
+    # Validate persisted bind before changing any binaries; no arbitrary URL.
+    HEALTH_BIND=127.0.0.1:8237
+    [ ! -s "$ROOT/etc/cudy-monitor/bind" ] ||
+        HEALTH_BIND=$(cat "$ROOT/etc/cudy-monitor/bind")
+    case "$HEALTH_BIND" in *[!0-9.:]*|*:*:*) fail "Invalid rollback health address" ;; esac
+    IP=${HEALTH_BIND%:*}; PORT=${HEALTH_BIND##*:}
+    printf '%s\n' "$IP" | awk -F. 'NF!=4{exit 1}{for(i=1;i<=4;i++)if($i !~ /^[0-9]+$/ || $i<0 || $i>255)exit 1}' ||
+        fail "Invalid rollback health IP"
+    case "$IP" in
+        127.*|10.*|192.168.*) ;;
+        172.*) SECOND=$(printf '%s\n' "$IP" | cut -d. -f2)
+            [ "$SECOND" -ge 16 ] && [ "$SECOND" -le 31 ] || fail "Not a local rollback address" ;;
+        *) fail "Not a local rollback address" ;;
     esac
-    case "$current_version" in
-        "cudy-monitor-pro "[0-9]*.[0-9]*.[0-9]*) ;;
-        *) fail "Current binary version could not be verified" ;;
+    case "$PORT" in ''|*[!0-9]*) fail "Invalid rollback health port" ;; esac
+    [ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || fail "Invalid rollback health port"
+    cp -p "$BIN" "$BIN.failed" || fail "Cannot back up currently installed binary"
+    cp -p "$BIN.previous" "$BIN" || fail "Cannot activate previous binary"
+    # A successful restart may still leave an unresponsive or wrong daemon.
+    # Preserve the previous backup and put the original binary back on error.
+    rollback_healthy() {
+        [ "$("$BIN" --version 2>/dev/null || :)" = "$previous_version" ] &&
+            "$CURL" -fsS --connect-timeout 2 --max-time 4 "http://$HEALTH_BIND/health" 2>/dev/null | grep -qx ok
+    }
+    if ! "$INIT" restart || ! rollback_healthy; then
+        cp -p "$BIN.failed" "$BIN" || fail "ROLLBACK FAILED: could not restore original binary"
+        "$INIT" restart || fail "ROLLBACK FAILED: original binary restored but service restart failed"
+        [ "$("$BIN" --version 2>/dev/null || :)" = "$current_version" ] ||
+            fail "ROLLBACK FAILED: original binary version not restored"
+        "$CURL" -fsS --connect-timeout 2 --max-time 4 "http://$HEALTH_BIND/health" 2>/dev/null | grep -qx ok ||
+            fail "ROLLBACK FAILED: original service health could not be restored"
+        fail "Rollback verification failed; original version restored"
+    fi
+    echo "Previous version restored and healthy"
+    exit 0
+fi
+command -v "$CURL" >/dev/null 2>&1 || fail "curl is required"
+command -v "$SHASUM" >/dev/null 2>&1 || fail "sha256sum is required"
+# Release manifests are fetched only from the official GitHub release URL.
+# Show a sanitized HTTP status rather than a vague error; never print redirect
+# URLs, signed query strings, Set-Cookie headers, or remote response bodies.
+MANIFEST_TMP=$(mktemp "${TMPDIR:-/tmp}/cudy-monitor-manifest.XXXXXX") || fail "Cannot create temporary manifest"
+HTTP_CODE=$("$CURL" --proto '=https' --tlsv1.2 -fsSL --retry 1 --connect-timeout 5 --max-time 18 -o "$MANIFEST_TMP" -w '%{http_code}' "$MANIFEST") || {
+    case "$HTTP_CODE" in
+        403) fail "GitHub release metadata request returned HTTP 403 (access restriction or temporary rate limit). Installed version is unchanged. Retry later; check access to github.com and release-assets.githubusercontent.com." ;;
+        429) fail "GitHub release metadata request returned HTTP 429 (rate limit). Installed version is unchanged. Retry later." ;;
+        *) fail "Cannot fetch GitHub release metadata (HTTP ${HTTP_CODE:-unknown}). Installed version is unchanged. Check HTTPS connectivity." ;;
     esac
+}
+[ "$HTTP_CODE" = 200 ] || fail "GitHub release metadata returned HTTP $HTTP_CODE. Installed version is unchanged."
+[ -s "$MANIFEST_TMP" ] || fail "Empty GitHub release manifest. Installed version is unchanged."
+DATA=$(cat "$MANIFEST_TMP")
+VERSION=$(printf '%s\n' "$DATA" | sed -n '1p')
+EXPECTED=$(printf '%s\n' "$DATA" | sed -n '2p')
+case "$VERSION" in
+    ''|*[!0-9.]*|.*|*..*|*.) fail "Invalid version" ;;
+esac
+printf '%s\n' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || fail "Invalid semantic version"
+printf '%s\n' "$EXPECTED" | grep -Eq '^[a-f0-9]{64}$' || fail "Invalid SHA256"
+CURRENT=unknown
+if [ -x "$BIN" ]; then CURRENT=$("$BIN" --version 2>/dev/null || echo unknown); fi
+case "$CURRENT" in
+    "cudy-monitor-pro "*) CURRENT=${CURRENT#cudy-monitor-pro } ;;
+esac
+is_newer() {
+    printf '%s\n' "$CURRENT" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || return 1
+    awk -v new="$VERSION" -v old="$CURRENT" 'BEGIN {
+        split(new,n,"."); split(old,o,".");
+        for(i=1;i<=3;i++) {
+            if(n[i]+0 > o[i]+0) exit 0;
+            if(n[i]+0 < o[i]+0) exit 1;
+        }
+        exit 1
+    }'
+}
+if [ "$MODE" = "--check" ]; then
+    echo "$VERSION $CURRENT"
+    exit 0
+fi
+is_newer || fail "Release is not newer than installed version"
+[ -x "$INIT" ] || fail "Entware init script is missing"
+[ -d "$META" ] || fail "Installation directory is missing"
+[ -x "$BIN" ] || fail "Current binary is missing"
+( set -C; : > "$LOCK" ) 2>/dev/null || fail "An update is already running"
+trap 'cleanup; unlock' EXIT
+TMP="$META/cudy-monitor.$$"
+URL="$GITHUB/cudy-monitor-v$VERSION/cudy-monitor-pro-aarch64"
+"$CURL" --proto '=https' --tlsv1.2 -fsSL --retry 2 --connect-timeout 5 --max-time 120 "$URL" -o "$TMP" || fail "Binary download failed"
+ACTUAL=$("$SHASUM" "$TMP" | awk '{print $1}')
+[ "$ACTUAL" = "$EXPECTED" ] || fail "Binary checksum mismatch"
+chmod 755 "$TMP"
+# Bind must be a literal, local IPv4 address. Never let config become an arbitrary URL.
+BIND_FILE="$ROOT/etc/cudy-monitor/bind"
+HEALTH_BIND=127.0.0.1:8237
+[ ! -s "$BIND_FILE" ] || HEALTH_BIND=$(cat "$BIND_FILE")
+case "$HEALTH_BIND" in *[!0-9.:]*|*:*:*) fail "Invalid health-check address" ;; esac
+IP=${HEALTH_BIND%:*}
+PORT=${HEALTH_BIND##*:}
+printf '%s\n' "$IP" | awk -F. 'NF!=4{exit 1}{for(i=1;i<=4;i++)if($i !~ /^[0-9]+$/ || $i<0 || $i>255)exit 1}' || fail "Invalid health-check IP"
+case "$IP" in
+    127.*|10.*|192.168.*) ;;
+    172.*) SECOND=$(printf '%s\n' "$IP" | cut -d. -f2); [ "$SECOND" -ge 16 ] && [ "$SECOND" -le 31 ] || fail "Not a local address" ;;
+    *) fail "Not a local address" ;;
+esac
+case "$PORT" in ''|*[!0-9]*) fail "Invalid health-check port" ;; esac
+[ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || fail "Invalid health-check port"
+# Keep old binary until the new daemon proves it can start.
+cp "$BIN" "$BIN.previous" || fail "Could not back up old binary"
+mv "$TMP" "$BIN" || fail "Cannot activate downloaded binary"
+TMP=""
+restore_previous() {
+    # A successful copy/restart is not proof that the old monitor is serving
+    # requests. Refuse to claim a verified rollback until both disk version
+    # and HTTP health match the previous installed version.
+    cp "$BIN.previous" "$BIN" || fail "ROLLBACK FAILED: cannot restore backup binary"
+    "$INIT" restart || fail "ROLLBACK FAILED: previous service could not restart"
+    restored=$("$BIN" --version 2>/dev/null || :)
+    [ "$restored" = "cudy-monitor-pro $CURRENT" ] ||
+        fail "ROLLBACK FAILED: restored binary version not confirmed"
+    "$CURL" -fsS --connect-timeout 2 --max-time 4 "http://$HEALTH_BIND/health" 2>/dev/null | grep -qx ok ||
+        fail "ROLLBACK FAILED: restored service health not confirmed"
+}
+if ! "$INIT" restart; then
+    restore_previous
+    fail "Restart failed; rolled back"
+fi
+sleep 2
+if ! "$CURL" -fsS --connect-timeout 2 --max-time 4 "http://$HEALTH_BIND/health" >/dev/null; then
+    restore_previous
+    fail "Health check failed; rolled back"
+fi
+printf '%s\n' "$VERSION" > "$META/VERSION"
+echo "UPDATED $VERSION"
+ ||
+        fail "Previous binary version could not be verified"
+    printf '%s\n' "$current_version" | grep -Eq '^cudy-monitor-pro [0-9]+\.[0-9]+\.[0-9]+
+    [ "$previous_version" != "$current_version" ] || fail "Previous and current versions are identical"
+    # Validate persisted bind before changing any binaries; no arbitrary URL.
+    HEALTH_BIND=127.0.0.1:8237
+    [ ! -s "$ROOT/etc/cudy-monitor/bind" ] ||
+        HEALTH_BIND=$(cat "$ROOT/etc/cudy-monitor/bind")
+    case "$HEALTH_BIND" in *[!0-9.:]*|*:*:*) fail "Invalid rollback health address" ;; esac
+    IP=${HEALTH_BIND%:*}; PORT=${HEALTH_BIND##*:}
+    printf '%s\n' "$IP" | awk -F. 'NF!=4{exit 1}{for(i=1;i<=4;i++)if($i !~ /^[0-9]+$/ || $i<0 || $i>255)exit 1}' ||
+        fail "Invalid rollback health IP"
+    case "$IP" in
+        127.*|10.*|192.168.*) ;;
+        172.*) SECOND=$(printf '%s\n' "$IP" | cut -d. -f2)
+            [ "$SECOND" -ge 16 ] && [ "$SECOND" -le 31 ] || fail "Not a local rollback address" ;;
+        *) fail "Not a local rollback address" ;;
+    esac
+    case "$PORT" in ''|*[!0-9]*) fail "Invalid rollback health port" ;; esac
+    [ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || fail "Invalid rollback health port"
+    cp -p "$BIN" "$BIN.failed" || fail "Cannot back up currently installed binary"
+    cp -p "$BIN.previous" "$BIN" || fail "Cannot activate previous binary"
+    # A successful restart may still leave an unresponsive or wrong daemon.
+    # Preserve the previous backup and put the original binary back on error.
+    rollback_healthy() {
+        [ "$("$BIN" --version 2>/dev/null || :)" = "$previous_version" ] &&
+            "$CURL" -fsS --connect-timeout 2 --max-time 4 "http://$HEALTH_BIND/health" 2>/dev/null | grep -qx ok
+    }
+    if ! "$INIT" restart || ! rollback_healthy; then
+        cp -p "$BIN.failed" "$BIN" || fail "ROLLBACK FAILED: could not restore original binary"
+        "$INIT" restart || fail "ROLLBACK FAILED: original binary restored but service restart failed"
+        [ "$("$BIN" --version 2>/dev/null || :)" = "$current_version" ] ||
+            fail "ROLLBACK FAILED: original binary version not restored"
+        "$CURL" -fsS --connect-timeout 2 --max-time 4 "http://$HEALTH_BIND/health" 2>/dev/null | grep -qx ok ||
+            fail "ROLLBACK FAILED: original service health could not be restored"
+        fail "Rollback verification failed; original version restored"
+    fi
+    echo "Previous version restored and healthy"
+    exit 0
+fi
+command -v "$CURL" >/dev/null 2>&1 || fail "curl is required"
+command -v "$SHASUM" >/dev/null 2>&1 || fail "sha256sum is required"
+# Release manifests are fetched only from the official GitHub release URL.
+# Show a sanitized HTTP status rather than a vague error; never print redirect
+# URLs, signed query strings, Set-Cookie headers, or remote response bodies.
+MANIFEST_TMP=$(mktemp "${TMPDIR:-/tmp}/cudy-monitor-manifest.XXXXXX") || fail "Cannot create temporary manifest"
+HTTP_CODE=$("$CURL" --proto '=https' --tlsv1.2 -fsSL --retry 1 --connect-timeout 5 --max-time 18 -o "$MANIFEST_TMP" -w '%{http_code}' "$MANIFEST") || {
+    case "$HTTP_CODE" in
+        403) fail "GitHub release metadata request returned HTTP 403 (access restriction or temporary rate limit). Installed version is unchanged. Retry later; check access to github.com and release-assets.githubusercontent.com." ;;
+        429) fail "GitHub release metadata request returned HTTP 429 (rate limit). Installed version is unchanged. Retry later." ;;
+        *) fail "Cannot fetch GitHub release metadata (HTTP ${HTTP_CODE:-unknown}). Installed version is unchanged. Check HTTPS connectivity." ;;
+    esac
+}
+[ "$HTTP_CODE" = 200 ] || fail "GitHub release metadata returned HTTP $HTTP_CODE. Installed version is unchanged."
+[ -s "$MANIFEST_TMP" ] || fail "Empty GitHub release manifest. Installed version is unchanged."
+DATA=$(cat "$MANIFEST_TMP")
+VERSION=$(printf '%s\n' "$DATA" | sed -n '1p')
+EXPECTED=$(printf '%s\n' "$DATA" | sed -n '2p')
+case "$VERSION" in
+    ''|*[!0-9.]*|.*|*..*|*.) fail "Invalid version" ;;
+esac
+printf '%s\n' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || fail "Invalid semantic version"
+printf '%s\n' "$EXPECTED" | grep -Eq '^[a-f0-9]{64}$' || fail "Invalid SHA256"
+CURRENT=unknown
+if [ -x "$BIN" ]; then CURRENT=$("$BIN" --version 2>/dev/null || echo unknown); fi
+case "$CURRENT" in
+    "cudy-monitor-pro "*) CURRENT=${CURRENT#cudy-monitor-pro } ;;
+esac
+is_newer() {
+    printf '%s\n' "$CURRENT" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || return 1
+    awk -v new="$VERSION" -v old="$CURRENT" 'BEGIN {
+        split(new,n,"."); split(old,o,".");
+        for(i=1;i<=3;i++) {
+            if(n[i]+0 > o[i]+0) exit 0;
+            if(n[i]+0 < o[i]+0) exit 1;
+        }
+        exit 1
+    }'
+}
+if [ "$MODE" = "--check" ]; then
+    echo "$VERSION $CURRENT"
+    exit 0
+fi
+is_newer || fail "Release is not newer than installed version"
+[ -x "$INIT" ] || fail "Entware init script is missing"
+[ -d "$META" ] || fail "Installation directory is missing"
+[ -x "$BIN" ] || fail "Current binary is missing"
+( set -C; : > "$LOCK" ) 2>/dev/null || fail "An update is already running"
+trap 'cleanup; unlock' EXIT
+TMP="$META/cudy-monitor.$$"
+URL="$GITHUB/cudy-monitor-v$VERSION/cudy-monitor-pro-aarch64"
+"$CURL" --proto '=https' --tlsv1.2 -fsSL --retry 2 --connect-timeout 5 --max-time 120 "$URL" -o "$TMP" || fail "Binary download failed"
+ACTUAL=$("$SHASUM" "$TMP" | awk '{print $1}')
+[ "$ACTUAL" = "$EXPECTED" ] || fail "Binary checksum mismatch"
+chmod 755 "$TMP"
+# Bind must be a literal, local IPv4 address. Never let config become an arbitrary URL.
+BIND_FILE="$ROOT/etc/cudy-monitor/bind"
+HEALTH_BIND=127.0.0.1:8237
+[ ! -s "$BIND_FILE" ] || HEALTH_BIND=$(cat "$BIND_FILE")
+case "$HEALTH_BIND" in *[!0-9.:]*|*:*:*) fail "Invalid health-check address" ;; esac
+IP=${HEALTH_BIND%:*}
+PORT=${HEALTH_BIND##*:}
+printf '%s\n' "$IP" | awk -F. 'NF!=4{exit 1}{for(i=1;i<=4;i++)if($i !~ /^[0-9]+$/ || $i<0 || $i>255)exit 1}' || fail "Invalid health-check IP"
+case "$IP" in
+    127.*|10.*|192.168.*) ;;
+    172.*) SECOND=$(printf '%s\n' "$IP" | cut -d. -f2); [ "$SECOND" -ge 16 ] && [ "$SECOND" -le 31 ] || fail "Not a local address" ;;
+    *) fail "Not a local address" ;;
+esac
+case "$PORT" in ''|*[!0-9]*) fail "Invalid health-check port" ;; esac
+[ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || fail "Invalid health-check port"
+# Keep old binary until the new daemon proves it can start.
+cp "$BIN" "$BIN.previous" || fail "Could not back up old binary"
+mv "$TMP" "$BIN" || fail "Cannot activate downloaded binary"
+TMP=""
+restore_previous() {
+    # A successful copy/restart is not proof that the old monitor is serving
+    # requests. Refuse to claim a verified rollback until both disk version
+    # and HTTP health match the previous installed version.
+    cp "$BIN.previous" "$BIN" || fail "ROLLBACK FAILED: cannot restore backup binary"
+    "$INIT" restart || fail "ROLLBACK FAILED: previous service could not restart"
+    restored=$("$BIN" --version 2>/dev/null || :)
+    [ "$restored" = "cudy-monitor-pro $CURRENT" ] ||
+        fail "ROLLBACK FAILED: restored binary version not confirmed"
+    "$CURL" -fsS --connect-timeout 2 --max-time 4 "http://$HEALTH_BIND/health" 2>/dev/null | grep -qx ok ||
+        fail "ROLLBACK FAILED: restored service health not confirmed"
+}
+if ! "$INIT" restart; then
+    restore_previous
+    fail "Restart failed; rolled back"
+fi
+sleep 2
+if ! "$CURL" -fsS --connect-timeout 2 --max-time 4 "http://$HEALTH_BIND/health" >/dev/null; then
+    restore_previous
+    fail "Health check failed; rolled back"
+fi
+printf '%s\n' "$VERSION" > "$META/VERSION"
+echo "UPDATED $VERSION"
+ ||
+        fail "Current binary version could not be verified"
     [ "$previous_version" != "$current_version" ] || fail "Previous and current versions are identical"
     # Validate persisted bind before changing any binaries; no arbitrary URL.
     HEALTH_BIND=127.0.0.1:8237
