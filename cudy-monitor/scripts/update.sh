@@ -105,8 +105,16 @@ cp "$BIN" "$BIN.previous" || fail "Could not back up old binary"
 mv "$TMP" "$BIN" || fail "Cannot activate downloaded binary"
 TMP=""
 restore_previous() {
-    cp "$BIN.previous" "$BIN" || fail "Cannot restore backup binary"
-    "$INIT" restart || fail "Rollback restart failed"
+    # A successful copy/restart is not proof that the old monitor is serving
+    # requests. Refuse to claim a verified rollback until both disk version
+    # and HTTP health match the previous installed version.
+    cp "$BIN.previous" "$BIN" || fail "ROLLBACK FAILED: cannot restore backup binary"
+    "$INIT" restart || fail "ROLLBACK FAILED: previous service could not restart"
+    restored=$("$BIN" --version 2>/dev/null || :)
+    [ "$restored" = "cudy-monitor-pro $CURRENT" ] ||
+        fail "ROLLBACK FAILED: restored binary version not confirmed"
+    "$CURL" -fsS --connect-timeout 2 --max-time 4 "http://$HEALTH_BIND/health" 2>/dev/null | grep -qx ok ||
+        fail "ROLLBACK FAILED: restored service health not confirmed"
 }
 if ! "$INIT" restart; then
     restore_previous
