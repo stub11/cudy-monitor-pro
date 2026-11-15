@@ -61,3 +61,13 @@ jobs:
           node tests/browser/stable-refresh.js
           node tests/browser/header-clock.js
           node tests/browser/redacted-export.js
+          export CUDY_SCREENSHOT_OUTPUT="$RUNNER_TEMP/cudy-ui-screenshots"
+          node tests/browser/capture-ui-screenshots.js
+      - name: Upload synthetic UI screenshot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cudy-ui-screenshots
+          path: ${{ runner.temp }}/cudy-ui-screenshots/
+          if-no-files-found: warn
+          retention-days: 30
