@@ -17,10 +17,14 @@ cleanup(){ rm -rf "$DIR"; if [ "$MODE" = --apply ]; then rmdir "$LOCK" 2>/dev/nu
 fetch(){
   url=$1 dest=$2
   if command -v curl >/dev/null 2>&1; then
-    curl -fLsS --retry 1 --connect-timeout 8 --max-time 90 -o "$dest" "$url" && [ -s "$dest" ] && return 0
+    # Restrict initial and redirected requests to HTTPS; never trade a 403
+    # for plaintext HTTP on a proxy or captive network.
+    curl --proto '=https' --proto-redir '=https' -fLsS --retry 1 --connect-timeout 8 --max-time 90 -o "$dest" "$url" && [ -s "$dest" ] && return 0
   fi
   if command -v wget >/dev/null 2>&1; then
-    wget -O "$dest" "$url" && [ -s "$dest" ] && return 0
+    # BusyBox and GNU wget both support -T (timeout) and -t (attempts).
+    # Without them, fallback after curl HTTP 403 could wait indefinitely.
+    wget -T 20 -t 2 -O "$dest" "$url" && [ -s "$dest" ] && return 0
   fi
   return 1
 }
