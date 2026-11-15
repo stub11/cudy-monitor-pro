@@ -914,6 +914,17 @@ fn main()->std::io::Result<()>{
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test] fn service_process_uptime_parser_is_fail_closed(){
+        let mut fields=vec!["0";20];
+        fields[0]="S";fields[19]="2500";
+        let stat=format!("42 (doqd) {}",fields.join(" "));
+        assert_eq!(service_pid_age(&stat,100.0),Some(75));
+        assert_eq!(service_pid_age(&stat,10.0),None);
+        assert_eq!(service_pid_age("malformed",100.0),None);
+        assert_eq!(service_pid_age(&stat,f64::NAN),None);
+        let empty:HashMap<u64,f64>=HashMap::new();
+        assert_eq!(service_metrics(&[],&empty,100.0),(0.0,0.0,None));
+    }
     #[test] fn network_rates_normal_and_new_interface(){
         let old=Net{rx:1000,tx:2000};
         let current=Net{rx:2000,tx:2400};
