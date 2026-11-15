@@ -4,12 +4,50 @@
 # HTTPS-hosted, release-pinned SHA256 list. No arbitrary URLs are accepted.
 set -eu
 MODE=${1:---check}
-case "$MODE" in --check|--apply) ;; *) echo "unsupported mode" >&2; exit 2;; esac
+case "$MODE" in --check|--apply|--diagnose) ;; *) echo "unsupported mode" >&2; exit 2;; esac
 REPO=https://api.github.com/repos/stub11/cudy-monitor-pro
 RELEASE=https://github.com/stub11/cudy-monitor-pro/releases/download
 # Fixed official repository file: entries must be version + published SHA256.
 FALLBACK=https://raw.githubusercontent.com/stub11/cudy-monitor-pro/main/packaging/openwrt/release-digests.txt
 SELF=/usr/bin/cudy-monitor-pro
+# Offline read-only inspection of the installed file and running monitor
+# executables. No network, locks, apk calls or service operations.
+diagnose_state(){
+  installed=$1; shift
+  printf '%s\n' "$installed" | grep -Eq '^cudy-monitor-pro [0-9]+\.[0-9]+\.[0-9]+$' || { echo invalid_installed; return; }
+  [ "$#" -gt 0 ] || { echo not_running; return; }
+  for running in "$@"; do
+    printf '%s\n' "$running" | grep -Eq '^cudy-monitor-pro [0-9]+\.[0-9]+\.[0-9]+$' || { echo unreadable_running; return; }
+    [ "$running" = "$installed" ] || { echo mismatch; return; }
+  done
+  echo matching
+}
+if [ "$MODE" = --diagnose ]; then
+  if [ ! -x "$SELF" ]; then echo "ERROR: monitor binary is absent" >&2; exit 1; fi
+  disk=$("$SELF" --version 2>/dev/null || :)
+  printf 'update_mode=native_apk\ninstalled_version=%s\n' "$disk"
+  if ! command -v pidof >/dev/null 2>&1; then
+    echo 'running_version=unavailable'
+    echo 'version_state=unreadable_running'
+    exit 0
+  fi
+  pids=$(pidof cudy-monitor-pro 2>/dev/null || :)
+  set --
+  for pid in $pids; do
+    case "$pid" in *[!0-9]*|'') echo 'running_version=unavailable'; echo 'version_state=unreadable_running'; exit 0;; esac
+    if [ ! -x "/proc/$pid/exe" ]; then
+      echo 'running_version=unavailable';echo 'version_state=unreadable_running';exit 0
+    fi
+    running=$("/proc/$pid/exe" --version 2>/dev/null || :)
+    set -- "$@" "$running"
+  done
+  state=$(diagnose_state "$disk" "$@")
+  if [ "$#" -eq 0 ]; then echo 'running_version=not_running'
+  elif [ "$#" -eq 1 ]; then printf 'running_version=%s\n' "$1"
+  else echo 'running_version=multiple_processes'; fi
+  printf 'version_state=%s\n' "$state"
+  exit 0
+fi
 LOCK=/tmp/.cudy-monitor-native-update.lock
 DIR=/tmp/cudy-monitor-native-update.$$
 die(){ echo "ERROR: $*" >&2; exit 1; }

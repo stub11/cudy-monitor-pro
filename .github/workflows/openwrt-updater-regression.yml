@@ -22,6 +22,7 @@ jobs:
           sh -n packaging/openwrt/tests/test-running-version.sh
           sh -n packaging/openwrt/tests/test-release-fallback.sh
           sh -n packaging/openwrt/tests/test-bounded-fetch.sh
+          sh -n packaging/openwrt/tests/test-version-diagnose.sh
           sh -n packaging/openwrt/tests/test-api-release-list.sh
           sh -n packaging/openwrt/tests/test-api-asset-digest.sh
           sh -n packaging/openwrt/tests/test-upgrade-verification.sh
@@ -38,6 +39,8 @@ jobs:
         run: sh packaging/openwrt/tests/test-release-fallback.sh
       - name: Bound HTTPS release fetch fallback after curl HTTP 403
         run: sh packaging/openwrt/tests/test-bounded-fetch.sh
+      - name: Read-only installed-vs-running OTA diagnostic regression
+        run: sh packaging/openwrt/tests/test-version-diagnose.sh
       - name: Separate disk, health and process checks (offline)
         run: sh packaging/openwrt/tests/test-upgrade-verification.sh
       - name: Revert immediately after APK failure before any service was activated
