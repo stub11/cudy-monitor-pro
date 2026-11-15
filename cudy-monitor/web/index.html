@@ -791,7 +791,20 @@ async function fetchHistory(){
     if(!r.ok)throw Error('HTTP '+r.status);
     const d=await r.json();
     if(serial!==historyFetchSerial)return;
-    const points=Array.isArray(d.points)?d.points.slice(-1080):[];
+    // Keep only chronological, finite samples from a possibly partial history
+    // response. A missing temperature is allowed; invalid CPU/RAM values are
+    // not plotted as zero. Never connect points with reversed timestamps.
+    const raw=Array.isArray(d.points)?d.points.slice(-1080):[];
+    const points=[];
+    for(const p of raw){
+      if(!Array.isArray(p)||p.length!==4||!Number.isFinite(p[0])||p[0]<0)continue;
+      if(points.length&&p[0]<=points[points.length-1][0])continue;
+      const cpu=Number.isFinite(p[1])&&p[1]>=0&&p[1]<=100?p[1]:null;
+      const ram=Number.isFinite(p[2])&&p[2]>=0&&p[2]<=100?p[2]:null;
+      const temp=Number.isFinite(p[3])&&p[3]>=-80&&p[3]<=200?p[3]:null;
+      if(cpu===null&&ram===null&&temp===null)continue;
+      points.push([p[0],cpu,ram,temp]);
+    }
     // A poll may return exactly the same 10-second samples; preserve SVG
     // nodes and layout until values or the selected graph metric change.
     const signature=JSON.stringify(points);
