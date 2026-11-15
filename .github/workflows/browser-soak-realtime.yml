@@ -1,0 +1,49 @@
+name: Browser real-time 10-minute stability soak
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/browser/telemetry-soak-realtime.js'
+      - '.github/workflows/browser-soak-realtime.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cudy-browser-soak-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ten-minute-live-timers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Compile isolated debug monitor
+        working-directory: cudy-monitor
+        run: cargo build
+      - name: Install pinned Chromium and WebKit
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium webkit
+      - name: Real 600-second timer / memory-bounded UI test
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CUDY_MONITOR_BIND="127.0.0.1:18247"
+          export CUDY_MONITOR_NATIVE_APK=1
+          export CUDY_MONITOR_AUTH_FILE="$RUNNER_TEMP/cudy-browser-soak-auth"
+          cudy-monitor/target/debug/cudy-monitor-pro &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; rm -f "$CUDY_MONITOR_AUTH_FILE"' EXIT
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:18247/health >/dev/null; then break; fi
+            sleep 0.25
+          done
+          curl -fsS http://127.0.0.1:18247/health
+          node tests/browser/telemetry-soak-realtime.js
