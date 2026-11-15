@@ -58,3 +58,4 @@ jobs:
           curl -fsS http://127.0.0.1:18247/health
           node tests/browser/browser-compat.js
           node tests/browser/approved-ui-viewport.js
+          node tests/browser/stable-refresh.js
