@@ -160,6 +160,7 @@ header{margin-bottom:18px;padding:0 5px}
  .shell aside nav button.active{background:linear-gradient(110deg,#2186fa,#4443e6)}
  .shell aside .aside-status{display:block}
 }
+.service-metrics{flex:1 0 100%;font-variant-numeric:tabular-nums;min-height:20px;color:#afc8e7;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
 .service-row{flex-wrap:wrap}.service-restart{border:1px solid #36567c;border-radius:9px;color:#dce9ff;background:#243a59;padding:8px 11px;cursor:pointer;font-size:12px}.service-restart:disabled{opacity:.45;cursor:wait}#serviceactionstatus{margin:10px 0;font-size:12px}.service-buttons{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.service-locked{font-size:12px}.service-row{gap:10px}.service-row>b{min-width:70px}@media(max-width:650px){.service-row{display:grid;grid-template-columns:1fr auto;align-items:center}.service-buttons,.service-locked{grid-column:1/-1;justify-content:flex-start}.service-buttons button{font-size:13px}}@media(prefers-reduced-motion:reduce){*{transition:none!important}}
 /* Chart labels must never be SVG text: preserveAspectRatio=none distorts glyphs. */
 .axis-chart{display:flex;align-items:stretch;gap:8px;width:100%;min-width:0;margin:12px 0 3px}
@@ -579,11 +580,26 @@ function renderServiceState(services,actionsEnabled){
     (x.detected?'<button class="service-restart" type="button" data-service="'+id+'" data-action="restart">↻ Перезапуск</button>':'')+
    '</span>':(supported?'<span class="muted service-locked">Управление отключено</span>':'');
    const label=x.detected?'● Работает':(x.installed?'○ Установлен':'○ Не определён');
-   return '<div class="row service-row"><b>'+escape(x.name)+'</b><span class="'+(x.detected?'status':'bad')+'">'+label+'</span>'+controls+'</div>';
+   return '<div class="row service-row"><b>'+escape(x.name)+'</b><span class="'+(x.detected?'status':'bad')+'">'+label+'</span>'+controls+'<div class="service-metrics" data-service-metrics="'+escape(x.name)+'"></div></div>';
    }).join('');
   
   document.querySelectorAll('[data-service]').forEach(btn=>btn.onclick=()=>controlService(btn.dataset.service,btn.dataset.action));
  }
+ // Update only the metrics text, never recreate the service card on a
+ // telemetry poll: buttons keep their identity and keyboard focus.
+ el('servicerows').querySelectorAll('[data-service-metrics]').forEach(node=>{
+  const x=services.find(v=>v.name===node.dataset.serviceMetrics);
+  if(!x||!x.detected||!Number.isInteger(x.pid)||x.pid<=0){
+   if(node.textContent!=='Данные процесса недоступны')node.textContent='Данные процесса недоступны';
+   return;
+  }
+  const ram=Number.isFinite(x.ram_mb)?x.ram_mb.toFixed(1)+' МиБ':'—';
+  const cpu=Number.isFinite(x.cpu_pct)?x.cpu_pct.toFixed(1)+'%':'—';
+  const uptime=Number.isFinite(x.uptime_sec)?'≈ '+Math.floor(x.uptime_sec/86400)+' д. '+Math.floor(x.uptime_sec%86400/3600)+' ч.':'—';
+  const count=Number.isInteger(x.processes)&&x.processes>1?' · Процессов: '+x.processes:'';
+  const value='PID '+x.pid+count+' · CPU '+cpu+' · RAM '+ram+' · Аптайм '+uptime;
+  if(node.textContent!==value)node.textContent=value;
+ });
  // A pending action may change without a service-state change.
  document.querySelectorAll('[data-service]').forEach(btn=>btn.disabled=serviceActionPending);
 }
