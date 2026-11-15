@@ -4,6 +4,8 @@ on:
     paths:
       - 'cudy-monitor/**'
       - 'tests/update-manifest-http.sh'
+      - 'scripts/easy-install.sh'
+      - 'tests/easy-install-platform-check.sh'
       - 'tests/entware-rollback-health.sh'
       - 'tests/entware-manual-rollback.sh'
       - '.github/workflows/cudy-monitor-pr.yml'
@@ -44,6 +46,10 @@ jobs:
       - name: Offline Entware installer fetch regression
         run: |
           sh ../tests/entware-installer-fetch.sh
+      - name: Read-only platform diagnostics on unsupported host
+        run: |
+          sh -n ../scripts/easy-install.sh
+          sh ../tests/easy-install-platform-check.sh
       - name: Offline release metadata HTTP regression
         run: |
           sh ../tests/update-manifest-http.sh

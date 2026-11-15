@@ -6,13 +6,13 @@ set -eu
 BASE=https://raw.githubusercontent.com/stub11/cudy-monitor-pro/main
 ACTION=${1:---install}
 die() { echo "ERROR: $*" >&2; exit 1; }
-case "$ACTION" in --install|--update|--remove) ;; *) echo "Usage: sh easy-install.sh [--install|--update|--remove] [--file /tmp/package.apk]" >&2; exit 2;; esac
+case "$ACTION" in --install|--update|--remove|--check) ;; *) echo "Usage: sh easy-install.sh [--install|--update|--remove|--check] [--file /tmp/package.apk]" >&2; exit 2;; esac
 LOCAL_APK=
 if [ "${2:-}" = --file ] && [ -n "${3:-}" ] && [ "$#" -eq 3 ]; then
-  [ "$ACTION" != --remove ] || die "--file is not valid with --remove"
+  [ "$ACTION" = --install ] || [ "$ACTION" = --update ] || die "--file is only valid with --install or --update"
   LOCAL_APK=$3
 elif [ "$#" -gt 1 ]; then
-  die "Usage: sh easy-install.sh [--install|--update|--remove] [--file /tmp/package.apk]"
+  die "Usage: sh easy-install.sh [--install|--update|--remove|--check] [--file /tmp/package.apk]"
 fi
 fetch() {
   url=$1
@@ -29,6 +29,46 @@ fetch() {
     die "wget or curl is required to download the installer."
   fi
 }
+# Read-only self-diagnostics for unknown hardware (#20, #22). It never
+# fetches packages, prints addresses or alters the router. Safe without root.
+if [ "$ACTION" = --check ]; then
+  echo "Cudy Monitor Pro — platform diagnostics (read-only)"
+  ARCH=$(uname -m 2>/dev/null || echo unknown)
+  echo "CPU architecture: $ARCH"
+  if [ -f /etc/openwrt_release ]; then
+    echo "Detected system: OpenWrt"
+    if command -v apk >/dev/null 2>&1; then
+      echo "Native package manager: apk (available)"
+    else
+      echo "Native package manager: apk (unavailable; native OpenWrt APK install unsupported)"
+    fi
+  else
+    echo "Detected system: other Linux / Keenetic Ported / Entware (not independently verified)"
+  fi
+  if [ -d /opt/etc/init.d ] && [ -x /opt/bin/opkg ]; then
+    echo "Entware: mounted with opkg"
+  else
+    echo "Entware: not detected at /opt"
+  fi
+  if [ -x /opt/bin/cudy-monitor-pro ]; then
+    echo "Entware monitor binary: present"
+  elif [ -x /usr/bin/cudy-monitor-pro ]; then
+    echo "Native monitor binary: present"
+  else
+    echo "Monitor binary: not detected"
+  fi
+  if [ "$ARCH" != aarch64 ] && [ "$ARCH" != arm64 ]; then
+    echo "Diagnosis: unsupported CPU architecture (ARM64 required)"
+  elif [ -f /etc/openwrt_release ] && command -v apk >/dev/null 2>&1; then
+    echo "Diagnosis: native OpenWrt APK installation path available"
+  elif [ -d /opt/etc/init.d ] && [ -x /opt/bin/opkg ]; then
+    echo "Diagnosis: Entware standalone installation path available"
+  else
+    echo "Diagnosis: unsupported or unrecognized package environment; no changes made"
+  fi
+  echo "No network requests or router configuration changes were made."
+  exit 0
+fi
 [ "$(id -u)" = 0 ] || die "Run as root in the router's Linux shell."
 case "$(uname -m)" in aarch64|arm64) ;; *) die "Only ARM64 is supported." ;; esac
 
