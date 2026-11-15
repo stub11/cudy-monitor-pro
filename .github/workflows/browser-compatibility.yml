@@ -66,6 +66,7 @@ jobs:
           node tests/browser/settings-sensors-sidebar.js
           node tests/browser/service-metrics.js
           node tests/browser/stale-service-controls.js
+          node tests/browser/telemetry-stress.js
           node tests/browser/unknown-wan-selection.js
           export CUDY_SCREENSHOT_OUTPUT="$RUNNER_TEMP/cudy-ui-screenshots"
           node tests/browser/capture-ui-screenshots.js
