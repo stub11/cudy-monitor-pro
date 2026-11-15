@@ -16,6 +16,10 @@ async function verify(engine,label){
   await page.waitForTimeout(1250);
   const second=await clock.textContent();
   assert.notEqual(second,first,label+' clock should advance without status poll');
+  // The selector is on the Settings route; use actual navigation first.
+  const toggle=page.locator('#menutoggle');
+  if(await toggle.isVisible())await toggle.click();
+  await page.locator('nav button[data-page="settings"]').click();
   await page.locator('#pollseconds').selectOption('5');
   assert.equal(await interval.textContent(),'5 с',label+' badge updates immediately');
   const values=await page.evaluate(()=>{
