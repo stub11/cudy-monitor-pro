@@ -28,7 +28,10 @@ if [ "$MODE" = "--rollback" ]; then
     command -v "$CURL" >/dev/null 2>&1 || fail "curl is required to verify rollback"
     previous_version=$("$BIN.previous" --version 2>/dev/null || :)
     current_version=$("$BIN" --version 2>/dev/null || :)
-    printf '%s\n' "$previous_version" | grep -Eq '^cudy-monitor-pro [0-9]+\.[0-9]+\.[0-9]+
+    printf '%s\n' "$previous_version" | grep -Eq '^cudy-monitor-pro [0-9]+\.[0-9]+\.[0-9]+$' ||
+        fail "Previous binary version could not be verified"
+    printf '%s\n' "$current_version" | grep -Eq '^cudy-monitor-pro [0-9]+\.[0-9]+\.[0-9]+$' ||
+        fail "Current binary version could not be verified"
     [ "$previous_version" != "$current_version" ] || fail "Previous and current versions are identical"
     # Validate persisted bind before changing any binaries; no arbitrary URL.
     HEALTH_BIND=127.0.0.1:8237
