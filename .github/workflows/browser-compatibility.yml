@@ -59,3 +59,4 @@ jobs:
           node tests/browser/browser-compat.js
           node tests/browser/approved-ui-viewport.js
           node tests/browser/stable-refresh.js
+          node tests/browser/header-clock.js
