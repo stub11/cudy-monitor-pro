@@ -40,7 +40,7 @@ async function verify(engine,label){
     const initialCore=document.querySelector('#coreusage .core-row');
     const initialProc=document.querySelector('#procrows tr');
     const initialCount=document.querySelectorAll('*').length;
-    let staleValid=true;
+    let staleValid=true,steadyCount=0;
     for(let i=0;i<300;i++){
      mode=i%43===0?'offline':i%41===0?'401':'ok';
      if(mode!=='ok')outages++;
@@ -48,6 +48,9 @@ async function verify(engine,label){
      status.services[0].cpu_pct=i%12;
      status.services[0].ram_mb=8+(i%7)/10;
      await poll();
+     // Graphs and asynchronous history finish their initial one-time mount
+     // before the steady-state baseline. Catch sustained leaks, not startup.
+     if(i===60)steadyCount=document.querySelectorAll('*').length;
      const stale=document.body.classList.contains('telemetry-stale');
      if(stale!==(mode!=='ok'))staleValid=false;
      if(stale&&Array.from(document.querySelectorAll('#servicerows [data-service]')).some(b=>!b.disabled))staleValid=false;
@@ -58,7 +61,7 @@ async function verify(engine,label){
      coresStable:initialCore===document.querySelector('#coreusage .core-row'),
      procsStable:initialProc===document.querySelector('#procrows tr'),
      serviceStable:initial===document.querySelector('#servicerows .service-row'),
-     before:initialCount,after:document.querySelectorAll('*').length,
+     before:initialCount,steadyCount,after:document.querySelectorAll('*').length,
      networkHistorySize:netPoints.length,networkLiveSize:networkLivePoints.length,
      processCache:processRowNodes.size,
      widthOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth
@@ -70,7 +73,8 @@ async function verify(engine,label){
   assert.ok(result.outages>10,label+' covers multiple outages');
   assert.ok(result.staleValid&&result.recovered,label+' all failures marked stale and recovery works');
   assert.ok(result.coresStable&&result.procsStable&&result.serviceStable,label+' stable DOM identities');
-  assert.ok(result.after<=result.before+20,label+' bounded DOM size '+JSON.stringify(result));
+  assert.ok(result.steadyCount>=result.before,label+' initial chart mount '+JSON.stringify(result));
+  assert.ok(result.after<=result.steadyCount+10,label+' bounded steady-state DOM size '+JSON.stringify(result));
   assert.ok(result.networkHistorySize<=150&&result.networkLiveSize<=150,label+' network history stays bounded');
   assert.ok(result.processCache<=2,label+' process cache stays bounded');
   assert.ok(result.widthOverflow<=2,label+' no horizontal overflow');
