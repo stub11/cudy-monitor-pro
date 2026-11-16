@@ -1,0 +1,88 @@
+name: Build isolated OpenWrt candidate APK 1.2.26 (no release)
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/openwrt-candidate-126.yml']
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/openwrt-candidate-126.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openwrt-candidate-126-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  candidate-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cross
+      - name: Validate source and fail closed on version changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -qx 'version = "1.2.25"' <(grep '^version = ' cudy-monitor/Cargo.toml)
+          grep -qx 'PKG_VERSION:=1.2.25' <(grep '^PKG_VERSION:=' packaging/openwrt/Makefile)
+          sh -n packaging/openwrt/files/update-native.sh
+          sh packaging/openwrt/tests/test-testing-channel.sh
+          sh packaging/openwrt/tests/test-api-release-list.sh
+          test -f packaging/openwrt/files/cudy-monitor-pro.init
+          test -f packaging/openwrt/files/cudy-monitor-lan
+          test -f cudy-monitor/scripts/detect-lan.sh
+      - name: Set candidate version only inside disposable CI checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -i 's/^version = "1.2.25"$/version = "1.2.26"/' cudy-monitor/Cargo.toml
+          sed -i 's/^PKG_VERSION:=1.2.25$/PKG_VERSION:=1.2.26/' packaging/openwrt/Makefile
+          grep -qx 'version = "1.2.26"' <(grep '^version = ' cudy-monitor/Cargo.toml)
+          grep -qx 'PKG_VERSION:=1.2.26' <(grep '^PKG_VERSION:=' packaging/openwrt/Makefile)
+          echo "Candidate source commit: $GITHUB_SHA"
+      - name: Build static ARM64 candidate
+        working-directory: cudy-monitor
+        run: cross build --release --target aarch64-unknown-linux-musl
+      - name: Download and verify official OpenWrt 25.12.6 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq zstd
+          SDK_FILE=openwrt-sdk-25.12.6-mediatek-filogic_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+          SDK_URL="https://downloads.openwrt.org/releases/25.12.6/targets/mediatek/filogic/$SDK_FILE"
+          curl -fL --retry 3 "$SDK_URL" -o "$RUNNER_TEMP/$SDK_FILE"
+          echo "1c04ac47bdfc361d6aab299eb520d570e368013dedcb8d29cf39dc7168ae642e  $RUNNER_TEMP/$SDK_FILE" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/sdk"
+          tar --zstd -xf "$RUNNER_TEMP/$SDK_FILE" -C "$RUNNER_TEMP/sdk" --strip-components=1
+      - name: Package candidate using official SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$RUNNER_TEMP/sdk"
+          mkdir -p "$SDK/package/cudy-monitor-pro/files"
+          cp packaging/openwrt/Makefile "$SDK/package/cudy-monitor-pro/Makefile"
+          cp packaging/openwrt/files/* "$SDK/package/cudy-monitor-pro/files/"
+          cp cudy-monitor/scripts/detect-lan.sh "$SDK/package/cudy-monitor-pro/files/detect-lan.sh"
+          cp cudy-monitor/target/aarch64-unknown-linux-musl/release/cudy-monitor-pro "$SDK/package/cudy-monitor-pro/files/cudy-monitor-pro"
+          "$SDK/package/cudy-monitor-pro/files/cudy-monitor-pro" --version || true
+          cd "$SDK"
+          printf '\nCONFIG_PACKAGE_cudy-monitor-pro=y\n' >> .config
+          make defconfig
+          make package/cudy-monitor-pro/compile V=s -j2
+          mkdir -p "$GITHUB_WORKSPACE/candidate-apk-artifacts"
+          find bin -name 'cudy-monitor-pro-1.2.26-r1.apk' -type f -exec cp -v {} "$GITHUB_WORKSPACE/candidate-apk-artifacts/" \;
+          test "$(find "$GITHUB_WORKSPACE/candidate-apk-artifacts" -maxdepth 1 -name '*.apk' -type f | wc -l)" -eq 1
+          (cd "$GITHUB_WORKSPACE/candidate-apk-artifacts" && sha256sum ./*.apk > SHA256SUMS)
+          printf 'source_commit=%s\ncandidate_version=1.2.26\nchannel=testing\nnot_a_stable_release=true\n' "$GITHUB_SHA" > "$GITHUB_WORKSPACE/candidate-apk-artifacts/BUILD-INFO.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cudy-openwrt-candidate-1.2.26-arm64-not-released
+          path: candidate-apk-artifacts/
+          if-no-files-found: error
+          retention-days: 30
