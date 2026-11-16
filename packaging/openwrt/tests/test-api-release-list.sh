@@ -10,6 +10,7 @@ sed -n '/^parse_api_releases(){/,/^}/p' "$SOURCE" >> "$ROOT/helpers"
 grep '^valid_version(){' "$SOURCE" >> "$ROOT/helpers"
 . "$ROOT/helpers"
 DIR=$ROOT
+CHANNEL=stable
 CURRENT=1.2.21
 jsonfilter(){
   [ "${PARSE_OK:-1}" = 1 ] || return 1
@@ -61,4 +62,17 @@ LATEST=1.2.25
 TAGS='cudy-monitor-openwrt-v1.2.22'; PRE=false; DRAFTS=false
 parse_api_releases
 [ "$LATEST" = 1.2.25 ] || { echo "unexpected downgrade: $LATEST" >&2; exit 1; }
+# Explicit testing mode may see numeric prerelease tags, but not stable or drafts.
+CHANNEL=testing
+LATEST=$CURRENT
+TAGS='cudy-monitor-openwrt-v1.2.24 cudy-monitor-openwrt-v1.2.26 cudy-monitor-openwrt-v9.9.9'
+PRE='false true true'; DRAFTS='false false true'
+parse_api_releases
+[ "$LATEST" = 1.2.26 ] || { echo "testing candidate selection failed: $LATEST" >&2; exit 1; }
+# Testing metadata must fail closed if all results are stable or draft.
+LATEST=$CURRENT
+TAGS='cudy-monitor-openwrt-v9.9.9 cudy-monitor-openwrt-v8.8.8'
+PRE='false true'; DRAFTS='false true'
+if parse_api_releases; then echo 'testing accepted stable/draft-only metadata' >&2; exit 1; fi
+CHANNEL=stable
 echo 'PASS: stable OpenWrt only; prerelease, draft, malformed fields and no stable releases rejected'
