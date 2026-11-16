@@ -1,0 +1,23 @@
+name: Telegram testing notices safety (pull requests)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/telegram_testing_publisher.py'
+      - 'scripts/tests/test_telegram_testing_publisher.py'
+      - '.github/workflows/telegram-testing-announcements.yml'
+      - '.github/workflows/telegram-testing-tests.yml'
+permissions:
+  contents: read
+jobs:
+  offline-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify dedicated test announcements without Telegram or secrets
+        run: |
+          python -m py_compile scripts/telegram_testing_publisher.py
+          python -m unittest discover -s scripts/tests -p 'test_telegram_testing_publisher.py' -v
