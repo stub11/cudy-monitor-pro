@@ -4,7 +4,17 @@
 # HTTPS-hosted, release-pinned SHA256 list. No arbitrary URLs are accepted.
 set -eu
 MODE=${1:---check}
-case "$MODE" in --check|--apply|--diagnose) ;; *) echo "unsupported mode" >&2; exit 2;; esac
+case "$MODE" in --check|--apply|--diagnose|--check-testing|--apply-testing) ;; *) echo "unsupported mode" >&2; exit 2;; esac
+CHANNEL=stable
+case "$MODE" in --check-testing|--apply-testing) CHANNEL=testing ;; esac
+if [ "$MODE" = --apply-testing ]; then
+  [ "$#" -eq 2 ] && [ "$2" = --confirm-testing ] || {
+    echo "Testing OTA requires explicit --confirm-testing after a router backup" >&2
+    exit 2
+  }
+elif [ "$#" -gt 1 ]; then
+  echo "Unexpected extra arguments" >&2; exit 2
+fi
 REPO=https://api.github.com/repos/stub11/cudy-monitor-pro
 RELEASE=https://github.com/stub11/cudy-monitor-pro/releases/download
 # Fixed official repository file: entries must be version + published SHA256.
@@ -51,7 +61,7 @@ fi
 LOCK=/tmp/.cudy-monitor-native-update.lock
 DIR=/tmp/cudy-monitor-native-update.$$
 die(){ echo "ERROR: $*" >&2; exit 1; }
-cleanup(){ rm -rf "$DIR"; if [ "$MODE" = --apply ]; then rmdir "$LOCK" 2>/dev/null || :; fi; }
+cleanup(){ rm -rf "$DIR"; case "$MODE" in --apply|--apply-testing) rmdir "$LOCK" 2>/dev/null || : ;; esac; }
 fetch(){
   url=$1 dest=$2
   if command -v curl >/dev/null 2>&1; then
@@ -70,9 +80,8 @@ fetch(){
 command -v apk >/dev/null 2>&1 || die "Native OpenWrt apk required"
 command -v jsonfilter >/dev/null 2>&1 || die "OpenWrt jsonfilter required"
 command -v sha256sum >/dev/null 2>&1 || die "sha256sum required"
-if [ "$MODE" = --apply ]; then
-  mkdir "$LOCK" 2>/dev/null || die "another update is running"
-fi
+case "$MODE" in --apply|--apply-testing)
+  mkdir "$LOCK" 2>/dev/null || die "another update is running" ;; esac
 trap cleanup EXIT HUP INT TERM
 mkdir -p "$DIR"
 CURRENT=$("$SELF" --version | awk '{print $2}')
@@ -108,7 +117,7 @@ parse_api_releases(){
   prereleases=$(jsonfilter -i "$DIR/releases.json" -e '@[*].prerelease' 2>/dev/null) || return 1
   drafts=$(jsonfilter -i "$DIR/releases.json" -e '@[*].draft' 2>/dev/null) || return 1
   [ -n "$tags" ] && [ -n "$prereleases" ] && [ -n "$drafts" ] || return 1
-  stable_tags=$(awk -v tags="$tags" -v pre="$prereleases" -v drafts="$drafts" '
+  stable_tags=$(awk -v tags="$tags" -v pre="$prereleases" -v drafts="$drafts" -v channel="$CHANNEL" '
     BEGIN {
       count=split(tags,t,/[[:space:]]+/)
       pcount=split(pre,p,/[[:space:]]+/)
@@ -117,7 +126,7 @@ parse_api_releases(){
       for(i=1;i<=count;i++){
         if((p[i]!="true" && p[i]!="false") ||
            (d[i]!="true" && d[i]!="false"))exit 1
-        if(p[i]=="false" && d[i]=="false")print t[i]
+        if(d[i]=="false" && ((channel=="stable" && p[i]=="false") || (channel=="testing" && p[i]=="true")))print t[i]
       }
     }
   ') || return 1
@@ -135,6 +144,8 @@ USE_FALLBACK=0
 if fetch "$REPO/releases?per_page=50" "$DIR/releases.json" && parse_api_releases; then
   :
 else
+  # Testing must never guess candidate metadata or use the stable allowlist.
+  [ "$CHANNEL" = stable ] || die "Testing release API unavailable or invalid. No update performed"
   echo "GitHub API release listing unavailable or invalid; trying verified maintainer-pinned SHA256 list" >&2
   LATEST=$CURRENT
   read_fallback
@@ -143,7 +154,7 @@ else
     if newer "$ver" "$LATEST"; then LATEST=$ver; fi
   done
 fi
-if [ "$MODE" = --check ]; then
+if [ "$MODE" = --check ] || [ "$MODE" = --check-testing ]; then
   printf '%s %s\n' "$LATEST" "$CURRENT"
   exit 0
 fi
@@ -184,6 +195,7 @@ package_digest(){
       echo "GitHub API digest unavailable; checking pinned digest" >&2
     fi
   fi
+  [ "${CHANNEL:-stable}" = stable ] || die "Testing APK requires official GitHub asset SHA256; no stable-list fallback"
   [ -f "$DIR/release-digests.txt" ] || read_fallback
   value=$(fallback_digest "$version")
   [ -n "$value" ] || die "No verified pinned digest for $version; refusing update"
