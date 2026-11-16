@@ -102,9 +102,27 @@ fallback_digest(){
 # as an empty release list would falsely report "already up to date".
 # At least one valid native OpenWrt release tag must be present.
 parse_api_releases(){
+  # Fail closed unless each GitHub tag has explicit prerelease/draft flags.
+  # A prerelease can carry a numeric-looking tag; never offer it on stable.
   tags=$(jsonfilter -i "$DIR/releases.json" -e '@[*].tag_name' 2>/dev/null) || return 1
+  prereleases=$(jsonfilter -i "$DIR/releases.json" -e '@[*].prerelease' 2>/dev/null) || return 1
+  drafts=$(jsonfilter -i "$DIR/releases.json" -e '@[*].draft' 2>/dev/null) || return 1
+  [ -n "$tags" ] && [ -n "$prereleases" ] && [ -n "$drafts" ] || return 1
+  stable_tags=$(awk -v tags="$tags" -v pre="$prereleases" -v drafts="$drafts" '
+    BEGIN {
+      count=split(tags,t,/[[:space:]]+/)
+      pcount=split(pre,p,/[[:space:]]+/)
+      dcount=split(drafts,d,/[[:space:]]+/)
+      if(count<1 || count!=pcount || count!=dcount)exit 1
+      for(i=1;i<=count;i++){
+        if((p[i]!="true" && p[i]!="false") ||
+           (d[i]!="true" && d[i]!="false"))exit 1
+        if(p[i]=="false" && d[i]=="false")print t[i]
+      }
+    }
+  ') || return 1
   found=0
-  for tag in $tags; do
+  for tag in $stable_tags; do
     case "$tag" in cudy-monitor-openwrt-v*) ver=${tag#cudy-monitor-openwrt-v} ;; *) continue;; esac
     valid_version "$ver" || continue
     found=1
