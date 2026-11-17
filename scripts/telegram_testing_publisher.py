@@ -23,6 +23,8 @@ GROUP_ID = "-1003834368989"
 TOPIC_ID = 87621
 CANDIDATE_WORKFLOW = "openwrt-candidate-126.yml"
 CANDIDATE_NAME = "cudy-openwrt-candidate-1.2.26-arm64-not-released"
+MIPSEL_WORKFLOW = "openwrt-mipsel-mt7621-qa.yml"
+MIPSEL_CANDIDATE_NAME = "cudy-openwrt-mipsel-24kc-mt7621-qa-1.2.26-not-released"
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 SHA_RE = re.compile(r"^sha256:[a-f0-9]{64}$")
 TIMEOUT = 20
@@ -46,6 +48,50 @@ def eligible_candidate(run: object, artifacts: object) -> bool:
         for a in artifacts.get("artifacts", [])
     )
 
+
+
+def eligible_mipsel_candidate(run: object, artifacts: object) -> bool:
+    """Only verified successful main builds for the exact mt7621 ABI."""
+    if not isinstance(run, dict) or not isinstance(artifacts, dict):
+        return False
+    if (run.get("name") != "Build OpenWrt MIPSEL mt7621 QA APK 1.2.26 (no release)"
+        or run.get("status") != "completed" or run.get("conclusion") != "success"
+        or run.get("head_branch") != "main"
+        or not re.fullmatch(r"[a-f0-9]{40}", str(run.get("head_sha", "")))):
+        return False
+    return any(
+        isinstance(a, dict) and a.get("name") == MIPSEL_CANDIDATE_NAME
+        and a.get("expired") is False
+        and isinstance(a.get("size_in_bytes"), int) and a["size_in_bytes"] > 10000
+        and SHA_RE.fullmatch(str(a.get("digest", "")))
+        for a in artifacts.get("artifacts", [])
+    )
+
+
+def mipsel_candidate_message(run: dict) -> tuple[str, dict]:
+    url = f"https://github.com/{REPOSITORY}/actions/runs/{run['id']}"
+    instructions = f"https://github.com/{REPOSITORY}/blob/main/docs/OPENWRT-MIPSEL-QA-RU.md"
+    body = (
+        "🧪 <b>Cudy Monitor Pro 1.2.26 — OpenWrt MIPSEL, тестовый APK</b>\n"
+        "Пакет <b>только</b> для ramips/mt7621 (mipsel_24kc), OpenWrt 25.12+ с apk. "
+        "Не для ARM64, Keenetic Ported/Entware и основного роутера.\n\n"
+        "1️⃣ Сначала бэкап. Проверьте <code>cat /etc/openwrt_release</code> "
+        "и <code>apk --print-arch</code>: нужен ramips/mt7621 + mipsel_24kc.\n"
+        "2️⃣ Скачайте ZIP из GitHub Actions → Artifacts, распакуйте, "
+        "сверьте SHA-256 APK с <code>SHA256SUMS</code>.\n"
+        "3️⃣ Скопируйте APK в /tmp тестового роутера:\n"
+        "<code>apk add --allow-untrusted /tmp/cudy-monitor-pro-1.2.26-r1.apk</code>\n"
+        "4️⃣ Проверьте панель, CPU/RAM/WAN, графики, службы и "
+        "<code>--diagnose</code> в течение 10 минут.\n"
+        "5️⃣ Ответьте: модель, точный target/ABI, версия OpenWrt, "
+        "работает/не работает, обезличенная ошибка.\n\n"
+        "⚠️ <b>OTA пока запрещён на MIPSEL</b>, тестируем только ручную установку. "
+        "Не публикуйте пароли, IP и сырые логи."
+    )
+    return body, {"inline_keyboard": [
+        [{"text": "📦 MIPSEL APK из Actions", "url": url}],
+        [{"text": "📖 Инструкция MIPSEL", "url": instructions}],
+    ]}
 
 def eligible_prerelease(item: object) -> bool:
     if not isinstance(item, dict) or item.get("prerelease") is not True or item.get("draft") is not False:
@@ -199,6 +245,18 @@ def main() -> int:
         if eligible_candidate(run, artifacts):
             body, keyboard = candidate_message(run)
             mark_once(f"candidate-126-{rid}", gh, bot, body, keyboard)
+            break
+
+    mipsel_runs = github_request(
+        f"actions/workflows/{MIPSEL_WORKFLOW}/runs?branch=main&status=success&per_page=5", gh
+    ) or {}
+    for run in mipsel_runs.get("workflow_runs", []):
+        if not isinstance(run, dict) or not isinstance(run.get("id"), int):
+            continue
+        artifacts = github_request(f"actions/runs/{run['id']}/artifacts", gh) or {}
+        if eligible_mipsel_candidate(run, artifacts):
+            body, keyboard = mipsel_candidate_message(run)
+            mark_once("candidate-mipsel-mt7621-126", gh, bot, body, keyboard)
             break
 
     releases = github_request("releases?per_page=20", gh) or []
