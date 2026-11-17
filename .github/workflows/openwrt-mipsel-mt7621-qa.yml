@@ -73,7 +73,7 @@ jobs:
           sed -i 's/ARM64 router dashboard/MIPSEL mt7621 router dashboard/' "$SDK/package/cudy-monitor-pro/Makefile"
           cp packaging/openwrt/files/* "$SDK/package/cudy-monitor-pro/files/"
           cp cudy-monitor/scripts/detect-lan.sh "$SDK/package/cudy-monitor-pro/files/detect-lan.sh"
-          cp cudy-monitor/target/aarch64-unknown-linux-musl/release/cudy-monitor-pro "$SDK/package/cudy-monitor-pro/files/cudy-monitor-pro"
+          cp cudy-monitor/target/mipsel-unknown-linux-musl/release/cudy-monitor-pro "$SDK/package/cudy-monitor-pro/files/cudy-monitor-pro"
           "$SDK/package/cudy-monitor-pro/files/cudy-monitor-pro" --version || true
           cd "$SDK"
           printf '\nCONFIG_PACKAGE_cudy-monitor-pro=y\n' >> .config
