@@ -22,7 +22,9 @@ jobs:
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
       - uses: taiki-e/install-action@cross
       - name: Validate source and fail closed on version changes
         shell: bash
@@ -47,7 +49,7 @@ jobs:
           echo "MIPSEL mt7621 candidate source commit: $GITHUB_SHA"
       - name: Build MIPSEL MUSL candidate
         working-directory: cudy-monitor
-        run: cross build --release --target mipsel-unknown-linux-musl
+        run: cross +nightly build -Z build-std=std,panic_abort --release --target mipsel-unknown-linux-musl
       - name: Download and verify official OpenWrt 25.12.6 SDK
         shell: bash
         run: |
