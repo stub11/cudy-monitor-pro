@@ -24,6 +24,7 @@ jobs:
           sh -n packaging/openwrt/tests/test-bounded-fetch.sh
           sh -n packaging/openwrt/tests/test-version-diagnose.sh
           sh -n packaging/openwrt/tests/test-testing-channel.sh
+          sh -n packaging/openwrt/tests/test-ota-architecture.sh
           sh -n packaging/openwrt/tests/test-api-release-list.sh
           sh -n packaging/openwrt/tests/test-api-asset-digest.sh
           sh -n packaging/openwrt/tests/test-upgrade-verification.sh
@@ -44,6 +45,8 @@ jobs:
         run: sh packaging/openwrt/tests/test-version-diagnose.sh
       - name: Strict manual testing channel and asset checksum enforcement
         run: sh packaging/openwrt/tests/test-testing-channel.sh
+      - name: Prohibit cross-architecture OTA on MIPSEL
+        run: sh packaging/openwrt/tests/test-ota-architecture.sh
       - name: Separate disk, health and process checks (offline)
         run: sh packaging/openwrt/tests/test-upgrade-verification.sh
       - name: Revert immediately after APK failure before any service was activated
