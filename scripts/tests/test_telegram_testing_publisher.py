@@ -50,6 +50,28 @@ class TestingPublisherTests(TestCase):
             self.assertFalse(publisher.eligible_candidate(candidate(),a))
         self.assertFalse(publisher.eligible_candidate({},artifact()))
 
+    def test_mipsel_target_specific_verified_notice(self):
+        run={"id":44068567009,"name":"Build OpenWrt MIPSEL mt7621 QA APK 1.2.26 (no release)",
+             "status":"completed","conclusion":"success","head_branch":"main","head_sha":"a"*40}
+        artifact={"artifacts":[{"name":publisher.MIPSEL_CANDIDATE_NAME,
+                                "expired":False,"size_in_bytes":360000,
+                                "digest":"sha256:"+"a"*64}]}
+        self.assertTrue(publisher.eligible_mipsel_candidate(run,artifact))
+        notice,keyboard=publisher.mipsel_candidate_message(run)
+        for word in ("mipsel_24kc","ramips/mt7621","OpenWrt 25.12+","SHA256SUMS",
+                     "OTA пока запрещён","apk add --allow-untrusted"):
+            self.assertIn(word,notice)
+        self.assertNotIn("--apply-testing",notice)
+        self.assertIn("/actions/runs/44068567009",keyboard["inline_keyboard"][0][0]["url"])
+        self.assertLess(len(notice),2100)
+        for key,value in (("head_branch","test"),("conclusion","failure"),("head_sha","bad")):
+            bad=dict(run);bad[key]=value
+            self.assertFalse(publisher.eligible_mipsel_candidate(bad,artifact))
+        for key,value in (("name","arm64"),("digest","wrong"),("expired",True)):
+            bad={"artifacts":[dict(artifact["artifacts"][0])]}
+            bad["artifacts"][0][key]=value
+            self.assertFalse(publisher.eligible_mipsel_candidate(run,bad))
+
     def test_prerelease_requires_uploaded_verified_openwrt_asset(self):
         self.assertTrue(publisher.eligible_prerelease(release()))
         for attr,val in [("prerelease",False),("draft",True),
