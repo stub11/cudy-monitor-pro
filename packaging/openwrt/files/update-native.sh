@@ -61,6 +61,13 @@ fi
 LOCK=/tmp/.cudy-monitor-native-update.lock
 DIR=/tmp/cudy-monitor-native-update.$$
 die(){ echo "ERROR: $*" >&2; exit 1; }
+# Only ARM64 has a versioned, SHA256-verified OpenWrt OTA release channel.
+# On MIPSEL the experimental APK can be diagnosed but must never fetch or
+# apply the ARM64 release that happens to share the same version number.
+case "$(uname -m)" in
+  aarch64|arm64) ;;
+  *) die "OpenWrt OTA is supported only on ARM64 at present. For MIPSEL use --diagnose; no cross-architecture upgrade is allowed" ;;
+esac
 cleanup(){ rm -rf "$DIR"; case "$MODE" in --apply|--apply-testing) rmdir "$LOCK" 2>/dev/null || : ;; esac; }
 fetch(){
   url=$1 dest=$2
