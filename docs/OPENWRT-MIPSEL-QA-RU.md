@@ -17,7 +17,7 @@
    ```
 
 4. Проверить `/etc/init.d/cudy-monitor-pro status`, `/usr/bin/cudy-monitor-pro --version`, `sh /usr/share/cudy-monitor-pro/update-native.sh --diagnose`, `wget -qO- http://127.0.0.1:8237/health` (локально; порт может отличаться при назначенном LAN IP). Затем открыть панель по LAN, проверить CPU, RAM, WAN, графики, процессы и 10 минут наблюдения без зависаний.
-5. Сообщить в Telegram-теме Cudy Monitor: **модель роутера, точный target/ABI, версия OpenWrt, работает/не работает, обезличенный текст ошибки**. Команда бота: `/cudy_problem`.
+5. Сообщить разработчику или в [GitHub Issues](https://github.com/stub11/cudy-monitor-pro/issues): **модель роутера, точный target/ABI, версия OpenWrt, работает/не работает и обезличенный текст ошибки**.
 
 **Не проверять OTA тестового MIPSEL через существующий ARM64 APK релиз**: канал тестирования выбирает версию, но пока не фильтрует архитектуру пакета. Для MIPSEL `--apply-testing` **запрещён** до отдельной защиты архитектуры и второго MIPSEL Pre-release. Не открывать порт панели в интернет, не отправлять приватные IP, токены и неочищенные логи.
 
