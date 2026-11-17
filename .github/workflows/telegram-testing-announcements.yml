@@ -10,6 +10,7 @@ on:
   workflow_run:
     workflows:
       - 'Build isolated OpenWrt candidate APK 1.2.26 (no release)'
+      - 'Build OpenWrt MIPSEL mt7621 QA APK 1.2.26 (no release)'
     types: [completed]
   release:
     types: [published]
