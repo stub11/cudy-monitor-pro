@@ -64,6 +64,7 @@ jobs:
           node tests/browser/network-history-validity.js
           node tests/browser/system-history-validity.js
           node tests/browser/settings-sensors-sidebar.js
+          node tests/browser/platform-architecture-sidebar.js
           node tests/browser/service-metrics.js
           node tests/browser/stale-service-controls.js
           node tests/browser/telemetry-stress.js
