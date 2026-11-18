@@ -393,7 +393,9 @@ async function handleIssueReplyTarget(message,text,token){
   return true;
 }
 async function handleNetisN6Dialogue(message,text,token) {
-  if(!hasRedis()||!message.from?.id)return false;
+  if(!hasRedis()||!message.from?.id||
+      message.reply_to_message?.from?.is_bot!==true ||
+      typeof text!=='string'||text.length<4)return false;
   const sk=n6Followup.sessionKey(message);
   if(!sk)return false;
   let state=n6Followup.readSession(await redis(['GET',sk]));
