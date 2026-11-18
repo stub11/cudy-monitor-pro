@@ -48,7 +48,28 @@ async function api(method, payload, token) {
     signal: AbortSignal.timeout(6500)
   });
   const data = await reply.json();
-  if (!reply.ok || !data.ok) throw new Error('Telegram API ' + method + ' rejected request');
+  if (!reply.ok || !data.ok) {
+    // Only numeric status codes are logged; never tokens, message text or IDs.
+    if (method === 'sendMessage') console.error('[telegram-send] rejected', {
+      http_status: reply.status,
+      api_error_code: Number(data.error_code) || 0
+    });
+    throw new Error('Telegram API ' + method + ' rejected request');
+  }
+  if (method === 'sendMessage' && payload.reply_parameters?.message_id) {
+    console.info('[telegram-send] direct_reply_ok');
+    // Store bounded delivery metadata so a retry can be audited without
+    // retaining the user's message contents or any credentials.
+    if (hasRedis() && Number.isSafeInteger(data.result?.message_id)) {
+      const key = 'cudy:reply:delivery:v1:' + payload.chat_id + ':' +
+        payload.reply_parameters.message_id;
+      try {
+        await redis(['SET', key, String(data.result.message_id), 'EX', 604800]);
+      } catch {
+        console.warn('[telegram-send] delivery_metadata_unavailable');
+      }
+    }
+  }
   return data.result;
 }
 function redisCredentials() {
