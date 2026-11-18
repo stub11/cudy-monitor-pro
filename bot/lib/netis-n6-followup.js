@@ -3,6 +3,7 @@
 // A question must have a specific real tester message as its Telegram reply
 // target. Never answer to a forum root or a bot document as a substitute.
 const ADMIN_COMMAND = /^\/cudy_ask_n6(?:@Cudyapp)?\s*$/iu;
+const ACK_COMMAND = /^\/cudy_ack_n6(?:@Cudyapp)?\s*$/iu;
 const NETIS = /\b(?:netis[\s-]*n6|n6)\b/iu;
 const OPENWRT = /(?:openwrt|open[\s-]?wrt|оврт|опенврт)/iu;
 const MIPSEL = /(?:mipsel|mips|mt7621|mipsel_24kc)/iu;
@@ -11,6 +12,7 @@ const MONITOR = /(?:cudy\s*monitor|монитор|показател|графи�
 function isAdminCommand(text){
   return typeof text==='string' && ADMIN_COMMAND.test(text.trim());
 }
+function isAckCommand(text){return typeof text==='string'&&ACK_COMMAND.test(text.trim());}
 function validTarget(source, topic) {
   return !!source && Number.isSafeInteger(source.message_id) &&
     source.message_id>0 && source.from?.is_bot!==true &&
@@ -125,4 +127,4 @@ function combinedReportReply(report) {
   ].filter(Boolean).join('\n');
 }
 
-module.exports={isAdminCommand,validTarget,isVolunteerReport,QUESTION,SESSION_TTL,sessionKey,readSession,isSessionReply,parseRelease,stageFor,nextQuestion,combinedTesterReport,combinedReportReply};
+module.exports={isAdminCommand,isAckCommand,validTarget,isVolunteerReport,QUESTION,SESSION_TTL,sessionKey,readSession,isSessionReply,parseRelease,stageFor,nextQuestion,combinedTesterReport,combinedReportReply};
