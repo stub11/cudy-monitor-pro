@@ -128,3 +128,31 @@ test('QA session only follows a bot reply to the exact latest prompt',()=>{
   assert.equal(n6.readSession('{"step":99,"prompt":400,"last":399}'),null);
   assert.equal(n6.readSession('invalid'),null);
 });
+
+test('complete N6 reply addresses temperature and OTA without claiming full validation',()=>{
+ const sample=[
+  "DISTRIB_RELEASE='25.12.6'",
+  "DISTRIB_TARGET='ramips/mt7621'",
+  "DISTRIB_ARCH='mipsel_24kc'",
+  "root@OpenWrt:~# apk --print-arch",
+  "mipsel",
+  "2. Вроде бы правдоподобно",
+  "3. Обновляются",
+  "4. Температура процессора, OTA обновления"
+ ].join('\n');
+ const report=n6.combinedTesterReport(sample);
+ assert.ok(report);
+ assert.equal(report.release.compatible,true);
+ assert.equal(report.archReported,true);
+ assert.equal(report.metrics,true);
+ assert.equal(report.graphs,true);
+ assert.equal(report.thermal,true);
+ assert.equal(report.ota,true);
+ const reply=n6.combinedReportReply(report);
+ assert.match(reply,/температур/iu);
+ assert.match(reply,/OTA/);
+ assert.match(reply,/пока отключено/);
+ assert.match(reply,/нужны цифры/);
+ assert.match(reply,/10 минут/);
+ assert.equal(n6.combinedTesterReport("DISTRIB_RELEASE='25.12.6'"),null);
+});
