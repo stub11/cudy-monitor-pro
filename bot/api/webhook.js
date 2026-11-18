@@ -474,7 +474,8 @@ async function handleNetisN6Followup(message,text,token) {
       link_preview_options:{is_disabled:true}
     },token);
     if(hasRedis() && Number.isSafeInteger(delivered?.message_id)){
-      const sk=n6Followup.sessionKey(target);
+      const sk=n6Followup.sessionKey({...target,chat:message.chat,
+        message_thread_id:message.message_thread_id});
       if(sk)await redis(['SET',sk,JSON.stringify({
         step:1,prompt:delivered.message_id,last:target.message_id
       }),'EX',n6Followup.SESSION_TTL]).catch(()=>{});
