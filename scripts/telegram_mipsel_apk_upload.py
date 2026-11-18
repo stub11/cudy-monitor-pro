@@ -122,7 +122,7 @@ def send_document(bot: str, apk: bytes, digest: str) -> int:
         body.extend(("--" + boundary + "\r\nContent-Disposition: form-data; name=\""
                      + name + "\"\r\n\r\n" + value + "\r\n").encode("utf-8"))
     body.extend(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"document\"; filename=\""
-                 + APK + "\"\r\nContent-Type: application/vnd.android.package-archive\r\n\r\n").encode())
+                 + APK + "\"\r\nContent-Type: application/octet-stream\r\n\r\n").encode())
     body.extend(apk)
     body.extend(("\r\n--" + boundary + "--\r\n").encode())
     req = Request(
