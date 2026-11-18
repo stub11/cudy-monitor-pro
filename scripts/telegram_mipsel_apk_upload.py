@@ -88,6 +88,54 @@ def verify_artifact(run: object, meta: object, archive: bytes) -> tuple[bytes, s
     return apk, m.group(1)
 
 
+
+def verify_downloaded_files(run: object, meta: object, location: str) -> tuple[bytes, str]:
+    """Verify extracted files from authenticated GitHub CLI artifact download.
+
+    GitHub CLI handles Actions artifact redirects. SHA256SUMS, ABI and exact
+    workflow/commit are checked; no arbitrary files or symlinks are accepted.
+    """
+    from pathlib import Path
+    if not isinstance(run, dict) or not isinstance(meta, dict):
+        raise PublisherError("Missing GitHub build evidence")
+    if (run.get("id") != RUN_ID or run.get("status") != "completed"
+        or run.get("conclusion") != "success" or run.get("head_branch") != "main"
+        or run.get("head_sha") != SOURCE_SHA):
+        raise PublisherError("GitHub build is not the approved MIPSEL main build")
+    if (meta.get("id") != ARTIFACT_ID or meta.get("name") != ARTIFACT
+        or meta.get("expired") is not False
+        or meta.get("workflow_run", {}).get("head_sha") != SOURCE_SHA
+        or not re.fullmatch(r"sha256:[a-f0-9]{64}", str(meta.get("digest", "")))):
+        raise PublisherError("Artifact metadata does not match approved MIPSEL build")
+    folder = Path(location)
+    if not folder.is_dir() or folder.is_symlink():
+        raise PublisherError("No verified artifact directory")
+    expected_names = {APK, "SHA256SUMS", "BUILD-INFO.txt"}
+    if {p.name for p in folder.iterdir()} != expected_names:
+        raise PublisherError("Artifact has unexpected files")
+    for name in expected_names:
+        p = folder / name
+        if not p.is_file() or p.is_symlink():
+            raise PublisherError("Unexpected artifact file type")
+    apk_path = folder / APK
+    if apk_path.stat().st_size < 10000 or apk_path.stat().st_size > MAX_APK:
+        raise PublisherError("Invalid APK size")
+    apk = apk_path.read_bytes()
+    sums = (folder / "SHA256SUMS").read_text(encoding="utf-8").strip()
+    build = (folder / "BUILD-INFO.txt").read_text(encoding="utf-8")
+    m = re.fullmatch(r"([a-f0-9]{64})  " + re.escape(APK), sums)
+    if not m or sha256(apk).hexdigest() != m.group(1):
+        raise PublisherError("APK SHA256SUMS mismatch")
+    expected_build = {
+        "source_commit=" + SOURCE_SHA, "candidate_version=1.2.26",
+        "channel=testing", "architecture=mipsel_24kc", "target=ramips/mt7621",
+        "not_a_stable_release=true",
+    }
+    if not expected_build.issubset(set(build.splitlines())):
+        raise PublisherError("Artifact build metadata mismatch")
+    return apk, m.group(1)
+
+
 def download_archive(token: str) -> bytes:
     req = Request(
         f"https://api.github.com/repos/{REPO}/actions/artifacts/{ARTIFACT_ID}/zip",
@@ -165,8 +213,12 @@ def main() -> int:
         return 0
     run = github_request(f"actions/runs/{RUN_ID}", token)
     meta = github_request(f"actions/artifacts/{ARTIFACT_ID}", token)
-    archive = download_archive(token)
-    apk, digest = verify_artifact(run, meta, archive)
+    artifact_dir = os.environ.get("CUDY_MIPSEL_ARTIFACT_DIR", "").strip()
+    if artifact_dir:
+        apk, digest = verify_downloaded_files(run, meta, artifact_dir)
+    else:
+        archive = download_archive(token)
+        apk, digest = verify_artifact(run, meta, archive)
     head = github_request("git/ref/heads/main", token)
     sha = (head or {}).get("object", {}).get("sha", "")
     if not isinstance(sha, str) or not re.fullmatch(r"[a-f0-9]{40}", sha):
