@@ -95,3 +95,36 @@ test('manual command replies exactly to tester, auto to new tester report, never
     }
   }
 });
+
+test('QA parser accepts actual Netis N6 OpenWrt release and rejects wrong ABI',()=>{
+  const release=[
+    "DISTRIB_ID='OpenWrt'",
+    "DISTRIB_RELEASE='25.12.6'",
+    "DISTRIB_REVISION='r33311-981c978eff'",
+    "DISTRIB_TARGET='ramips/mt7621'",
+    "DISTRIB_ARCH='mipsel_24kc'"
+  ].join('\n');
+  assert.deepEqual(n6.parseRelease(release),{
+    release:'25.12.6',target:'ramips/mt7621',arch:'mipsel_24kc',compatible:true
+  });
+  assert.equal(n6.parseRelease(release.replace('mipsel_24kc','aarch64_cortex-a53')).compatible,false);
+  assert.equal(n6.stageFor(release,1),2);
+  assert.equal(n6.stageFor('CPU 12%, RAM 45%, WAN 30 Mbps',2),3);
+  assert.equal(n6.stageFor('Графики обновляются 10 минут, всё стабильно',3),4);
+  assert.equal(n6.stageFor('Привет',2),null);
+  assert.match(n6.nextQuestion(2,n6.parseRelease(release)),/архитектура совпадает/);
+  assert.match(n6.nextQuestion(2,{release:'25.12.6',compatible:false}),/Не устанавливайте/);
+});
+
+test('QA session only follows a bot reply to the exact latest prompt',()=>{
+  const message={chat:{id:-1003834368989},message_thread_id:87621,from:{id:77},
+    reply_to_message:{message_id:400,from:{id:10,is_bot:true}}};
+  const sk=n6.sessionKey(message);
+  assert.match(sk,/77$/);
+  const state=n6.readSession(JSON.stringify({step:2,prompt:400,last:399}));
+  assert.equal(n6.isSessionReply(message,state),true);
+  assert.equal(n6.isSessionReply({...message,reply_to_message:{message_id:401,from:{is_bot:true}}},state),false);
+  assert.equal(n6.isSessionReply({...message,reply_to_message:{message_id:400,from:{is_bot:false}}},state),false);
+  assert.equal(n6.readSession('{"step":99,"prompt":400,"last":399}'),null);
+  assert.equal(n6.readSession('invalid'),null);
+});
