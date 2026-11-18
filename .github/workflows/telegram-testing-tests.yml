@@ -7,6 +7,9 @@ on:
       - 'scripts/tests/test_telegram_testing_publisher.py'
       - '.github/workflows/telegram-testing-announcements.yml'
       - '.github/workflows/telegram-testing-tests.yml'
+      - 'scripts/telegram_mipsel_apk_upload.py'
+      - 'scripts/tests/test_telegram_mipsel_apk_upload.py'
+      - '.github/workflows/telegram-mipsel-apk-file.yml'
 permissions:
   contents: read
 jobs:
@@ -21,3 +24,4 @@ jobs:
         run: |
           python -m py_compile scripts/telegram_testing_publisher.py
           python -m unittest discover -s scripts/tests -p 'test_telegram_testing_publisher.py' -v
+          python -m unittest discover -s scripts/tests -p 'test_telegram_mipsel_apk_upload.py' -v

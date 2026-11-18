@@ -1,0 +1,42 @@
+name: Send verified MIPSEL APK file into Telegram monitor topic
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/telegram-mipsel-apk-file.yml'
+      - 'scripts/telegram_mipsel_apk_upload.py'
+      - 'scripts/tests/test_telegram_mipsel_apk_upload.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: telegram-mipsel-apk-one-time
+  cancel-in-progress: false
+
+jobs:
+  upload-document:
+    if: github.repository == 'stub11/cudy-monitor-pro'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Offline tests - do not upload
+        run: |
+          python -m py_compile scripts/telegram_mipsel_apk_upload.py
+          python -m unittest discover -s scripts/tests -p test_telegram_mipsel_apk_upload.py -v
+      - name: Upload vetted APK directly as Telegram document
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CUDY_TELEGRAM_BOT_TOKEN: ${{ secrets.CUDY_TELEGRAM_BOT_TOKEN }}
+          CUDY_TELEGRAM_CHAT_ID: ${{ secrets.CUDY_TELEGRAM_CHAT_ID }}
+          CUDY_TELEGRAM_TOPIC_ID: ${{ secrets.CUDY_TELEGRAM_TOPIC_ID }}
+        run: python scripts/telegram_mipsel_apk_upload.py
