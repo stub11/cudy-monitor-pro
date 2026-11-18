@@ -396,7 +396,16 @@ async function handleNetisN6Dialogue(message,text,token) {
   if(!hasRedis()||!message.from?.id)return false;
   const sk=n6Followup.sessionKey(message);
   if(!sk)return false;
-  const state=n6Followup.readSession(await redis(['GET',sk]));
+  let state=n6Followup.readSession(await redis(['GET',sk]));
+  // Reconstruct only from a real reply to our previous Netis N6 question.
+  // Telegram may deliver the tester's reply after a bot deployment; no
+  // historic message search, and never infer a user from a screenshot.
+  if(!state && message.reply_to_message?.from?.is_bot===true &&
+      (message.reply_to_message.from.username||'').toLowerCase()==='cudyapp' &&
+      /Netis N6|MIPSEL/i.test(message.reply_to_message.text||'') &&
+      n6Followup.parseRelease(text)){
+    state={step:1,prompt:message.reply_to_message.message_id,last:message.reply_to_message.message_id};
+  }
   if(!state||!n6Followup.isSessionReply(message,state))return false;
   const stage=n6Followup.stageFor(text,state.step);
   if(!stage)return false;
