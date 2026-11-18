@@ -156,3 +156,22 @@ test('complete N6 reply addresses temperature and OTA without claiming full vali
  assert.match(reply,/10 минут/);
  assert.equal(n6.combinedTesterReport("DISTRIB_RELEASE='25.12.6'"),null);
 });
+
+test('historical acknowledgement requires exact admin reply and valid full report',()=>{
+ assert.equal(n6.isAckCommand('/cudy_ack_n6'),true);
+ assert.equal(n6.isAckCommand('/cudy_ack_n6@Cudyapp'),true);
+ assert.equal(n6.isAckCommand('/cudy_ack_n6 123'),false);
+ assert.equal(n6.validTarget({message_id:123,from:{id:55,is_bot:false},message_thread_id:87621},87621),true);
+ assert.equal(n6.validTarget({message_id:123,from:{id:55,is_bot:true},message_thread_id:87621},87621),false);
+ assert.equal(n6.validTarget({message_id:123,from:{id:55,is_bot:false},message_thread_id:87622},87621),false);
+ const report=n6.combinedTesterReport([
+  "DISTRIB_RELEASE='25.12.6'",
+  "DISTRIB_TARGET='ramips/mt7621'",
+  "DISTRIB_ARCH='mipsel_24kc'",
+  "2. Вроде бы правдоподобно",
+  "3. Обновляются",
+  "4. Температура процессора, OTA обновления"
+ ].join('\n'));
+ assert.ok(report);
+ assert.match(n6.combinedReportReply(report),/OTA/);
+});
