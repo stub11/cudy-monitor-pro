@@ -33,8 +33,17 @@ jobs:
         run: |
           python -m py_compile scripts/telegram_mipsel_apk_upload.py
           python -m unittest discover -s scripts/tests -p test_telegram_mipsel_apk_upload.py -v
+      - name: Download MIPSEL package from verified main Actions run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/cudy-mipsel-qa"
+          gh run download 44068567009 --repo stub11/cudy-monitor-pro             --name cudy-openwrt-mipsel-24kc-mt7621-qa-1.2.26-not-released             --dir "$RUNNER_TEMP/cudy-mipsel-qa"
+          test -s "$RUNNER_TEMP/cudy-mipsel-qa/cudy-monitor-pro-1.2.26-r1.apk"
       - name: Upload vetted APK directly as Telegram document
         env:
+          CUDY_MIPSEL_ARTIFACT_DIR: ${{ runner.temp }}/cudy-mipsel-qa
           GH_TOKEN: ${{ github.token }}
           CUDY_TELEGRAM_BOT_TOKEN: ${{ secrets.CUDY_TELEGRAM_BOT_TOKEN }}
           CUDY_TELEGRAM_CHAT_ID: ${{ secrets.CUDY_TELEGRAM_CHAT_ID }}
