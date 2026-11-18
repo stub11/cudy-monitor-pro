@@ -74,7 +74,7 @@ def verify_artifact(run: object, meta: object, archive: bytes) -> tuple[bytes, s
             build = z.read("BUILD-INFO.txt").decode("utf-8")
     except (BadZipFile, ValueError, UnicodeError, OSError) as exc:
         raise PublisherError("Artifact ZIP invalid") from None
-    m = re.fullmatch(r"([a-f0-9]{64})  " + re.escape(APK), sums)
+    m = re.fullmatch(r"([a-f0-9]{64})  (?:\./)?" + re.escape(APK), sums)
     if not m or sha256(apk).hexdigest() != m.group(1):
         raise PublisherError("APK SHA-256 mismatch")
     expected = (
@@ -123,7 +123,7 @@ def verify_downloaded_files(run: object, meta: object, location: str) -> tuple[b
     apk = apk_path.read_bytes()
     sums = (folder / "SHA256SUMS").read_text(encoding="utf-8").strip()
     build = (folder / "BUILD-INFO.txt").read_text(encoding="utf-8")
-    m = re.fullmatch(r"([a-f0-9]{64})  " + re.escape(APK), sums)
+    m = re.fullmatch(r"([a-f0-9]{64})  (?:\./)?" + re.escape(APK), sums)
     if not m or sha256(apk).hexdigest() != m.group(1):
         raise PublisherError("APK SHA256SUMS mismatch")
     expected_build = {

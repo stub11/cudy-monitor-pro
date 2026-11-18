@@ -26,7 +26,7 @@ def fixture():
     buf = BytesIO()
     with ZipFile(buf, "w") as zipfile:
         zipfile.writestr(module.APK, apk)
-        zipfile.writestr("SHA256SUMS", f"{digest}  {module.APK}\n")
+        zipfile.writestr("SHA256SUMS", f"{digest}  ./{module.APK}\n")
         zipfile.writestr("BUILD-INFO.txt", build)
     zipdata = buf.getvalue()
     run = {"id":module.RUN_ID, "status":"completed","conclusion":"success",
