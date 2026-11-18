@@ -94,4 +94,35 @@ function nextQuestion(stage,release) {
   return '🦊 Спасибо за тест Netis N6! Результаты получены. Если обнаружили ошибку, пришлите обезличенный скриншот или описание. OTA MIPSEL пока не включайте.';
 }
 
-module.exports={isAdminCommand,validTarget,isVolunteerReport,QUESTION,SESSION_TTL,sessionKey,readSession,isSessionReply,parseRelease,stageFor,nextQuestion};
+
+function combinedTesterReport(text) {
+  const release=parseRelease(text);
+  if(!release||typeof text!=='string'||text.length>1600)return null;
+  // A tester may answer all four QA questions in one Telegram message.
+  // Do not interpret "looks plausible" as a verified measurement.
+  const archReported=/apk\s*--print-arch[\s\S]{0,60}\bmipsel\b/i.test(text);
+  const metrics=/(?:2\.\s*вроде|2\.\s*похож|2\.\s*правдоподоб|2\.\s*нормальн)/iu.test(text);
+  const graphs=/(?:3\.\s*обновляют|3\.\s*работают|3\.\s*нормальн)/iu.test(text);
+  const thermal=/(?:температур[аыуе]|датчик[аи]?\s*температур)/iu.test(text);
+  const ota=/\bOTA\b|обновлени[яйе]/iu.test(text);
+  if(!metrics&&!graphs&&!thermal&&!ota)return null;
+  return {release,archReported,metrics,graphs,thermal,ota};
+}
+function combinedReportReply(report) {
+  if(!report.release.compatible)
+    return '⚠️ Архитектура не подтверждена для MIPSEL-сборки. Не устанавливайте и не обновляйте APK.';
+  return [
+    '🦊 Спасибо за подробный отчёт по Netis N6!',
+    '✅ OpenWrt '+report.release.release+' · '+report.release.target+
+      ' · '+report.release.arch+
+      (report.archReported?' (apk сообщает mipsel)':'')+'.',
+    report.metrics?'📊 CPU/RAM/WAN выглядят правдоподобно по вашей оценке. Для точной проверки нужны цифры из top, free и ip -s link.':'',
+    report.graphs?'📈 Графики обновляются. Уточните, продолжают ли они работать после 10 минут.':'',
+    report.thermal?'🌡 Температуру CPU добавим при наличии доступного датчика. Проверьте, есть ли /sys/class/thermal/thermal_zone*/temp; отсутствие датчика — не ошибка монитора.':'',
+    report.ota?'🔄 OTA для MIPSEL пока отключено. Включим только после проверки SHA256, активации и отката на реальном устройстве.':'',
+    'Если сможете, пришлите обезличенные результаты — без IP, MAC, паролей и полных логов.',
+    'Отчёт: https://github.com/stub11/cudy-monitor-pro/issues/139'
+  ].filter(Boolean).join('\n');
+}
+
+module.exports={isAdminCommand,validTarget,isVolunteerReport,QUESTION,SESSION_TTL,sessionKey,readSession,isSessionReply,parseRelease,stageFor,nextQuestion,combinedTesterReport,combinedReportReply};
