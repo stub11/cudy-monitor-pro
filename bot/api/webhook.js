@@ -457,6 +457,55 @@ async function handleNetisN6Dialogue(message,text,token) {
     return false;
   }
 }
+async function handleHistoricNetisN6Reply(message,text,token){
+  if(!n6Followup.isAckCommand(text))return false;
+  let member;
+  try{
+    member=await api('getChatMember',{
+      chat_id:message.chat.id,user_id:message.from.id
+    },token);
+  }catch{return true;}
+  if(!['administrator','creator'].includes(member?.status))return true;
+  const target=message.reply_to_message;
+  if(!n6Followup.validTarget(target,message.message_thread_id)){
+    await problemReply(message,
+      'Ответьте /cudy_ack_n6 непосредственно на исходное сообщение тестера Netis N6, не на сообщение бота.',
+      token);
+    return true;
+  }
+  const report=n6Followup.combinedTesterReport(target.text||target.caption||'');
+  if(!report){
+    await problemReply(message,
+      'Не нашёл в исходном сообщении полный отчёт Netis N6 (версия OpenWrt, target, arch и результаты). Не отправлял общий ответ.',
+      token);
+    return true;
+  }
+  const key='cudy:n6:historic-ack:v1:'+message.chat.id+':'+
+    message.message_thread_id+':'+target.message_id;
+  if(hasRedis()&&!await once(key,604800))return true;
+  try{
+    const delivered=await api('sendMessage',{
+      chat_id:message.chat.id,
+      message_thread_id:message.message_thread_id,
+      reply_parameters:{
+        message_id:target.message_id,allow_sending_without_reply:false
+      },
+      text:n6Followup.combinedReportReply(report),
+      disable_notification:false,
+      link_preview_options:{is_disabled:true}
+    },token);
+    // No historical Telegram messages are searched or fabricated. The
+    // one-off acknowledgement is bound to the real reply target supplied
+    // by Telegram itself, not to an inferred username or guessed ID.
+    return !!delivered;
+  }catch{
+    if(hasRedis())await redis(['DEL',key]).catch(()=>{});
+    await problemReply(message,
+      'Telegram не принял адресный ответ. Проверьте, не удалено ли сообщение тестера. В общую тему ничего не отправлено.',
+      token).catch(()=>{});
+    return true;
+  }
+}
 async function handleNetisN6Followup(message,text,token) {
   const admin=n6Followup.isAdminCommand(text);
   const automatic=!admin && n6Followup.isVolunteerReport(text);
@@ -745,6 +794,10 @@ async function processUpdate(update, token) {
   if(update.message && hasRedis()){
     try {if(await handleNetisN6Dialogue(message,text,token))return;}catch{}
   }
+  // Explicitly acknowledge an older complete N6 report by replying to it.
+  if(update.message){
+    try{if(await handleHistoricNetisN6Reply(message,text,token))return;}catch{}
+  }
   // Netis N6 QA: an admin replying to one historic tester message uses
   // /cudy_ask_n6, and new explicit N6 test reports get a direct reply.
   if(update.message){
@@ -856,4 +909,4 @@ module.exports = async function handler(req, res) {
   }
   res.statusCode = 200; res.end('OK');
 };
-module.exports._test = { webhookSecret, equalSecret, targetChat, targetTopic, processUpdate, allowReaction, diagnosticKeyboard, handleDiagnosticCallback, mediaCommand, mediaStoreKey, mediaReaction, nativeEmojiForText, handleOtaFollowup, handleOtaStructuredStatus, handleOtaDialogue, handleIssueReplyTarget, handleNetisN6Followup, handleNetisN6Dialogue };
+module.exports._test = { webhookSecret, equalSecret, targetChat, targetTopic, processUpdate, allowReaction, diagnosticKeyboard, handleDiagnosticCallback, mediaCommand, mediaStoreKey, mediaReaction, nativeEmojiForText, handleOtaFollowup, handleOtaStructuredStatus, handleOtaDialogue, handleIssueReplyTarget, handleNetisN6Followup, handleNetisN6Dialogue, handleHistoricNetisN6Reply };
