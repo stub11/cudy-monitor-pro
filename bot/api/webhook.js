@@ -409,6 +409,27 @@ async function handleNetisN6Dialogue(message,text,token) {
     state={step:1,prompt:message.reply_to_message.message_id,last:message.reply_to_message.message_id};
   }
   if(!state||!n6Followup.isSessionReply(message,state))return false;
+  const combined=n6Followup.combinedTesterReport(text);
+  if(combined && state.step===1){
+    const key='cudy:n6:combined:v1:'+message.chat.id+':'+
+      message.message_thread_id+':'+message.message_id;
+    if(!await once(key,n6Followup.SESSION_TTL))return true;
+    try{
+      await api('sendMessage',{
+        chat_id:message.chat.id,
+        message_thread_id:message.message_thread_id,
+        reply_parameters:{message_id:message.message_id,allow_sending_without_reply:false},
+        text:n6Followup.combinedReportReply(combined),
+        disable_notification:true,
+        link_preview_options:{is_disabled:true}
+      },token);
+      await redis(['DEL',sk]);
+      return true;
+    }catch{
+      await redis(['DEL',key]).catch(()=>{});
+      return false;
+    }
+  }
   const stage=n6Followup.stageFor(text,state.step);
   if(!stage)return false;
   const key='cudy:n6:step:v2:'+message.chat.id+':'+
