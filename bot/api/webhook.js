@@ -11,6 +11,7 @@ const { answerPublicQuestion } = require('../lib/public-faq.js');
 const issueIntake = require('../lib/problem-intake.js');
 const otaFollowup = require('../lib/update-followup.js');
 const issueReply = require('../lib/issue-reply-target.js');
+const n6Followup = require('../lib/netis-n6-followup.js');
 
 const SECRET_SALT = '|cudyapp-topic-webhook-v1';
 
@@ -391,6 +392,52 @@ async function handleIssueReplyTarget(message,text,token){
   }
   return true;
 }
+async function handleNetisN6Followup(message,text,token) {
+  const admin=n6Followup.isAdminCommand(text);
+  const automatic=!admin && n6Followup.isVolunteerReport(text);
+  if(!admin && !automatic)return false;
+  let target=message;
+  if(admin){
+    let member;
+    try {member=await api('getChatMember',{
+      chat_id:message.chat.id,user_id:message.from.id
+    },token);}catch{return true;}
+    if(!['administrator','creator'].includes(member?.status))return true;
+    target=message.reply_to_message;
+    if(!n6Followup.validTarget(target,message.message_thread_id)){
+      await problemReply(message,
+        'Чтобы обратиться к конкретному тестеру, ответьте командой /cudy_ask_n6 на его собственное сообщение с результатами теста Netis N6. На сообщение бота с APK отвечать нельзя.',
+        token);
+      return true;
+    }
+  }else if(!n6Followup.validTarget(target,message.message_thread_id)){
+    return false;
+  }
+  // Deduplicate each exact tester message; never use a generic topic message
+  // if original is missing. Store only numeric message IDs, not message text.
+  const key='cudy:n6:asked:v1:'+message.chat.id+':'+
+    message.message_thread_id+':'+target.message_id;
+  if(hasRedis() && !await once(key,86400))return true;
+  try {
+    await api('sendMessage',{
+      chat_id:message.chat.id,
+      message_thread_id:message.message_thread_id,
+      reply_parameters:{
+        message_id:target.message_id,allow_sending_without_reply:false
+      },
+      text:n6Followup.QUESTION,
+      disable_notification:false,
+      link_preview_options:{is_disabled:true}
+    },token);
+  }catch{
+    if(hasRedis())await redis(['DEL',key]).catch(()=>{});
+    // No fallback to an unaddressed topic-level message.
+    if(admin)await problemReply(message,
+      'Не получилось ответить на исходное сообщение тестера. Возможно, оно удалено; вопрос в общую тему не отправлял.',
+      token);
+  }
+  return true;
+}
 async function problemReply(message, text, token, keyboard) {
   await api('sendMessage', {
     chat_id: message.chat.id, message_thread_id: message.message_thread_id,
@@ -622,6 +669,11 @@ async function processUpdate(update, token) {
     try {await handleIssueReplyTarget(message,text,token);}catch{}
     return;
   }
+  // Netis N6 QA: an admin replying to one historic tester message uses
+  // /cudy_ask_n6, and new explicit N6 test reports get a direct reply.
+  if(update.message){
+    try {if(await handleNetisN6Followup(message,text,token))return;}catch{}
+  }
   // Continue a prior OTA diagnostic after the same tester supplies a short
   // technical value, with a contextual explanation or the next question.
   if(update.message && hasRedis()){
@@ -728,4 +780,4 @@ module.exports = async function handler(req, res) {
   }
   res.statusCode = 200; res.end('OK');
 };
-module.exports._test = { webhookSecret, equalSecret, targetChat, targetTopic, processUpdate, allowReaction, diagnosticKeyboard, handleDiagnosticCallback, mediaCommand, mediaStoreKey, mediaReaction, nativeEmojiForText, handleOtaFollowup, handleOtaStructuredStatus, handleOtaDialogue, handleIssueReplyTarget };
+module.exports._test = { webhookSecret, equalSecret, targetChat, targetTopic, processUpdate, allowReaction, diagnosticKeyboard, handleDiagnosticCallback, mediaCommand, mediaStoreKey, mediaReaction, nativeEmojiForText, handleOtaFollowup, handleOtaStructuredStatus, handleOtaDialogue, handleIssueReplyTarget, handleNetisN6Followup };
