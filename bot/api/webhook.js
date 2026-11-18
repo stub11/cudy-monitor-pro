@@ -12,6 +12,7 @@ const issueIntake = require('../lib/problem-intake.js');
 const otaFollowup = require('../lib/update-followup.js');
 const issueReply = require('../lib/issue-reply-target.js');
 const n6Followup = require('../lib/netis-n6-followup.js');
+const testerIndex = require('../lib/tester-message-index.js');
 
 const SECRET_SALT = '|cudyapp-topic-webhook-v1';
 
@@ -391,6 +392,34 @@ async function handleIssueReplyTarget(message,text,token){
       +'Ничего в общую тему не отправлено.',token);
   }
   return true;
+}
+async function handleAutonomousTesterReport(message,text,token){
+  if(!hasRedis()||!testerIndex.isTesterMessage(message,text))return false;
+  const report=n6Followup.combinedTesterReport(text);
+  if(!report)return false;
+  // Accept either a clear self-contained N6 report, or a response to our
+  // existing N6 question. Never guess an unrelated person's message ID.
+  const selfIdentified=/(?:netis\s*n6)/iu.test(text);
+  if(!selfIdentified&&!testerIndex.isBotPromptReply(message))return false;
+  const key='cudy:n6:autonomous-report:v1:'+message.chat.id+':'+
+    message.message_thread_id+':'+message.message_id;
+  if(!await once(key,testerIndex.TTL_SECONDS))return true;
+  try{
+    await api('sendMessage',{
+      chat_id:message.chat.id,
+      message_thread_id:message.message_thread_id,
+      reply_parameters:{
+        message_id:message.message_id,allow_sending_without_reply:false
+      },
+      text:n6Followup.combinedReportReply(report),
+      disable_notification:true,
+      link_preview_options:{is_disabled:true}
+    },token);
+    return true;
+  }catch{
+    await redis(['DEL',key]).catch(()=>{});
+    return false;
+  }
 }
 async function handleNetisN6Dialogue(message,text,token) {
   if(!hasRedis()||!message.from?.id||
@@ -774,6 +803,14 @@ async function processUpdate(update, token) {
     try { await warn(message, reason, token, named); } catch { /* best effort */ }
     return;
   }
+  // Retain only the latest relevant tester message address, not the text.
+  // New updates are indexed automatically; Bot API cannot recover older ones.
+  if(update.message&&hasRedis()&&testerIndex.isTesterMessage(message,text)){
+    try{
+      await redis(['SET',testerIndex.keyFor(message),testerIndex.metadata(message),
+        'EX',testerIndex.TTL_SECONDS]);
+    }catch{}
+  }
   // Optional numeric-only diagnostic: no logs, identifiers, or GitHub posting.
   if(update.message && otaFollowup.STRUCTURED_COMMAND.test(text||'')){
     try {await handleOtaStructuredStatus(message,text,token);}catch{}
@@ -793,6 +830,10 @@ async function processUpdate(update, token) {
   // Continue a specific tester's QA only if replying to the latest bot prompt.
   if(update.message && hasRedis()){
     try {if(await handleNetisN6Dialogue(message,text,token))return;}catch{}
+  }
+  // Full reports receive an immediate personal reply, no admin command.
+  if(update.message&&hasRedis()){
+    try{if(await handleAutonomousTesterReport(message,text,token))return;}catch{}
   }
   // Explicitly acknowledge an older complete N6 report by replying to it.
   if(update.message){
@@ -909,4 +950,4 @@ module.exports = async function handler(req, res) {
   }
   res.statusCode = 200; res.end('OK');
 };
-module.exports._test = { webhookSecret, equalSecret, targetChat, targetTopic, processUpdate, allowReaction, diagnosticKeyboard, handleDiagnosticCallback, mediaCommand, mediaStoreKey, mediaReaction, nativeEmojiForText, handleOtaFollowup, handleOtaStructuredStatus, handleOtaDialogue, handleIssueReplyTarget, handleNetisN6Followup, handleNetisN6Dialogue, handleHistoricNetisN6Reply };
+module.exports._test = { webhookSecret, equalSecret, targetChat, targetTopic, processUpdate, allowReaction, diagnosticKeyboard, handleDiagnosticCallback, mediaCommand, mediaStoreKey, mediaReaction, nativeEmojiForText, handleOtaFollowup, handleOtaStructuredStatus, handleOtaDialogue, handleIssueReplyTarget, handleNetisN6Followup, handleNetisN6Dialogue, handleHistoricNetisN6Reply, handleAutonomousTesterReport };
