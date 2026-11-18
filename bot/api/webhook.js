@@ -392,6 +392,50 @@ async function handleIssueReplyTarget(message,text,token){
   }
   return true;
 }
+async function handleNetisN6Dialogue(message,text,token) {
+  if(!hasRedis()||!message.from?.id||
+      message.reply_to_message?.from?.is_bot!==true ||
+      typeof text!=='string'||text.length<4)return false;
+  const sk=n6Followup.sessionKey(message);
+  if(!sk)return false;
+  let state=n6Followup.readSession(await redis(['GET',sk]));
+  // Reconstruct only from a real reply to our previous Netis N6 question.
+  // Telegram may deliver the tester's reply after a bot deployment; no
+  // historic message search, and never infer a user from a screenshot.
+  if(!state && message.reply_to_message?.from?.is_bot===true &&
+      (message.reply_to_message.from.username||'').toLowerCase()==='cudyapp' &&
+      /Netis N6|MIPSEL/i.test(message.reply_to_message.text||'') &&
+      n6Followup.parseRelease(text)){
+    state={step:1,prompt:message.reply_to_message.message_id,last:message.reply_to_message.message_id};
+  }
+  if(!state||!n6Followup.isSessionReply(message,state))return false;
+  const stage=n6Followup.stageFor(text,state.step);
+  if(!stage)return false;
+  const key='cudy:n6:step:v2:'+message.chat.id+':'+
+    message.message_thread_id+':'+message.message_id;
+  if(!await once(key,n6Followup.SESSION_TTL))return true;
+  try {
+    const release=stage===2?n6Followup.parseRelease(text):null;
+    const delivered=await api('sendMessage',{
+      chat_id:message.chat.id,
+      message_thread_id:message.message_thread_id,
+      reply_parameters:{message_id:message.message_id,allow_sending_without_reply:false},
+      text:n6Followup.nextQuestion(stage,release),
+      disable_notification:true
+    },token);
+    if(stage===4){
+      await redis(['DEL',sk]);
+    }else if(Number.isSafeInteger(delivered?.message_id)){
+      await redis(['SET',sk,JSON.stringify({
+        step:stage,prompt:delivered.message_id,last:message.message_id
+      }),'EX',n6Followup.SESSION_TTL]);
+    }
+    return true;
+  }catch{
+    await redis(['DEL',key]).catch(()=>{});
+    return false;
+  }
+}
 async function handleNetisN6Followup(message,text,token) {
   const admin=n6Followup.isAdminCommand(text);
   const automatic=!admin && n6Followup.isVolunteerReport(text);
@@ -419,7 +463,7 @@ async function handleNetisN6Followup(message,text,token) {
     message.message_thread_id+':'+target.message_id;
   if(hasRedis() && !await once(key,86400))return true;
   try {
-    await api('sendMessage',{
+    const delivered=await api('sendMessage',{
       chat_id:message.chat.id,
       message_thread_id:message.message_thread_id,
       reply_parameters:{
@@ -429,6 +473,13 @@ async function handleNetisN6Followup(message,text,token) {
       disable_notification:false,
       link_preview_options:{is_disabled:true}
     },token);
+    if(hasRedis() && Number.isSafeInteger(delivered?.message_id)){
+      const sk=n6Followup.sessionKey({...target,chat:message.chat,
+        message_thread_id:message.message_thread_id});
+      if(sk)await redis(['SET',sk,JSON.stringify({
+        step:1,prompt:delivered.message_id,last:target.message_id
+      }),'EX',n6Followup.SESSION_TTL]).catch(()=>{});
+    }
   }catch{
     if(hasRedis())await redis(['DEL',key]).catch(()=>{});
     // No fallback to an unaddressed topic-level message.
@@ -669,6 +720,10 @@ async function processUpdate(update, token) {
     try {await handleIssueReplyTarget(message,text,token);}catch{}
     return;
   }
+  // Continue a specific tester's QA only if replying to the latest bot prompt.
+  if(update.message && hasRedis()){
+    try {if(await handleNetisN6Dialogue(message,text,token))return;}catch{}
+  }
   // Netis N6 QA: an admin replying to one historic tester message uses
   // /cudy_ask_n6, and new explicit N6 test reports get a direct reply.
   if(update.message){
@@ -780,4 +835,4 @@ module.exports = async function handler(req, res) {
   }
   res.statusCode = 200; res.end('OK');
 };
-module.exports._test = { webhookSecret, equalSecret, targetChat, targetTopic, processUpdate, allowReaction, diagnosticKeyboard, handleDiagnosticCallback, mediaCommand, mediaStoreKey, mediaReaction, nativeEmojiForText, handleOtaFollowup, handleOtaStructuredStatus, handleOtaDialogue, handleIssueReplyTarget, handleNetisN6Followup };
+module.exports._test = { webhookSecret, equalSecret, targetChat, targetTopic, processUpdate, allowReaction, diagnosticKeyboard, handleDiagnosticCallback, mediaCommand, mediaStoreKey, mediaReaction, nativeEmojiForText, handleOtaFollowup, handleOtaStructuredStatus, handleOtaDialogue, handleIssueReplyTarget, handleNetisN6Followup, handleNetisN6Dialogue };

@@ -41,4 +41,57 @@ const QUESTION=[
   'Результаты внесём в https://github.com/stub11/cudy-monitor-pro/issues/139'
 ].join('\n');
 
-module.exports={isAdminCommand,validTarget,isVolunteerReport,QUESTION};
+
+const SESSION_TTL=172800;
+function sessionKey(message) {
+  if(!Number.isSafeInteger(message?.from?.id)||message.from.id<=0)return null;
+  return 'cudy:n6:session:v2:'+message.chat.id+':'+
+    message.message_thread_id+':'+message.from.id;
+}
+function readSession(raw) {
+  if(typeof raw!=='string'||raw.length>300)return null;
+  try {
+    const state=JSON.parse(raw);
+    if(!state||![1,2,3].includes(state.step)||
+      !Number.isSafeInteger(state.prompt)||state.prompt<=0||
+      !Number.isSafeInteger(state.last)||state.last<=0)return null;
+    return state;
+  }catch{return null;}
+}
+function isSessionReply(message,state) {
+  // Replies to our most recent question or an original report are accepted;
+  // unrelated group messages are not harvested.
+  const reply=message?.reply_to_message;
+  return !!state&&!!reply&&
+    Number(reply.message_id)===Number(state.prompt)&&
+    reply.from?.is_bot===true;
+}
+function parseRelease(text) {
+  if(typeof text!=='string'||text.length>1600)return null;
+  const release=text.match(/DISTRIB_RELEASE\s*=\s*['"]?(\d{2}\.\d{1,2}(?:\.\d{1,2})?)/i)?.[1];
+  const target=text.match(/DISTRIB_TARGET\s*=\s*['"]?([a-z0-9_-]+\/[a-z0-9_-]+)/i)?.[1];
+  const arch=text.match(/DISTRIB_ARCH\s*=\s*['"]?([a-z0-9_]+)/i)?.[1];
+  if(!release||!target||!arch)return null;
+  return {release,target,arch,compatible:target==='ramips/mt7621'&&arch==='mipsel_24kc'&&
+    Number(release.split('.')[0])>=25};
+}
+function stageFor(text,step) {
+  if(step===1)return parseRelease(text)?2:null;
+  if(typeof text!=='string'||text.length<4||text.length>1600)return null;
+  if(step===2 && /(?:cpu|ram|wan|процессор|памят|трафик|показател|top|free|link)/iu.test(text))return 3;
+  if(step===3 && /(?:график|минут|работает|ошиб|завис|нагруз|нормально|стабильн)/iu.test(text))return 4;
+  return null;
+}
+function nextQuestion(stage,release) {
+  if(stage===2){
+    if(release&&!release.compatible)
+      return '⚠️ Указанная архитектура не подтверждает совместимость с тестовым MIPSEL APK. Не устанавливайте и не обновляйте пакет. Проверьте target/ABI.';
+    return '✅ OpenWrt '+release.release+', '+release.target+', '+release.arch+
+      ' — архитектура совпадает с тестовой сборкой. Спасибо! '+
+      'Теперь сравните CPU/RAM/WAN с top, free и ip -s link. Пришлите только цифры, без IP, MAC и полных логов.';
+  }
+  if(stage===3)return 'Спасибо! Следующий шаг: проверьте, обновляются ли графики через 10 минут, нет ли зависаний и чрезмерной нагрузки RAM/CPU. Пришлите краткий результат.';
+  return '🦊 Спасибо за тест Netis N6! Результаты получены. Если обнаружили ошибку, пришлите обезличенный скриншот или описание. OTA MIPSEL пока не включайте.';
+}
+
+module.exports={isAdminCommand,validTarget,isVolunteerReport,QUESTION,SESSION_TTL,sessionKey,readSession,isSessionReply,parseRelease,stageFor,nextQuestion};
