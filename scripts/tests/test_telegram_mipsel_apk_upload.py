@@ -55,6 +55,21 @@ class MipselDocumentTests(TestCase):
         with self.assertRaises(module.PublisherError):
             module.verify_artifact(run,meta,z)
 
+    def test_gh_extracted_files_verified_before_upload(self):
+        from tempfile import TemporaryDirectory
+        from pathlib import Path
+        apk, zipdata, run, meta=fixture()
+        with TemporaryDirectory() as base:
+            d=Path(base)
+            with ZipFile(BytesIO(zipdata)) as archive:
+                archive.extractall(base)
+            received, digest=module.verify_downloaded_files(run,meta,base)
+            self.assertEqual(received,apk)
+            self.assertEqual(digest,sha256(apk).hexdigest())
+            (d/module.APK).write_bytes(b"tampered")
+            with self.assertRaises(module.PublisherError):
+                module.verify_downloaded_files(run,meta,base)
+
     def test_file_delivery_is_actual_document_to_topic(self):
         apk,_,_,_=fixture()
         result=MagicMock()
