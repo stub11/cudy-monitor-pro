@@ -10,6 +10,9 @@ on:
       - 'scripts/telegram_mipsel_apk_upload.py'
       - 'scripts/tests/test_telegram_mipsel_apk_upload.py'
       - '.github/workflows/telegram-mipsel-apk-file.yml'
+      - 'scripts/telegram_netis_n6_followup.py'
+      - 'scripts/tests/test_telegram_netis_n6_followup.py'
+      - '.github/workflows/telegram-netis-n6-followup.yml'
 permissions:
   contents: read
 jobs:
@@ -25,3 +28,4 @@ jobs:
           python -m py_compile scripts/telegram_testing_publisher.py
           python -m unittest discover -s scripts/tests -p 'test_telegram_testing_publisher.py' -v
           python -m unittest discover -s scripts/tests -p 'test_telegram_mipsel_apk_upload.py' -v
+          python -m unittest discover -s scripts/tests -p 'test_telegram_netis_n6_followup.py' -v
