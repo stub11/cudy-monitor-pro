@@ -100,7 +100,47 @@ fn mem_detail()->(u64,u64,u64,Option<f64>,Option<f64>){
 fn mem()->(u64,u64,u64){let (total,used,cached,_,_)=mem_detail();(total,used,cached)}
 
 fn disk()->(u64,u64,String){if std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1") { if let Ok(o)=Command::new("df").args(["-Pk","/overlay"]).output(){if o.status.success(){if let Some(l)=String::from_utf8_lossy(&o.stdout).lines().last(){let a:Vec<_>=l.split_whitespace().collect();if a.len()>=6{return (num(a[1])/1024,num(a[2])/1024,"/overlay".into())}}}} return (0,0,"/overlay unavailable".into());} if fs::metadata("/opt/etc").is_err(){return (0,0,"/opt not mounted".into());}for path in ["/opt"]{if let Ok(o)=Command::new("df").args(["-Pk",path]).output(){if o.status.success(){if let Some(l)=String::from_utf8_lossy(&o.stdout).lines().last(){let a:Vec<_>=l.split_whitespace().collect();if a.len()>=6{return (num(a[1])/1024,num(a[2])/1024,path.to_string())}}}}}(0,0,"unknown".into())}
-fn temps()->Vec<(String,f64)>{let mut out=Vec::new();if let Ok(entries)=fs::read_dir("/sys/class/thermal"){for e in entries.flatten(){let p=e.path();if !e.file_name().to_string_lossy().starts_with("thermal_zone"){continue}let t=read(&p.join("temp").to_string_lossy()).trim().parse::<f64>().unwrap_or(-1.);if !(0.0..=150000.).contains(&t){continue}let n=read(&p.join("type").to_string_lossy());out.push((n.trim().to_string(),if t>1000.{t/1000.}else{t}));}}out.truncate(12);out}
+fn temps()->Vec<(String,f64)>{
+ let mut out=Vec::new();
+ // Thermal zones and hwmon both expose millidegrees Celsius on Linux.
+ for (root,prefix,kind) in [("/sys/class/thermal","thermal_zone","thermal"),("/sys/class/hwmon","hwmon","hwmon")] {
+  if let Ok(entries)=fs::read_dir(root) {
+   let mut entries:Vec<_>=entries.flatten().filter(|e|e.file_name().to_string_lossy().starts_with(prefix)).collect();
+   entries.sort_by_key(|e|e.file_name());
+   for entry in entries {
+    let p=entry.path();
+    if kind=="thermal" {
+     if let Ok(raw)=fs::read_to_string(p.join("temp")) {
+      if let Ok(v)=raw.trim().parse::<i64>() {
+       if (1000..=150000).contains(&v) {
+        let name=fs::read_to_string(p.join("type")).unwrap_or_default();
+        out.push((format!("thermal:{}",name.trim()),v as f64/1000.));
+       }
+      }
+     }
+    } else if let Ok(files)=fs::read_dir(&p) {
+     let name=fs::read_to_string(p.join("name")).unwrap_or_else(|_|entry.file_name().to_string_lossy().into_owned());
+     let mut files:Vec<_>=files.flatten().collect();
+     files.sort_by_key(|e|e.file_name());
+     for file in files {
+      let fname=file.file_name().to_string_lossy().to_string();
+      if !fname.starts_with("temp") || !fname.ends_with("_input") || !fname[4..fname.len()-6].bytes().all(|b|b.is_ascii_digit()) {continue}
+      if let Ok(raw)=fs::read_to_string(file.path()) {
+       if let Ok(v)=raw.trim().parse::<i64>() {
+        if !(1000..=150000).contains(&v) {continue}
+        let key=&fname[..fname.len()-6];
+        let label=fs::read_to_string(p.join(format!("{key}_label"))).unwrap_or_default();
+        let title=if label.trim().is_empty(){format!("hwmon:{}:{}",name.trim(),key)}else{format!("hwmon:{}:{}",name.trim(),label.trim())};
+        out.push((title,v as f64/1000.));
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+ out.truncate(32);out
+}
 fn procs()->Vec<(String,u64,u64)>{let mut p=Vec::new();if let Ok(it)=fs::read_dir("/proc"){for e in it.flatten(){let id=e.file_name().to_string_lossy().to_string();if !id.bytes().all(|x|x.is_ascii_digit()){continue}let n=read(&format!("/proc/{id}/comm"));if n.is_empty(){continue}let status=read(&format!("/proc/{id}/status"));let kb=status.lines().find(|l|l.starts_with("VmRSS:")).and_then(|l|l.split_whitespace().nth(1)).map(num).unwrap_or(0);p.push((n.trim().to_string(),num(&id),kb/1024));}}p.sort_by(|a,b|b.2.cmp(&a.2));p.truncate(32);p}
 fn pid_ticks()->HashMap<u64,u64>{
  let mut out=HashMap::new();
