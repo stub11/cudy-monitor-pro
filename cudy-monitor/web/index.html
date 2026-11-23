@@ -861,13 +861,15 @@ async function fetchHistory(){
     const raw=Array.isArray(d.points)?d.points.slice(-1080):[];
     const points=[];
     for(const p of raw){
-      if(!Array.isArray(p)||p.length!==4||!Number.isFinite(p[0])||p[0]<0)continue;
+      if(!Array.isArray(p)||(p.length!==4&&p.length!==6)||!Number.isFinite(p[0])||p[0]<0)continue;
       if(points.length&&p[0]<=points[points.length-1][0])continue;
       const cpu=Number.isFinite(p[1])&&p[1]>=0&&p[1]<=100?p[1]:null;
       const ram=Number.isFinite(p[2])&&p[2]>=0&&p[2]<=100?p[2]:null;
       const temp=Number.isFinite(p[3])&&p[3]>=-80&&p[3]<=200?p[3]:null;
       if(cpu===null&&ram===null&&temp===null)continue;
-      points.push([p[0],cpu,ram,temp]);
+      const cpuTemp=Number.isFinite(p[4])&&p[4]>=-80&&p[4]<=200?p[4]:null;
+      const wifiTemp=Number.isFinite(p[5])&&p[5]>=-80&&p[5]<=200?p[5]:null;
+      points.push([p[0],cpu,ram,temp,cpuTemp,wifiTemp]);
     }
     // A poll may return exactly the same 10-second samples; preserve SVG
     // nodes and layout until values or the selected graph metric change.
@@ -885,14 +887,14 @@ function drawHistory(){
  el('historyinfo').textContent='Точек: '+points.length+'/1080 · '+(duration<60?Math.round(duration)+' с':Math.floor(duration/60)+' мин.')+' истории';
  if(points.length<2){el('graph').textContent='История накапливается…';return;}
  const last=points[points.length-1][0],start=Math.max(points[0][0],last-10800),span=Math.max(1,last-start);
- const temperature=points.map(p=>p[3]).filter(Number.isFinite);
+ const temperature=points.flatMap(p=>[p[3],p[4],p[5]]).filter(Number.isFinite);
  const tempMax=Math.max(100,Math.ceil((temperature.length?Math.max(...temperature):100)/20)*20);
- const defs=[{id:1,color:'#a86aff',name:'CPU, %'},{id:2,color:'#02d691',name:'RAM, %'},{id:3,color:'#ffab2b',name:'Температура, °C'}];
- const series=defs.filter(x=>idx===0||x.id===idx);
+ const defs=[{id:1,color:'#a86aff',name:'CPU, %'},{id:2,color:'#02d691',name:'RAM, %'},{id:3,color:'#ffab2b',name:'Температура, °C'},{id:4,color:'#ff6c8d',name:'CPU, °C'},{id:5,color:'#42bdf5',name:'Wi-Fi, °C'}];
+ const series=defs.filter(x=>idx===0||x.id===idx||(idx===3&&(x.id===4||x.id===5)));
  const lines=series.map(x=>{
   const good=points.filter(p=>Number.isFinite(p[x.id]));
   const path=good.map(p=>(500*(p[0]-start)/span).toFixed(1)+','+
-     (100-100*Math.max(0,Math.min(x.id===3?tempMax:100,p[x.id]))/(x.id===3?tempMax:100)).toFixed(1)).join(' ');
+     (100-100*Math.max(0,Math.min(x.id>=3?tempMax:100,p[x.id]))/(x.id===3?tempMax:100)).toFixed(1)).join(' ');
   return '<polyline points="'+path+'" fill="none" stroke="'+x.color+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>';
  }).join('');
  const showPercent=idx!==3,showTemp=idx===0||idx===3;
