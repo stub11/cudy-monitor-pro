@@ -1,0 +1,22 @@
+name: Sensor Rust regression
+on:
+  pull_request:
+    paths:
+      - 'cudy-monitor/src/**'
+      - 'cudy-monitor/Cargo.toml'
+      - '.github/workflows/sensor-rust-regression.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust unit tests
+        working-directory: cudy-monitor
+        run: cargo test --locked
+      - name: Release build smoke test
+        working-directory: cudy-monitor
+        run: cargo build --release --locked
