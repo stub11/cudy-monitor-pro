@@ -16,7 +16,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Rust unit tests
         working-directory: cudy-monitor
-        run: cargo test --locked
+        run: cargo test
       - name: Release build smoke test
         working-directory: cudy-monitor
-        run: cargo build --release --locked
+        run: cargo build --release
