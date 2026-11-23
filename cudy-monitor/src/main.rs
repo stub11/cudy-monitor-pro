@@ -206,7 +206,7 @@ fn sample(state:&Arc<Mutex<State>>){
         now.duration_since(s.history_at)>=Duration::from_secs(10)
     };
     let (mem_total,mem_used,_)=mem();
-    let history_readings=if need_temp {temps()}else{Vec::new()};
+    let history_readings:Vec<(String,f64)>=if need_temp {temps().into_iter().collect()}else{Vec::new()};
     let history_temp=history_readings.first().map(|(_,v)|*v);
     let (cpu_temp,wifi_temp)=sensor_roles(&history_readings);
     let (route_wan,_)=default_wan();
