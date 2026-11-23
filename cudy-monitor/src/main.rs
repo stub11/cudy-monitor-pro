@@ -3,7 +3,7 @@ const PAGE:&str=include_str!("../web/index.html");
 static SERVICE_BUSY:std::sync::atomic::AtomicBool=std::sync::atomic::AtomicBool::new(false);
 #[derive(Clone,Default)] struct Cpu { total:u64,idle:u64 }
 #[derive(Clone,Default)] struct Net { rx:u64,tx:u64 }
-#[derive(Clone)] struct Sample {sec:u64,cpu:f64,ram:f64,temp:Option<f64>}
+#[derive(Clone)] struct Sample {sec:u64,cpu:f64,ram:f64,temp:Option<f64>,cpu_temp:Option<f64>,wifi_temp:Option<f64>}
 #[derive(Clone)] struct NetSample {sec:u64,rx:f64,tx:f64}
 const NETWORK_POINTS:usize=150; // last five minutes at two-second intervals
 const HISTORY_POINTS:usize=1080; // 3 hours at one sample per 10 seconds
@@ -142,6 +142,24 @@ fn temps()->Vec<(String,f64)>{
  }
  out.truncate(32);out
 }
+fn sensor_role(name:&str)->Option<&'static str>{
+ let n=name.to_ascii_lowercase();
+ // Do not infer Wi-Fi from generic MediaTek SoC names or a numeric hwmon index.
+ if ["wifi","wi-fi","wlan","wireless","radio","phy0","phy1"].iter().any(|s|n.contains(s)){return Some("wifi")}
+ if ["cpu","soc","processor","package","mt7981","mt7621"].iter().any(|s|n.contains(s)){return Some("cpu")}
+ None
+}
+fn sensor_roles(readings:&[(String,f64)])->(Option<f64>,Option<f64>){
+ let mut cpu=None;let mut wifi=None;
+ for (name,value) in readings {
+  match sensor_role(name) {
+   Some("cpu") if cpu.is_none()=>cpu=Some(*value),
+   Some("wifi") if wifi.is_none()=>wifi=Some(*value),
+   _=>()
+  }
+ }
+ (cpu,wifi)
+}
 fn procs()->Vec<(String,u64,u64)>{let mut p=Vec::new();if let Ok(it)=fs::read_dir("/proc"){for e in it.flatten(){let id=e.file_name().to_string_lossy().to_string();if !id.bytes().all(|x|x.is_ascii_digit()){continue}let n=read(&format!("/proc/{id}/comm"));if n.is_empty(){continue}let status=read(&format!("/proc/{id}/status"));let kb=status.lines().find(|l|l.starts_with("VmRSS:")).and_then(|l|l.split_whitespace().nth(1)).map(num).unwrap_or(0);p.push((n.trim().to_string(),num(&id),kb/1024));}}p.sort_by(|a,b|b.2.cmp(&a.2));p.truncate(32);p}
 fn pid_ticks()->HashMap<u64,u64>{
  let mut out=HashMap::new();
@@ -188,7 +206,9 @@ fn sample(state:&Arc<Mutex<State>>){
         now.duration_since(s.history_at)>=Duration::from_secs(10)
     };
     let (mem_total,mem_used,_)=mem();
-    let history_temp=if need_temp {temps().first().map(|(_,v)|*v)}else{None};
+    let history_readings=if need_temp {temps()}else{Vec::new()};
+    let history_temp=history_readings.first().map(|(_,v)|*v);
+    let (cpu_temp,wifi_temp)=sensor_roles(&history_readings);
     let (route_wan,_)=default_wan();
     let mut s=state.lock().unwrap_or_else(|e|e.into_inner());
     let dt=nc.total.saturating_sub(s.cpu.total);
@@ -216,7 +236,7 @@ fn sample(state:&Arc<Mutex<State>>){
     if now.duration_since(s.history_at)>=Duration::from_secs(10) {
         // Reuse metrics collected outside the mutex; no USB writes.
         let ram=if mem_total>0 {100.0*mem_used as f64/mem_total as f64}else{0.0};
-        let point=Sample{sec:now.duration_since(s.boot).as_secs(),cpu:s.current_cpu,ram,temp:history_temp};
+        let point=Sample{sec:now.duration_since(s.boot).as_secs(),cpu:s.current_cpu,ram,temp:history_temp,cpu_temp,wifi_temp};
         if s.history.len()==HISTORY_POINTS{s.history.pop_front();}
         s.history.push_back(point);
         s.history_at=now;
@@ -251,7 +271,9 @@ fn history_json(state:&Arc<Mutex<State>>)->String {
     for (i,p) in points.iter().enumerate(){
         if i>0 {out.push(',');}
         let t=p.temp.map(|t|format!("{t:.1}")).unwrap_or_else(||"null".into());
-        out.push_str(&format!("[{},{:.1},{:.1},{}]",p.sec,p.cpu,p.ram,t));
+        let cpu_t=p.cpu_temp.map(|t|format!("{t:.1}")).unwrap_or_else(||"null".into());
+        let wifi_t=p.wifi_temp.map(|t|format!("{t:.1}")).unwrap_or_else(||"null".into());
+        out.push_str(&format!("[{},{:.1},{:.1},{},{},{}]",p.sec,p.cpu,p.ram,t,cpu_t,wifi_t));
     }
     out.push_str("]}");
     out
@@ -955,6 +977,14 @@ fn main()->std::io::Result<()>{
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test] fn sensor_roles_do_not_guess(){
+        assert_eq!(sensor_role("hwmon:mt7981:temp1"),Some("cpu"));
+        assert_eq!(sensor_role("hwmon:mt76:temp1"),None);
+        assert_eq!(sensor_role("thermal:wifi-phy0"),Some("wifi"));
+        assert_eq!(sensor_role("hwmon:hwmon0:temp1"),None);
+        let readings=vec![("thermal:cpu".into(),66.0),("thermal:wifi".into(),58.0)];
+        assert_eq!(sensor_roles(&readings),(Some(66.0),Some(58.0)));
+    }
     #[test] fn sensor_millidegree_validation(){
         assert!(valid_millidegrees(47000));
         assert!(valid_millidegrees(66000));
