@@ -428,7 +428,7 @@ el('cpu').textContent=d.cpu.toFixed(1)+'%';
 const availableTemps=Array.isArray(d.temps)?d.temps.filter(x=>Number.isFinite(x.c)):[];
 // Assign roles only from explicit kernel sensor names; never infer by index.
 const cpuSensor=availableTemps.find(x=>/(?:^|[^a-z])(cpu|soc|package|processor|mt7981|mt7621)(?:[^a-z]|$)/i.test(String(x.name||'')));
-const wifiSensor=availableTemps.find(x=>/(?:wifi|wi-fi|wlan|wireless|radio|phy[0-9]|mt76[0-9])/i.test(String(x.name||''))&&x!==cpuSensor);
+const wifiSensor=availableTemps.find(x=>/(?:wifi|wi-fi|wlan|wireless|radio|phy[0-9])/i.test(String(x.name||''))&&x!==cpuSensor);
 el('cputemp').textContent=cpuSensor?cpuSensor.c.toFixed(1)+' °C':'Нет данных';
 el('wifitemp').textContent=wifiSensor?wifiSensor.c.toFixed(1)+' °C':'Нет данных';
 el('temp').textContent=availableTemps.length?availableTemps[0].c.toFixed(1)+' °C':'Нет датчика';
