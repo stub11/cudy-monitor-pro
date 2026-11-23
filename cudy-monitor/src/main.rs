@@ -100,6 +100,7 @@ fn mem_detail()->(u64,u64,u64,Option<f64>,Option<f64>){
 fn mem()->(u64,u64,u64){let (total,used,cached,_,_)=mem_detail();(total,used,cached)}
 
 fn disk()->(u64,u64,String){if std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1") { if let Ok(o)=Command::new("df").args(["-Pk","/overlay"]).output(){if o.status.success(){if let Some(l)=String::from_utf8_lossy(&o.stdout).lines().last(){let a:Vec<_>=l.split_whitespace().collect();if a.len()>=6{return (num(a[1])/1024,num(a[2])/1024,"/overlay".into())}}}} return (0,0,"/overlay unavailable".into());} if fs::metadata("/opt/etc").is_err(){return (0,0,"/opt not mounted".into());}for path in ["/opt"]{if let Ok(o)=Command::new("df").args(["-Pk",path]).output(){if o.status.success(){if let Some(l)=String::from_utf8_lossy(&o.stdout).lines().last(){let a:Vec<_>=l.split_whitespace().collect();if a.len()>=6{return (num(a[1])/1024,num(a[2])/1024,path.to_string())}}}}}(0,0,"unknown".into())}
+fn valid_millidegrees(v:i64)->bool{(1000..=150000).contains(&v)}
 fn temps()->Vec<(String,f64)>{
  let mut out=Vec::new();
  // Thermal zones and hwmon both expose millidegrees Celsius on Linux.
@@ -112,7 +113,7 @@ fn temps()->Vec<(String,f64)>{
     if kind=="thermal" {
      if let Ok(raw)=fs::read_to_string(p.join("temp")) {
       if let Ok(v)=raw.trim().parse::<i64>() {
-       if (1000..=150000).contains(&v) {
+       if valid_millidegrees(v) {
         let name=fs::read_to_string(p.join("type")).unwrap_or_default();
         out.push((format!("thermal:{}",name.trim()),v as f64/1000.));
        }
@@ -127,7 +128,7 @@ fn temps()->Vec<(String,f64)>{
       if !fname.starts_with("temp") || !fname.ends_with("_input") || !fname[4..fname.len()-6].bytes().all(|b|b.is_ascii_digit()) {continue}
       if let Ok(raw)=fs::read_to_string(file.path()) {
        if let Ok(v)=raw.trim().parse::<i64>() {
-        if !(1000..=150000).contains(&v) {continue}
+        if !valid_millidegrees(v) {continue}
         let key=&fname[..fname.len()-6];
         let label=fs::read_to_string(p.join(format!("{key}_label"))).unwrap_or_default();
         let title=if label.trim().is_empty(){format!("hwmon:{}:{}",name.trim(),key)}else{format!("hwmon:{}:{}",name.trim(),label.trim())};
@@ -954,6 +955,15 @@ fn main()->std::io::Result<()>{
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test] fn sensor_millidegree_validation(){
+        assert!(valid_millidegrees(47000));
+        assert!(valid_millidegrees(66000));
+        assert!(!valid_millidegrees(-1));
+        assert!(!valid_millidegrees(0));
+        assert!(!valid_millidegrees(200000));
+        assert!(!valid_millidegrees(i64::MAX));
+    }
+
     #[test] fn service_process_uptime_parser_is_fail_closed(){
         let mut fields=vec!["0";20];
         fields[0]="S";fields[19]="2500";
