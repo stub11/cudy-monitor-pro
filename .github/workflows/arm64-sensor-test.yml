@@ -2,11 +2,14 @@ name: ARM64 sensor test build
 on:
   push:
     branches: [fix/hwmon-temperature-mt7621]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   build:
+    if: github.head_ref == 'fix/hwmon-temperature-mt7621' || github.ref == 'refs/heads/fix/hwmon-temperature-mt7621'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
