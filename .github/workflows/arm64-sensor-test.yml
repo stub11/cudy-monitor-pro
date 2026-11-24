@@ -1,0 +1,29 @@
+name: ARM64 sensor test build
+on:
+  push:
+    branches: [fix/hwmon-temperature-mt7621]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cross
+      - name: Build test binary
+        working-directory: cudy-monitor
+        run: cross build --release --target aarch64-unknown-linux-musl
+      - name: Prepare test artifact
+        run: |
+          mkdir -p sensor-test
+          cp cudy-monitor/target/aarch64-unknown-linux-musl/release/cudy-monitor-pro sensor-test/
+          cd sensor-test
+          file cudy-monitor-pro
+          sha256sum cudy-monitor-pro > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cudy-monitor-arm64-sensor-test
+          path: sensor-test/
+          if-no-files-found: error
