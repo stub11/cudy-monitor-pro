@@ -51,7 +51,7 @@ class TestingPublisherTests(TestCase):
         self.assertFalse(publisher.eligible_candidate({},artifact()))
 
     def test_mipsel_target_specific_verified_notice(self):
-        run={"id":44068567009,"name":"Build OpenWrt MIPSEL mt7621 QA APK 1.2.26 (no release)",
+        run={"id":44068567009,"name":"Build OpenWrt MIPSEL mt7621 QA APK 1.2.27 (no release)",
              "status":"completed","conclusion":"success","head_branch":"main","head_sha":"a"*40}
         artifact={"artifacts":[{"name":publisher.MIPSEL_CANDIDATE_NAME,
                                 "expired":False,"size_in_bytes":360000,
