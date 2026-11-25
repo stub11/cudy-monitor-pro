@@ -215,6 +215,24 @@ class PublisherTests(TestCase):
         self.assertIn("откат", msg)
         self.assertIn("OpenWrt", msg)
 
+    def test_entware_only_127(self):
+        ipk = release("cudy-monitor-v1.2.27", "cudy-monitor-pro_1.2.27-1_aarch64-3.10.ipk")
+        def api(path, token, **kwargs):
+            if path.startswith("git/ref/tags/"): return None
+            if path == "releases/tags/cudy-monitor-openwrt-v1.2.27": return None
+            if path == "releases/tags/cudy-monitor-v1.2.27": return ipk
+            if path == "git/ref/heads/main": return {"object": {"sha": "f" * 40}}
+            if path == "git/refs": return kwargs["payload"]
+            raise AssertionError(path)
+        with patch.object(publisher, "version_from_source", return_value="1.2.27"), patch.object(publisher, "github_request", side_effect=api), patch.object(publisher, "telegram_send") as send:
+            self.assertEqual(publisher.main(), 0)
+            send.assert_called_once()
+            self.assertFalse(send.call_args.kwargs["apk_ready"])
+        buttons = publisher.telegram_keyboard("1.2.27", False)["inline_keyboard"]
+        self.assertEqual(len(buttons[0]), 1)
+        self.assertIn("cudy-monitor-v1.2.27", buttons[0][0]["url"])
+        self.assertFalse(publisher.validated_release(dict(ipk, prerelease=True), ipk["tag_name"], ipk["assets"][0]["name"]))
+
     def test_invalid_topic_rejected(self):
         with patch.dict(os.environ, {"CUDY_TELEGRAM_TOPIC_ID": "bad"}):
             with self.assertRaises(publisher.PublisherError):
