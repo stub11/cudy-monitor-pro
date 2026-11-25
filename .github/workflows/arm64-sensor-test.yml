@@ -23,8 +23,15 @@ jobs:
           mkdir -p sensor-test
           cp cudy-monitor/target/aarch64-unknown-linux-musl/release/cudy-monitor-pro sensor-test/
           cd sensor-test
-          file cudy-monitor-pro
+          file cudy-monitor-pro | grep -E 'ARM aarch64|ARM64|aarch64'
           sha256sum cudy-monitor-pro > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          cat SHA256SUMS
+      - name: Verify standalone probe under ARM64 emulation
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user
+          qemu-aarch64 sensor-test/cudy-monitor-pro --sensor-probe | python3 -c 'import json,sys; d=json.load(sys.stdin); assert set(d)=={"cpu","wifi","sensors"}; assert isinstance(d["sensors"],list)'
       - uses: actions/upload-artifact@v4
         with:
           name: cudy-monitor-arm64-sensor-test
