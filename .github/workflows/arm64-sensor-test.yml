@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cross
       - name: Build test binary
@@ -39,7 +41,7 @@ jobs:
           if-no-files-found: error
   publish-probe:
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/fix/hwmon-temperature-mt7621'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/fix/hwmon-temperature-mt7621' || github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'fix/hwmon-temperature-mt7621'
     permissions:
       contents: write
     runs-on: ubuntu-24.04
@@ -52,8 +54,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           cd sensor-test
           sha256sum -c SHA256SUMS
-          tag="sensor-probe-${GITHUB_SHA}"
-          gh release create "$tag" cudy-monitor-pro SHA256SUMS --target "$GITHUB_SHA" --prerelease --latest=false --title "ARM64 sensor probe (diagnostic only)" --notes "Standalone --sensor-probe only. Not a stable OTA update. Hardware validation pending."
+          tag="sensor-probe-${SOURCE_SHA}"
+          mv cudy-monitor-pro cudy-sensor-probe-arm64
+          sha256sum cudy-sensor-probe-arm64 > SHA256SUMS
+          gh release view "$tag" >/dev/null 2>&1 && exit 0
+          gh release create "$tag" cudy-sensor-probe-arm64 SHA256SUMS --target "$SOURCE_SHA" --prerelease --latest=false --title "ARM64 sensor probe (diagnostic only)" --notes "Standalone --sensor-probe only. Not a stable OTA update. Hardware validation pending."
