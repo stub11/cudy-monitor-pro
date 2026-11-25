@@ -894,7 +894,7 @@ function drawHistory(){
  const lines=series.map(x=>{
   const good=points.filter(p=>Number.isFinite(p[x.id]));
   const path=good.map(p=>(500*(p[0]-start)/span).toFixed(1)+','+
-     (100-100*Math.max(0,Math.min(x.id>=3?tempMax:100,p[x.id]))/(x.id===3?tempMax:100)).toFixed(1)).join(' ');
+     (100-100*Math.max(0,Math.min(x.id>=3?tempMax:100,p[x.id]))/(x.id>=3?tempMax:100)).toFixed(1)).join(' ');
   return '<polyline points="'+path+'" fill="none" stroke="'+x.color+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>';
  }).join('');
  const showPercent=idx!==3,showTemp=idx===0||idx===3;
