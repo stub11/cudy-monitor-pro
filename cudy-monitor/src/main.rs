@@ -113,7 +113,7 @@ fn rci_radio_temps(body:&[u8])->Vec<(String,f64)>{
 fn keenetic_radio_temps()->Vec<(String,f64)>{
  if platform()=="OpenWrt"{return Vec::new()}
  // Fixed loopback endpoint, no redirects, proxies, credentials or writes.
- let Ok(o)=Command::new("curl").args(["-q","--noproxy","*","-fsS","--connect-timeout","0.3","--max-time","1","--max-filesize","524288","http://127.0.0.1:79/rci/show/interface"]).output() else{return Vec::new()};
+ let Ok(o)=Command::new("curl").args(["-q","--noproxy","*","-fsS","--connect-timeout","1","--max-time","3","http://127.0.0.1:79/rci/show/interface"]).output() else{return Vec::new()};
  if !o.status.success() || o.stdout.len()>524288{return Vec::new()}
  rci_radio_temps(&o.stdout)
 }
