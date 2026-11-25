@@ -101,6 +101,30 @@ fn mem()->(u64,u64,u64){let (total,used,cached,_,_)=mem_detail();(total,used,cac
 
 fn disk()->(u64,u64,String){if std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1") { if let Ok(o)=Command::new("df").args(["-Pk","/overlay"]).output(){if o.status.success(){if let Some(l)=String::from_utf8_lossy(&o.stdout).lines().last(){let a:Vec<_>=l.split_whitespace().collect();if a.len()>=6{return (num(a[1])/1024,num(a[2])/1024,"/overlay".into())}}}} return (0,0,"/overlay unavailable".into());} if fs::metadata("/opt/etc").is_err(){return (0,0,"/opt not mounted".into());}for path in ["/opt"]{if let Ok(o)=Command::new("df").args(["-Pk",path]).output(){if o.status.success(){if let Some(l)=String::from_utf8_lossy(&o.stdout).lines().last(){let a:Vec<_>=l.split_whitespace().collect();if a.len()>=6{return (num(a[1])/1024,num(a[2])/1024,path.to_string())}}}}}(0,0,"unknown".into())}
 fn valid_millidegrees(v:i64)->bool{(1000..=150000).contains(&v)}
+fn rci_radio_temps(body:&[u8])->Vec<(String,f64)>{
+ let Ok(value)=serde_json::from_slice::<serde_json::Value>(body) else{return Vec::new()};
+ ["WifiMaster0","WifiMaster1"].iter().filter_map(|name|{
+  let raw=value.get(*name)?.get("temperature")?;
+  let temp=raw.as_f64().or_else(||raw.as_str()?.parse::<f64>().ok())?;
+  if !temp.is_finite() || !(1.0..=150.0).contains(&temp){return None}
+  Some((format!("rci:{name}"),temp))
+ }).collect()
+}
+fn keenetic_radio_temps()->Vec<(String,f64)>{
+ if platform()=="OpenWrt"{return Vec::new()}
+ // Fixed loopback endpoint, no redirects, proxies, credentials or writes.
+ let Ok(o)=Command::new("curl").args(["-q","--noproxy","*","-fsS","--connect-timeout","0.3","--max-time","1","--max-filesize","524288","http://127.0.0.1:79/rci/show/interface"]).output() else{return Vec::new()};
+ if !o.status.success() || o.stdout.len()>524288{return Vec::new()}
+ rci_radio_temps(&o.stdout)
+}
+#[cfg(test)]
+#[test]
+fn keenetic_radio_fixture(){
+ assert_eq!(rci_radio_temps(br#"{"WifiMaster0":{"temperature":60},"WifiMaster1":{"temperature":60}}"#),vec![("rci:WifiMaster0".into(),60.0),("rci:WifiMaster1".into(),60.0)]);
+ assert_eq!(rci_radio_temps(br#"{"WifiMaster0":{"temperature":"58"},"WifiMaster1":{"temperature":999}}"#),vec![("rci:WifiMaster0".into(),58.0)]);
+ assert!(rci_radio_temps(b"invalid").is_empty());
+ assert!(rci_radio_temps(br#"{"WifiMaster0":{"temperature":null}}"#).is_empty());
+}
 fn temps()->Vec<(String,f64)>{
  let mut out=Vec::new();
  // Thermal zones and hwmon both expose millidegrees Celsius on Linux.
@@ -139,6 +163,10 @@ fn temps()->Vec<(String,f64)>{
     }
    }
   }
+ }
+ if !out.iter().any(|(name,_)|sensor_role(name)==Some("wifi")) {
+  out.truncate(30);
+  out.extend(keenetic_radio_temps());
  }
  out.truncate(32);out
 }
