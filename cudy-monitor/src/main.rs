@@ -936,6 +936,15 @@ fn main()->std::io::Result<()>{
     if std::env::args().nth(1).as_deref()==Some("--version"){
         println!("cudy-monitor-pro {}",env!("CARGO_PKG_VERSION"));return Ok(());
     }
+    // Standalone diagnostic: no listener, sampler, auth or updater is initialized.
+    if std::env::args().nth(1).as_deref()==Some("--sensor-probe"){
+        let readings=temps();
+        let (cpu,wifi)=sensor_roles(&readings);
+        let value=|v:Option<f64>|v.map(|x|format!("{x:.1}")).unwrap_or_else(||"null".into());
+        let sensors=readings.iter().map(|(name,c)|format!("{{\"name\":{},\"c\":{c:.1}}}",quoted(name))).collect::<Vec<_>>().join(",");
+        println!("{{\"cpu\":{},\"wifi\":{},\"sensors\":[{}]}}",value(cpu),value(wifi),sensors);
+        return Ok(());
+    }
     let addr=std::env::var("CUDY_MONITOR_BIND").unwrap_or_else(|_|"127.0.0.1:8237".into());
     let token=String::new(); // token is read dynamically per request from root-only configuration.
     let bind_ip:std::net::IpAddr=addr.rsplit_once(':').and_then(|(ip,_)|ip.parse().ok())
@@ -984,6 +993,11 @@ mod tests {
         assert_eq!(sensor_role("hwmon:hwmon0:temp1"),None);
         let readings=vec![("thermal:cpu".into(),66.0),("thermal:wifi".into(),58.0)];
         assert_eq!(sensor_roles(&readings),(Some(66.0),Some(58.0)));
+    }
+    #[test] fn netis_n6_wifi_is_not_cpu(){
+        let readings=vec![("hwmon:mt7915_phy0:temp1".into(),47.0),("hwmon:mt7915_phy1:temp1".into(),47.0)];
+        assert_eq!(sensor_roles(&readings),(None,Some(47.0)));
+        assert!(readings.iter().all(|(name,_)|sensor_role(name)==Some("wifi")));
     }
     #[test] fn sensor_millidegree_validation(){
         assert!(valid_millidegrees(47000));
