@@ -17,7 +17,7 @@ async function run(engine,label){
         [101,-1,60,48],[102,NaN,70,48],[103,60,120,48],
         [104,62,72,null],[105,20,40,300],[106,30,50,50],
         ['107',45,70,40],[108,null,null,null],[109,30,50,51,2],
-        [110,70,45,49]
+        [110,70,45,49],[111,50,40,52,66,58]
       ];
       window.fetch=(url,opts)=>typeof url==='string'&&url==='/api/history'
        ?Promise.resolve({ok:true,json:async()=>({points:malformed})})
@@ -38,14 +38,15 @@ async function run(engine,label){
     }
   });
   assert.deepEqual(result.filtered,[
-    [100,40,55,48],
-    [101,null,60,48],
-    [102,null,70,48],
-    [103,60,null,48],
-    [104,62,72,null],
-    [105,20,40,null],
-    [106,30,50,50],
-    [110,70,45,49]
+    [100,40,55,48,null,null],
+    [101,null,60,48,null,null],
+    [102,null,70,48,null,null],
+    [103,60,null,48,null,null],
+    [104,62,72,null,null,null],
+    [105,20,40,null,null,null],
+    [106,30,50,50,null,null],
+    [110,70,45,49,null,null],
+    [111,50,40,52,66,58]
   ],label+' must normalize malformed and reversed samples');
   assert.ok(result.hasChart && result.nodes>0,label+' must render remaining valid series');
   console.log('PASS '+label+' CPU/RAM/temperature history validation');

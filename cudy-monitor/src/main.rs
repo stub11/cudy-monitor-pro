@@ -3,7 +3,7 @@ const PAGE:&str=include_str!("../web/index.html");
 static SERVICE_BUSY:std::sync::atomic::AtomicBool=std::sync::atomic::AtomicBool::new(false);
 #[derive(Clone,Default)] struct Cpu { total:u64,idle:u64 }
 #[derive(Clone,Default)] struct Net { rx:u64,tx:u64 }
-#[derive(Clone)] struct Sample {sec:u64,cpu:f64,ram:f64,temp:Option<f64>}
+#[derive(Clone)] struct Sample {sec:u64,cpu:f64,ram:f64,temp:Option<f64>,cpu_temp:Option<f64>,wifi_temp:Option<f64>}
 #[derive(Clone)] struct NetSample {sec:u64,rx:f64,tx:f64}
 const NETWORK_POINTS:usize=150; // last five minutes at two-second intervals
 const HISTORY_POINTS:usize=1080; // 3 hours at one sample per 10 seconds
@@ -100,7 +100,94 @@ fn mem_detail()->(u64,u64,u64,Option<f64>,Option<f64>){
 fn mem()->(u64,u64,u64){let (total,used,cached,_,_)=mem_detail();(total,used,cached)}
 
 fn disk()->(u64,u64,String){if std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1") { if let Ok(o)=Command::new("df").args(["-Pk","/overlay"]).output(){if o.status.success(){if let Some(l)=String::from_utf8_lossy(&o.stdout).lines().last(){let a:Vec<_>=l.split_whitespace().collect();if a.len()>=6{return (num(a[1])/1024,num(a[2])/1024,"/overlay".into())}}}} return (0,0,"/overlay unavailable".into());} if fs::metadata("/opt/etc").is_err(){return (0,0,"/opt not mounted".into());}for path in ["/opt"]{if let Ok(o)=Command::new("df").args(["-Pk",path]).output(){if o.status.success(){if let Some(l)=String::from_utf8_lossy(&o.stdout).lines().last(){let a:Vec<_>=l.split_whitespace().collect();if a.len()>=6{return (num(a[1])/1024,num(a[2])/1024,path.to_string())}}}}}(0,0,"unknown".into())}
-fn temps()->Vec<(String,f64)>{let mut out=Vec::new();if let Ok(entries)=fs::read_dir("/sys/class/thermal"){for e in entries.flatten(){let p=e.path();if !e.file_name().to_string_lossy().starts_with("thermal_zone"){continue}let t=read(&p.join("temp").to_string_lossy()).trim().parse::<f64>().unwrap_or(-1.);if !(0.0..=150000.).contains(&t){continue}let n=read(&p.join("type").to_string_lossy());out.push((n.trim().to_string(),if t>1000.{t/1000.}else{t}));}}out.truncate(12);out}
+fn valid_millidegrees(v:i64)->bool{(1000..=150000).contains(&v)}
+fn rci_radio_temps(body:&[u8])->Vec<(String,f64)>{
+ let Ok(value)=serde_json::from_slice::<serde_json::Value>(body) else{return Vec::new()};
+ ["WifiMaster0","WifiMaster1"].iter().filter_map(|name|{
+  let raw=value.get(*name)?.get("temperature")?;
+  let temp=raw.as_f64().or_else(||raw.as_str()?.parse::<f64>().ok())?;
+  if !temp.is_finite() || !(1.0..=150.0).contains(&temp){return None}
+  Some((format!("rci:{name}"),temp))
+ }).collect()
+}
+fn keenetic_radio_temps()->Vec<(String,f64)>{
+ if platform()=="OpenWrt"{return Vec::new()}
+ // Fixed loopback endpoint, no redirects, proxies, credentials or writes.
+ let Ok(o)=Command::new("curl").args(["-q","--noproxy","*","-fsS","--connect-timeout","1","--max-time","3","http://127.0.0.1:79/rci/show/interface"]).output() else{return Vec::new()};
+ if !o.status.success() || o.stdout.len()>524288{return Vec::new()}
+ rci_radio_temps(&o.stdout)
+}
+#[cfg(test)]
+#[test]
+fn keenetic_radio_fixture(){
+ assert_eq!(rci_radio_temps(br#"{"WifiMaster0":{"temperature":60},"WifiMaster1":{"temperature":60}}"#),vec![("rci:WifiMaster0".into(),60.0),("rci:WifiMaster1".into(),60.0)]);
+ assert_eq!(rci_radio_temps(br#"{"WifiMaster0":{"temperature":"58"},"WifiMaster1":{"temperature":999}}"#),vec![("rci:WifiMaster0".into(),58.0)]);
+ assert!(rci_radio_temps(b"invalid").is_empty());
+ assert!(rci_radio_temps(br#"{"WifiMaster0":{"temperature":null}}"#).is_empty());
+}
+fn temps()->Vec<(String,f64)>{
+ let mut out=Vec::new();
+ // Thermal zones and hwmon both expose millidegrees Celsius on Linux.
+ for (root,prefix,kind) in [("/sys/class/thermal","thermal_zone","thermal"),("/sys/class/hwmon","hwmon","hwmon")] {
+  if let Ok(entries)=fs::read_dir(root) {
+   let mut entries:Vec<_>=entries.flatten().filter(|e|e.file_name().to_string_lossy().starts_with(prefix)).collect();
+   entries.sort_by_key(|e|e.file_name());
+   for entry in entries {
+    let p=entry.path();
+    if kind=="thermal" {
+     if let Ok(raw)=fs::read_to_string(p.join("temp")) {
+      if let Ok(v)=raw.trim().parse::<i64>() {
+       if valid_millidegrees(v) {
+        let name=fs::read_to_string(p.join("type")).unwrap_or_default();
+        out.push((format!("thermal:{}",name.trim()),v as f64/1000.));
+       }
+      }
+     }
+    } else if let Ok(files)=fs::read_dir(&p) {
+     let name=fs::read_to_string(p.join("name")).unwrap_or_else(|_|entry.file_name().to_string_lossy().into_owned());
+     let mut files:Vec<_>=files.flatten().collect();
+     files.sort_by_key(|e|e.file_name());
+     for file in files {
+      let fname=file.file_name().to_string_lossy().to_string();
+      if !fname.starts_with("temp") || !fname.ends_with("_input") || !fname[4..fname.len()-6].bytes().all(|b|b.is_ascii_digit()) {continue}
+      if let Ok(raw)=fs::read_to_string(file.path()) {
+       if let Ok(v)=raw.trim().parse::<i64>() {
+        if !valid_millidegrees(v) {continue}
+        let key=&fname[..fname.len()-6];
+        let label=fs::read_to_string(p.join(format!("{key}_label"))).unwrap_or_default();
+        let title=if label.trim().is_empty(){format!("hwmon:{}:{}",name.trim(),key)}else{format!("hwmon:{}:{}",name.trim(),label.trim())};
+        out.push((title,v as f64/1000.));
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+ // Preserve distinct source identities; equal readings do not prove duplication.
+ let radio=keenetic_radio_temps();
+ out.truncate(32usize.saturating_sub(radio.len()));
+ out.extend(radio);
+ out.truncate(32);out
+}
+fn sensor_role(name:&str)->Option<&'static str>{
+ let n=name.to_ascii_lowercase();
+ // Do not infer Wi-Fi from generic MediaTek SoC names or a numeric hwmon index.
+ if ["wifi","wi-fi","wlan","wireless","radio","phy0","phy1"].iter().any(|s|n.contains(s)){return Some("wifi")}
+ if ["cpu","soc","processor","package","mt7981","mt7621"].iter().any(|s|n.contains(s)){return Some("cpu")}
+ None
+}
+fn sensor_roles(readings:&[(String,f64)])->(Option<f64>,Option<f64>){
+ let mut cpu=None;let mut wifi=None;
+ for (name,value) in readings {
+  match sensor_role(name) {
+   Some("cpu") if cpu.is_none()=>cpu=Some(*value),
+   Some("wifi") if wifi.is_none()=>wifi=Some(*value),
+   _=>()
+  }
+ }
+ (cpu,wifi)
+}
 fn procs()->Vec<(String,u64,u64)>{let mut p=Vec::new();if let Ok(it)=fs::read_dir("/proc"){for e in it.flatten(){let id=e.file_name().to_string_lossy().to_string();if !id.bytes().all(|x|x.is_ascii_digit()){continue}let n=read(&format!("/proc/{id}/comm"));if n.is_empty(){continue}let status=read(&format!("/proc/{id}/status"));let kb=status.lines().find(|l|l.starts_with("VmRSS:")).and_then(|l|l.split_whitespace().nth(1)).map(num).unwrap_or(0);p.push((n.trim().to_string(),num(&id),kb/1024));}}p.sort_by(|a,b|b.2.cmp(&a.2));p.truncate(32);p}
 fn pid_ticks()->HashMap<u64,u64>{
  let mut out=HashMap::new();
@@ -147,7 +234,9 @@ fn sample(state:&Arc<Mutex<State>>){
         now.duration_since(s.history_at)>=Duration::from_secs(10)
     };
     let (mem_total,mem_used,_)=mem();
-    let history_temp=if need_temp {temps().first().map(|(_,v)|*v)}else{None};
+    let history_readings:Vec<(String,f64)>=if need_temp {temps().into_iter().collect()}else{Vec::new()};
+    let history_temp=history_readings.first().map(|(_,v)|*v);
+    let (cpu_temp,wifi_temp)=sensor_roles(&history_readings);
     let (route_wan,_)=default_wan();
     let mut s=state.lock().unwrap_or_else(|e|e.into_inner());
     let dt=nc.total.saturating_sub(s.cpu.total);
@@ -175,7 +264,7 @@ fn sample(state:&Arc<Mutex<State>>){
     if now.duration_since(s.history_at)>=Duration::from_secs(10) {
         // Reuse metrics collected outside the mutex; no USB writes.
         let ram=if mem_total>0 {100.0*mem_used as f64/mem_total as f64}else{0.0};
-        let point=Sample{sec:now.duration_since(s.boot).as_secs(),cpu:s.current_cpu,ram,temp:history_temp};
+        let point=Sample{sec:now.duration_since(s.boot).as_secs(),cpu:s.current_cpu,ram,temp:history_temp,cpu_temp,wifi_temp};
         if s.history.len()==HISTORY_POINTS{s.history.pop_front();}
         s.history.push_back(point);
         s.history_at=now;
@@ -210,7 +299,9 @@ fn history_json(state:&Arc<Mutex<State>>)->String {
     for (i,p) in points.iter().enumerate(){
         if i>0 {out.push(',');}
         let t=p.temp.map(|t|format!("{t:.1}")).unwrap_or_else(||"null".into());
-        out.push_str(&format!("[{},{:.1},{:.1},{}]",p.sec,p.cpu,p.ram,t));
+        let cpu_t=p.cpu_temp.map(|t|format!("{t:.1}")).unwrap_or_else(||"null".into());
+        let wifi_t=p.wifi_temp.map(|t|format!("{t:.1}")).unwrap_or_else(||"null".into());
+        out.push_str(&format!("[{},{:.1},{:.1},{},{},{}]",p.sec,p.cpu,p.ram,t,cpu_t,wifi_t));
     }
     out.push_str("]}");
     out
@@ -472,6 +563,7 @@ fn service_action_json(state:&Arc<Mutex<State>>)->String{
     }
 }
 fn service_actions_enabled()->bool{
+    if std::env::var("CUDY_MONITOR_QA_READONLY").ok().as_deref()==Some("1"){return false}
     if std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1") {return false}
     std::env::var("CUDY_MONITOR_SERVICE_ACTIONS").ok().as_deref()==Some("1")
         || read("/opt/etc/cudy-monitor/service-actions").trim()=="1"
@@ -503,6 +595,7 @@ fn auth_path()->String{
     }else{"/opt/etc/cudy-monitor/access-token".into()}
 }
 fn auth_token()->String{
+    if std::env::var("CUDY_MONITOR_QA_READONLY").ok().as_deref()==Some("1"){return String::new()}
     let value=read(&auth_path());
     let token=value.trim();
     if token.len()==64 && token.bytes().all(|c|c.is_ascii_hexdigit()){token.to_owned()}else{String::new()}
@@ -605,6 +698,10 @@ fn handle(mut c:TcpStream,s:Arc<Mutex<State>>,token:String){
         Err(_)=>return,
     };
     let line=request.lines().next().unwrap_or("");
+    // QA listener must never mutate installed configuration or invoke service/OTA helpers.
+    if std::env::var("CUDY_MONITOR_QA_READONLY").ok().as_deref()==Some("1") && (!line.starts_with("GET ") || line.starts_with("GET /api/update/")) {
+        respond(&mut c,"403 Forbidden","application/json",br#"{"error":"read-only QA instance"}"#);return;
+    }
     if line.starts_with("GET / HTTP/") || line.starts_with("GET /index.html HTTP/") {
         respond(&mut c,"200 OK","text/html; charset=utf-8",PAGE.as_bytes());return;
     }
@@ -873,7 +970,19 @@ fn main()->std::io::Result<()>{
     if std::env::args().nth(1).as_deref()==Some("--version"){
         println!("cudy-monitor-pro {}",env!("CARGO_PKG_VERSION"));return Ok(());
     }
+    // Standalone diagnostic: no listener, sampler, auth or updater is initialized.
+    if std::env::args().nth(1).as_deref()==Some("--sensor-probe"){
+        let readings=temps();
+        let (cpu,wifi)=sensor_roles(&readings);
+        let value=|v:Option<f64>|v.map(|x|format!("{x:.1}")).unwrap_or_else(||"null".into());
+        let sensors=readings.iter().map(|(name,c)|format!("{{\"name\":{},\"c\":{c:.1}}}",quoted(name))).collect::<Vec<_>>().join(",");
+        println!("{{\"cpu\":{},\"wifi\":{},\"sensors\":[{}]}}",value(cpu),value(wifi),sensors);
+        return Ok(());
+    }
     let addr=std::env::var("CUDY_MONITOR_BIND").unwrap_or_else(|_|"127.0.0.1:8237".into());
+    if std::env::var("CUDY_MONITOR_QA_READONLY").ok().as_deref()==Some("1") && addr!="127.0.0.1:8238" {
+        return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied,"QA requires loopback port 8238"));
+    }
     let token=String::new(); // token is read dynamically per request from root-only configuration.
     let bind_ip:std::net::IpAddr=addr.rsplit_once(':').and_then(|(ip,_)|ip.parse().ok())
         .ok_or_else(||std::io::Error::new(std::io::ErrorKind::InvalidInput,"Invalid bind address"))?;
@@ -914,6 +1023,28 @@ fn main()->std::io::Result<()>{
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test] fn sensor_roles_do_not_guess(){
+        assert_eq!(sensor_role("hwmon:mt7981:temp1"),Some("cpu"));
+        assert_eq!(sensor_role("hwmon:mt76:temp1"),None);
+        assert_eq!(sensor_role("thermal:wifi-phy0"),Some("wifi"));
+        assert_eq!(sensor_role("hwmon:hwmon0:temp1"),None);
+        let readings=vec![("thermal:cpu".into(),66.0),("thermal:wifi".into(),58.0)];
+        assert_eq!(sensor_roles(&readings),(Some(66.0),Some(58.0)));
+    }
+    #[test] fn netis_n6_wifi_is_not_cpu(){
+        let readings=vec![("hwmon:mt7915_phy0:temp1".into(),47.0),("hwmon:mt7915_phy1:temp1".into(),47.0)];
+        assert_eq!(sensor_roles(&readings),(None,Some(47.0)));
+        assert!(readings.iter().all(|(name,_)|sensor_role(name)==Some("wifi")));
+    }
+    #[test] fn sensor_millidegree_validation(){
+        assert!(valid_millidegrees(47000));
+        assert!(valid_millidegrees(66000));
+        assert!(!valid_millidegrees(-1));
+        assert!(!valid_millidegrees(0));
+        assert!(!valid_millidegrees(200000));
+        assert!(!valid_millidegrees(i64::MAX));
+    }
+
     #[test] fn service_process_uptime_parser_is_fail_closed(){
         let mut fields=vec!["0";20];
         fields[0]="S";fields[19]="2500";
