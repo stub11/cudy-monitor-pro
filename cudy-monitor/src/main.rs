@@ -164,10 +164,10 @@ fn temps()->Vec<(String,f64)>{
    }
   }
  }
- if !out.iter().any(|(name,_)|sensor_role(name)==Some("wifi")) {
-  out.truncate(30);
-  out.extend(keenetic_radio_temps());
- }
+ // Preserve distinct source identities; equal readings do not prove duplication.
+ let radio=keenetic_radio_temps();
+ out.truncate(32usize.saturating_sub(radio.len()));
+ out.extend(radio);
  out.truncate(32);out
 }
 fn sensor_role(name:&str)->Option<&'static str>{
