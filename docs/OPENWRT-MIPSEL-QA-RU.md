@@ -1,4 +1,4 @@
-# Тест Cudy Monitor Pro 1.2.26 — OpenWrt MIPSEL (ramips/mt7621)
+# Тест Cudy Monitor Pro 1.2.27 — OpenWrt MIPSEL (ramips/mt7621)
 
 Это **тестовый APK, не стабильный релиз**. Пакет собирается в GitHub Actions с официальным OpenWrt SDK 25.12.6 для `ramips/mt7621` (`mipsel_24kc`). Другие MIPSEL ABI не подтверждены.
 
@@ -9,11 +9,11 @@
 ## Как проверить (только тестовый роутер)
 
 1. Сделать резервную копию настроек OpenWrt. Проверить тип прошивки: `cat /etc/openwrt_release`, `apk --print-arch`, `uname -m`, `df -h /overlay`.
-2. Открыть [Actions → OpenWrt MIPSEL mt7621 QA](https://github.com/stub11/cudy-monitor-pro/actions/workflows/openwrt-mipsel-mt7621-qa.yml), выбрать успешную сборку `main`, скачать `cudy-openwrt-mipsel-24kc-mt7621-qa-1.2.26-not-released`. Распаковать ZIP и сверить **SHA256 APK** с `SHA256SUMS`.
-3. Перенести `cudy-monitor-pro-1.2.26-r1.apk` в `/tmp` тестового роутера. Убедиться, что пакет совпадает с `mipsel_24kc`; только после этого вручную выполнить:
+2. Открыть [Actions → OpenWrt MIPSEL mt7621 QA](https://github.com/stub11/cudy-monitor-pro/actions/workflows/openwrt-mipsel-mt7621-qa.yml), выбрать успешную сборку `main`, скачать `cudy-openwrt-mipsel-24kc-mt7621-qa-1.2.27-not-released`. Распаковать ZIP и сверить **SHA256 APK** с `SHA256SUMS`.
+3. Перенести `cudy-monitor-pro-1.2.27-r1.apk` в `/tmp` тестового роутера. Убедиться, что пакет совпадает с `mipsel_24kc`; только после этого вручную выполнить:
 
    ```sh
-   apk add --allow-untrusted /tmp/cudy-monitor-pro-1.2.26-r1.apk
+   apk add --allow-untrusted /tmp/cudy-monitor-pro-1.2.27-r1.apk
    ```
 
 4. Проверить `/etc/init.d/cudy-monitor-pro status`, `/usr/bin/cudy-monitor-pro --version`, `sh /usr/share/cudy-monitor-pro/update-native.sh --diagnose`, `wget -qO- http://127.0.0.1:8237/health` (локально; порт может отличаться при назначенном LAN IP). Затем открыть панель по LAN, проверить CPU, RAM, WAN, графики, процессы и 10 минут наблюдения без зависаний.
