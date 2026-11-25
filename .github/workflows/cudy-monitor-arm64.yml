@@ -313,5 +313,5 @@ jobs:
           printf '%s\n%s\n' "$VERSION" "$HASH" > /tmp/latest.txt
           gh release create "$TAG" /tmp/cudy-monitor-pro-aarch64 /tmp/latest.txt /tmp/cudy-package/*.ipk \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Cudy Monitor Pro $VERSION" \
-            --notes "Что нового: улучшена диагностика обновления OpenWrt и безопасный запуск службы после установки APK. Проверка на реальных роутерах продолжается." \
+            --notes "Что нового: раздельные температуры CPU и Wi-Fi, обнаружение thermal/hwmon и Keenetic RCI, история температур. Датчики проверены на Cudy KN-3811; полный OTA на устройстве ожидает проверки. MIPSEL OTA не включён." \
             --latest
