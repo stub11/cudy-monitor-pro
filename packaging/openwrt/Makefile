@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=cudy-monitor-pro
-PKG_VERSION:=1.2.25
+PKG_VERSION:=1.2.27
 PKG_RELEASE:=1
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=Cudy Monitor Contributors
@@ -12,7 +12,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/cudy-monitor-pro
   SECTION:=net
   CATEGORY:=Network
-  TITLE:=Cudy Monitor Pro lightweight ARM64 router dashboard
+  TITLE:=Cudy Monitor Pro lightweight router dashboard
   URL:=https://github.com/stub11/cudy-monitor-pro
   DEPENDS:=+libc
 endef
