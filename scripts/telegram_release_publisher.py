@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Post one Telegram forum-topic announcement after BOTH Cudy Monitor Pro releases exist.
+"""Post one Telegram forum-topic announcement after required stable release assets exist.
 
 Runs in GitHub Actions, without a home PC. No token is stored or printed.
 Git tag telegram-announced-vX.Y.Z is the durable idempotency marker.
@@ -305,6 +305,7 @@ def main() -> int:
         print(f"Not ready: verified Entware IPK {version} is missing")
         return 0
 
+    body = message(version)
     head = github_request("git/ref/heads/main", gh_token)
     sha = (head or {}).get("object", {}).get("sha")
     if not isinstance(sha, str) or not re.fullmatch(r"[a-f0-9]{40}", sha):
@@ -315,7 +316,7 @@ def main() -> int:
         "git/refs", gh_token, method="POST",
         payload={"ref": f"refs/tags/{attempt}", "sha": sha},
     )
-    telegram_send(bot, chat, int(topic), message(version), version=version, **({} if apk_ready else {"apk_ready": False}))
+    telegram_send(bot, chat, int(topic), body, version=version, **({} if apk_ready else {"apk_ready": False}))
     github_request(
         "git/refs", gh_token, method="POST",
         payload={"ref": f"refs/tags/{marker}", "sha": sha},
