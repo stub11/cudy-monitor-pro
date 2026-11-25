@@ -563,6 +563,7 @@ fn service_action_json(state:&Arc<Mutex<State>>)->String{
     }
 }
 fn service_actions_enabled()->bool{
+    if std::env::var("CUDY_MONITOR_QA_READONLY").ok().as_deref()==Some("1"){return false}
     if std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1") {return false}
     std::env::var("CUDY_MONITOR_SERVICE_ACTIONS").ok().as_deref()==Some("1")
         || read("/opt/etc/cudy-monitor/service-actions").trim()=="1"
@@ -594,6 +595,7 @@ fn auth_path()->String{
     }else{"/opt/etc/cudy-monitor/access-token".into()}
 }
 fn auth_token()->String{
+    if std::env::var("CUDY_MONITOR_QA_READONLY").ok().as_deref()==Some("1"){return String::new()}
     let value=read(&auth_path());
     let token=value.trim();
     if token.len()==64 && token.bytes().all(|c|c.is_ascii_hexdigit()){token.to_owned()}else{String::new()}
@@ -697,7 +699,7 @@ fn handle(mut c:TcpStream,s:Arc<Mutex<State>>,token:String){
     };
     let line=request.lines().next().unwrap_or("");
     // QA listener must never mutate installed configuration or invoke service/OTA helpers.
-    if std::env::var("CUDY_MONITOR_QA_READONLY").ok().as_deref()==Some("1") && !line.starts_with("GET ") {
+    if std::env::var("CUDY_MONITOR_QA_READONLY").ok().as_deref()==Some("1") && (!line.starts_with("GET ") || line.starts_with("GET /api/update/")) {
         respond(&mut c,"403 Forbidden","application/json",br#"{"error":"read-only QA instance"}"#);return;
     }
     if line.starts_with("GET / HTTP/") || line.starts_with("GET /index.html HTTP/") {
