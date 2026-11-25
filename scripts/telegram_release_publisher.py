@@ -69,7 +69,7 @@ def github_request(path: str, token: str, *, method: str = "GET", payload=None):
 def validated_release(meta: object, tag: str, expected_asset: str) -> bool:
     if not isinstance(meta, dict) or meta.get("tag_name") != tag:
         return False
-    if meta.get("draft") or not meta.get("published_at"):
+    if meta.get("draft") or meta.get("prerelease") or not meta.get("published_at"):
         return False
     for asset in meta.get("assets", []):
         if not isinstance(asset, dict):
@@ -88,6 +88,11 @@ def validated_release(meta: object, tag: str, expected_asset: str) -> bool:
 # Short human-reviewed Russian summaries. Never publish raw English CHANGELOG
 # lines as Telegram announcements. Add a new entry when preparing each release.
 RELEASE_NOTES_RU = {
+    "1.2.27": [
+        "Раздельные температуры CPU и Wi-Fi; проверено на Cudy KN-3811.",
+        "Автоматическое обнаружение датчиков и история температур.",
+        "Доступен ARM64 Entware IPK и OTA; новая сборка OpenWrt пока не подтверждена.",
+    ],
     "1.2.25": [
         "Обновление OpenWrt теперь проверяет адрес панели до установки нового APK.",
         "При некорректном адресе обновление безопасно останавливается, сохраняя рабочую версию.",
@@ -203,12 +208,12 @@ def message(version: str) -> str:
     )
 
 
-def telegram_keyboard(version: str) -> dict:
+def telegram_keyboard(version: str, apk_ready: bool = True) -> dict:
     urls = release_links(version)
     return {
         "inline_keyboard": [
             [
-                {"text": "📦 OpenWrt APK", "url": urls["OpenWrt APK"]},
+                *([{"text": "📦 OpenWrt APK", "url": urls["OpenWrt APK"]}] if apk_ready else []),
                 {"text": "📦 Entware IPK", "url": urls["Entware IPK"]},
             ],
             [{"text": "📖 Установка и обновление", "url": urls["Инструкция"]}],
@@ -217,7 +222,7 @@ def telegram_keyboard(version: str) -> dict:
 
 
 def telegram_send(bot_token: str, chat_id: str, topic_id: int, body: str,
-                  *, version: str) -> None:
+                  *, version: str, apk_ready: bool = True) -> None:
     payload = {
         "chat_id": chat_id,
         "message_thread_id": topic_id,
@@ -225,7 +230,7 @@ def telegram_send(bot_token: str, chat_id: str, topic_id: int, body: str,
         "parse_mode": "HTML",
         "link_preview_options": {"is_disabled": True},
         "disable_notification": True,
-        "reply_markup": telegram_keyboard(version),
+        "reply_markup": telegram_keyboard(version, apk_ready),
     }
     # Never include the bot token or full request URL in errors/logs.
     req = Request(
@@ -292,7 +297,8 @@ def main() -> int:
     ipk_meta = github_request(f"releases/tags/{quote(ipk_tag)}", gh_token)
     apk_asset = f"cudy-monitor-pro-{version}-r1.apk"
     ipk_asset = f"cudy-monitor-pro_{version}-1_aarch64-3.10.ipk"
-    if not validated_release(apk_meta, apk_tag, apk_asset):
+    apk_ready = validated_release(apk_meta, apk_tag, apk_asset)
+    if not apk_ready and version != "1.2.27":
         print(f"Not ready: verified native OpenWrt APK {version} is missing")
         return 0
     if not validated_release(ipk_meta, ipk_tag, ipk_asset):
@@ -309,7 +315,7 @@ def main() -> int:
         "git/refs", gh_token, method="POST",
         payload={"ref": f"refs/tags/{attempt}", "sha": sha},
     )
-    telegram_send(bot, chat, int(topic), message(version), version=version)
+    telegram_send(bot, chat, int(topic), message(version), version=version, **({} if apk_ready else {"apk_ready": False}))
     github_request(
         "git/refs", gh_token, method="POST",
         payload={"ref": f"refs/tags/{marker}", "sha": sha},
