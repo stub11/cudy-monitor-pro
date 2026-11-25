@@ -696,6 +696,10 @@ fn handle(mut c:TcpStream,s:Arc<Mutex<State>>,token:String){
         Err(_)=>return,
     };
     let line=request.lines().next().unwrap_or("");
+    // QA listener must never mutate installed configuration or invoke service/OTA helpers.
+    if std::env::var("CUDY_MONITOR_QA_READONLY").ok().as_deref()==Some("1") && !line.starts_with("GET ") {
+        respond(&mut c,"403 Forbidden","application/json",br#"{"error":"read-only QA instance"}"#);return;
+    }
     if line.starts_with("GET / HTTP/") || line.starts_with("GET /index.html HTTP/") {
         respond(&mut c,"200 OK","text/html; charset=utf-8",PAGE.as_bytes());return;
     }
@@ -974,6 +978,9 @@ fn main()->std::io::Result<()>{
         return Ok(());
     }
     let addr=std::env::var("CUDY_MONITOR_BIND").unwrap_or_else(|_|"127.0.0.1:8237".into());
+    if std::env::var("CUDY_MONITOR_QA_READONLY").ok().as_deref()==Some("1") && addr!="127.0.0.1:8238" {
+        return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied,"QA requires loopback port 8238"));
+    }
     let token=String::new(); // token is read dynamically per request from root-only configuration.
     let bind_ip:std::net::IpAddr=addr.rsplit_once(':').and_then(|(ip,_)|ip.parse().ok())
         .ok_or_else(||std::io::Error::new(std::io::ErrorKind::InvalidInput,"Invalid bind address"))?;
