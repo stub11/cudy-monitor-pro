@@ -21,6 +21,12 @@ unlock() { rm -f "$LOCK"; }
 trap 'cleanup' EXIT
 fail() { echo "ERROR: $*" >&2; exit 1; }
 [ "$MODE" = "--check" ] || [ "$MODE" = "--apply" ] || [ "$MODE" = "--rollback" ] || fail "Unsupported action"
+replace_installed_binary() {
+    # A running Linux executable cannot be overwritten in place.
+    TMP=$(mktemp "$BIN.replace.XXXXXX") || return 1
+    cp -p "$1" "$TMP" && mv -f "$TMP" "$BIN" || return 1
+    TMP=""
+}
 if [ "$MODE" = "--rollback" ]; then
     [ -x "$BIN.previous" ] || fail "No executable previous version"
     [ -x "$BIN" ] || fail "Current binary is missing"
@@ -50,7 +56,7 @@ if [ "$MODE" = "--rollback" ]; then
     case "$PORT" in ''|*[!0-9]*) fail "Invalid rollback health port" ;; esac
     [ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || fail "Invalid rollback health port"
     cp -p "$BIN" "$BIN.failed" || fail "Cannot back up currently installed binary"
-    cp -p "$BIN.previous" "$BIN" || fail "Cannot activate previous binary"
+    replace_installed_binary "$BIN.previous" || fail "Cannot activate previous binary"
     # A successful restart may still leave an unresponsive or wrong daemon.
     # Preserve the previous backup and put the original binary back on error.
     rollback_healthy() {
@@ -58,7 +64,7 @@ if [ "$MODE" = "--rollback" ]; then
             "$CURL" -fsS --connect-timeout 2 --max-time 4 "http://$HEALTH_BIND/health" 2>/dev/null | grep -qx ok
     }
     if ! "$INIT" restart || ! rollback_healthy; then
-        cp -p "$BIN.failed" "$BIN" || fail "ROLLBACK FAILED: could not restore original binary"
+        replace_installed_binary "$BIN.failed" || fail "ROLLBACK FAILED: could not restore original binary"
         "$INIT" restart || fail "ROLLBACK FAILED: original binary restored but service restart failed"
         [ "$("$BIN" --version 2>/dev/null || :)" = "$current_version" ] ||
             fail "ROLLBACK FAILED: original binary version not restored"
@@ -116,6 +122,7 @@ is_newer || fail "Release is not newer than installed version"
 [ -x "$INIT" ] || fail "Entware init script is missing"
 [ -d "$META" ] || fail "Installation directory is missing"
 [ -x "$BIN" ] || fail "Current binary is missing"
+command -v cmp >/dev/null 2>&1 || fail "cmp is required to verify the running monitor"
 ( set -C; : > "$LOCK" ) 2>/dev/null || fail "An update is already running"
 trap 'cleanup; unlock' EXIT
 TMP="$META/cudy-monitor.$$"
@@ -124,6 +131,8 @@ URL="$GITHUB/cudy-monitor-v$VERSION/cudy-monitor-pro-aarch64"
 ACTUAL=$("$SHASUM" "$TMP" | awk '{print $1}')
 [ "$ACTUAL" = "$EXPECTED" ] || fail "Binary checksum mismatch"
 chmod 755 "$TMP"
+[ "$("$TMP" --version 2>/dev/null || :)" = "cudy-monitor-pro $VERSION" ] ||
+    fail "Downloaded binary version does not match the release"
 # Bind must be a literal, local IPv4 address. Never let config become an arbitrary URL.
 BIND_FILE="$ROOT/etc/cudy-monitor/bind"
 HEALTH_BIND=127.0.0.1:8237
@@ -147,7 +156,7 @@ restore_previous() {
     # A successful copy/restart is not proof that the old monitor is serving
     # requests. Refuse to claim a verified rollback until both disk version
     # and HTTP health match the previous installed version.
-    cp "$BIN.previous" "$BIN" || fail "ROLLBACK FAILED: cannot restore backup binary"
+    replace_installed_binary "$BIN.previous" || fail "ROLLBACK FAILED: cannot restore backup binary"
     "$INIT" restart || fail "ROLLBACK FAILED: previous service could not restart"
     restored=$("$BIN" --version 2>/dev/null || :)
     [ "$restored" = "cudy-monitor-pro $CURRENT" ] ||
@@ -155,14 +164,23 @@ restore_previous() {
     "$CURL" -fsS --connect-timeout 2 --max-time 4 "http://$HEALTH_BIND/health" 2>/dev/null | grep -qx ok ||
         fail "ROLLBACK FAILED: restored service health not confirmed"
 }
+running_binary_matches() {
+    pid=$(cat "$ROOT/var/run/cudy-monitor-pro.pid" 2>/dev/null) || return 1
+    case "$pid" in ''|0|*[!0-9]*) return 1 ;; esac
+    cmp -s "/proc/$pid/exe" "$BIN"
+}
 if ! "$INIT" restart; then
     restore_previous
     fail "Restart failed; rolled back"
 fi
 sleep 2
-if ! "$CURL" -fsS --connect-timeout 2 --max-time 4 "http://$HEALTH_BIND/health" >/dev/null; then
+if ! health=$("$CURL" -fsS --connect-timeout 2 --max-time 4 "http://$HEALTH_BIND/health") || [ "$health" != ok ]; then
     restore_previous
     fail "Health check failed; rolled back"
+fi
+if ! running_binary_matches; then
+    restore_previous
+    fail "Running daemon does not match the downloaded binary; rolled back"
 fi
 printf '%s\n' "$VERSION" > "$META/VERSION"
 echo "UPDATED $VERSION"

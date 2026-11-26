@@ -49,6 +49,31 @@ async function run(engine,label){
     [111,50,40,52,66,58]
   ],label+' must normalize malformed and reversed samples');
   assert.ok(result.hasChart && result.nodes>0,label+' must render remaining valid series');
+  const temperature = await page.evaluate(() => {
+    const saved = historyPoints;
+    const selection = document.querySelector('#historymetric');
+    const original = selection.value;
+    try {
+      historyPoints = [[0,10,20,null,66,47], [10,10,20,null,67,null], [20,10,20,null,68,49]];
+      return ['4', '5'].map(value => {
+        selection.value = value;
+        selection.dispatchEvent(new Event('change'));
+        const traces = [...document.querySelectorAll('#graph svg polyline')];
+        return {
+          selected: document.querySelector('#defaultmetric').value,
+          colors: traces.map(trace => trace.getAttribute('stroke'))
+        };
+      });
+    } finally {
+      historyPoints = saved;
+      selection.value = original;
+      selection.dispatchEvent(new Event('change'));
+    }
+  });
+  assert.deepEqual(temperature, [
+    {selected:'4', colors:['#ff6c8d']},
+    {selected:'5', colors:['#42bdf5','#42bdf5']}
+  ], label+' must keep the CPU series continuous and break Wi-Fi at its missing sample');
   console.log('PASS '+label+' CPU/RAM/temperature history validation');
  }finally{await browser.close();}
 }

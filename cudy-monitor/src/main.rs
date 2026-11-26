@@ -9,7 +9,7 @@ const NETWORK_POINTS:usize=150; // last five minutes at two-second intervals
 const HISTORY_POINTS:usize=1080; // 3 hours at one sample per 10 seconds
 #[derive(Clone)]
 struct ServiceAction {id:u64,name:String,verb:String,state:String,detail:String}
-struct State {service_action:Option<ServiceAction>,cpu:Cpu,core_ticks:Vec<(usize,Cpu)>,current_cores:Vec<(usize,f64)>,events:VecDeque<(u64,String)>,high_cpu:bool,high_ram:bool,pid_ticks:HashMap<u64,u64>,pid_usage:HashMap<u64,f64>,nets:HashMap<String,Net>,last:Instant,history_at:Instant,boot:Instant,history:VecDeque<Sample>,net_histories:HashMap<String,VecDeque<NetSample>>,current_cpu:f64,current_network:Vec<(String,f64,f64)>}
+struct State {temperature_sources:TemperatureSources,service_action:Option<ServiceAction>,cpu:Cpu,core_ticks:Vec<(usize,Cpu)>,current_cores:Vec<(usize,f64)>,events:VecDeque<(u64,String)>,high_cpu:bool,high_ram:bool,pid_ticks:HashMap<u64,u64>,pid_usage:HashMap<u64,f64>,nets:HashMap<String,Net>,last:Instant,history_at:Instant,boot:Instant,history:VecDeque<Sample>,net_histories:HashMap<String,VecDeque<NetSample>>,current_cpu:f64,current_network:Vec<(String,f64,f64)>}
 fn read(p:&str)->String {fs::read_to_string(p).unwrap_or_default()}
 fn platform()->&'static str {
     if std::path::Path::new("/etc/openwrt_release").exists() || read("/etc/os-release").contains("OpenWrt") {"OpenWrt"}
@@ -125,7 +125,20 @@ fn keenetic_radio_fixture(){
  assert!(rci_radio_temps(b"invalid").is_empty());
  assert!(rci_radio_temps(br#"{"WifiMaster0":{"temperature":null}}"#).is_empty());
 }
-fn temps()->Vec<(String,f64)>{
+struct TemperatureReading {
+    name: String,
+    celsius: f64,
+    source: std::path::PathBuf,
+}
+
+impl TemperatureReading {
+    fn sysfs(name: String, celsius: f64, path: std::path::PathBuf) -> Self {
+        let source = fs::canonicalize(&path).unwrap_or(path);
+        Self { name, celsius, source }
+    }
+}
+
+fn read_temperatures()->Vec<TemperatureReading>{
  let mut out=Vec::new();
  // Thermal zones and hwmon both expose millidegrees Celsius on Linux.
  for (root,prefix,kind) in [("/sys/class/thermal","thermal_zone","thermal"),("/sys/class/hwmon","hwmon","hwmon")] {
@@ -139,7 +152,7 @@ fn temps()->Vec<(String,f64)>{
       if let Ok(v)=raw.trim().parse::<i64>() {
        if valid_millidegrees(v) {
         let name=fs::read_to_string(p.join("type")).unwrap_or_default();
-        out.push((format!("thermal:{}",name.trim()),v as f64/1000.));
+        out.push(TemperatureReading::sysfs(format!("thermal:{}",name.trim()),v as f64/1000.,p.join("temp")));
        }
       }
      }
@@ -156,7 +169,7 @@ fn temps()->Vec<(String,f64)>{
         let key=&fname[..fname.len()-6];
         let label=fs::read_to_string(p.join(format!("{key}_label"))).unwrap_or_default();
         let title=if label.trim().is_empty(){format!("hwmon:{}:{}",name.trim(),key)}else{format!("hwmon:{}:{}",name.trim(),label.trim())};
-        out.push((title,v as f64/1000.));
+        out.push(TemperatureReading::sysfs(title,v as f64/1000.,file.path()));
        }
       }
      }
@@ -167,9 +180,68 @@ fn temps()->Vec<(String,f64)>{
  // Preserve distinct source identities; equal readings do not prove duplication.
  let radio=keenetic_radio_temps();
  out.truncate(32usize.saturating_sub(radio.len()));
- out.extend(radio);
+ out.extend(radio.into_iter().map(|(name,celsius)| TemperatureReading {
+     source: name.clone().into(),
+     name,
+     celsius,
+ }));
  out.truncate(32);out
 }
+fn temps()->Vec<(String,f64)>{
+    read_temperatures().into_iter().map(|reading| (reading.name, reading.celsius)).collect()
+}
+
+#[derive(Default)]
+struct TemperatureSources {
+    primary: Option<std::path::PathBuf>,
+    cpu: Option<std::path::PathBuf>,
+    wifi: Option<std::path::PathBuf>,
+}
+
+fn temperature_for_source(
+    source: &mut Option<std::path::PathBuf>,
+    readings: &[TemperatureReading],
+    accepts: impl Fn(&TemperatureReading) -> bool,
+) -> Option<f64> {
+    let reading = readings.iter().filter(|reading| accepts(reading)).find(|reading| {
+        source.as_ref().map_or(true, |selected| selected == &reading.source)
+    })?;
+    if source.is_none() {
+        *source = Some(reading.source.clone());
+    }
+    Some(reading.celsius)
+}
+
+impl TemperatureSources {
+    fn sample(&mut self, readings: &[TemperatureReading]) -> (Option<f64>, Option<f64>, Option<f64>) {
+        let primary = temperature_for_source(&mut self.primary, readings, |_| true);
+        let cpu = temperature_for_source(&mut self.cpu, readings, |r| sensor_role(&r.name) == Some("cpu"));
+        let wifi = temperature_for_source(&mut self.wifi, readings, |r| sensor_role(&r.name) == Some("wifi"));
+        (primary, cpu, wifi)
+    }
+}
+
+#[test]
+fn temperature_history_keeps_each_source_through_gaps_and_reordering() {
+    let reading = |name: &str, source: &str, celsius| TemperatureReading {
+        name: name.into(), source: source.into(), celsius,
+    };
+    let mut history = TemperatureSources::default();
+    assert_eq!(history.sample(&[]), (None, None, None));
+    assert_eq!(history.sample(&[
+        reading("thermal:cpu", "/cpu", 66.0),
+        reading("hwmon:wifi:radio", "/radio0", 58.0),
+    ]), (Some(66.0), Some(66.0), Some(58.0)));
+    assert_eq!(history.sample(&[
+        reading("hwmon:wifi:radio", "/radio1", 47.0),
+    ]), (None, None, None));
+    assert_eq!(history.sample(&[
+        reading("hwmon:wifi:radio", "/radio1", 47.0),
+        reading("hwmon:wifi:radio", "/radio0", 59.0),
+        reading("thermal:cpu", "/cpu", 67.0),
+    ]), (Some(67.0), Some(67.0), Some(59.0)));
+}
+
 fn sensor_role(name:&str)->Option<&'static str>{
  let n=name.to_ascii_lowercase();
  // Do not infer Wi-Fi from generic MediaTek SoC names or a numeric hwmon index.
@@ -234,9 +306,7 @@ fn sample(state:&Arc<Mutex<State>>){
         now.duration_since(s.history_at)>=Duration::from_secs(10)
     };
     let (mem_total,mem_used,_)=mem();
-    let history_readings:Vec<(String,f64)>=if need_temp {temps().into_iter().collect()}else{Vec::new()};
-    let history_temp=history_readings.first().map(|(_,v)|*v);
-    let (cpu_temp,wifi_temp)=sensor_roles(&history_readings);
+    let history_readings=if need_temp {read_temperatures()}else{Vec::new()};
     let (route_wan,_)=default_wan();
     let mut s=state.lock().unwrap_or_else(|e|e.into_inner());
     let dt=nc.total.saturating_sub(s.cpu.total);
@@ -264,6 +334,7 @@ fn sample(state:&Arc<Mutex<State>>){
     if now.duration_since(s.history_at)>=Duration::from_secs(10) {
         // Reuse metrics collected outside the mutex; no USB writes.
         let ram=if mem_total>0 {100.0*mem_used as f64/mem_total as f64}else{0.0};
+        let (history_temp,cpu_temp,wifi_temp)=s.temperature_sources.sample(&history_readings);
         let point=Sample{sec:now.duration_since(s.boot).as_secs(),cpu:s.current_cpu,ram,temp:history_temp,cpu_temp,wifi_temp};
         if s.history.len()==HISTORY_POINTS{s.history.pop_front();}
         s.history.push_back(point);
@@ -327,6 +398,27 @@ fn core_ticks()->Vec<(usize,Cpu)>{
     }
     out.truncate(16);out
 }
+fn parse_load_average(source: &str) -> Option<[f64; 3]> {
+    let mut fields = source.split_whitespace();
+    let mut averages = [0.0; 3];
+    for average in &mut averages {
+        let value = fields.next()?.parse::<f64>().ok()?;
+        if !value.is_finite() || value < 0.0 {
+            return None;
+        }
+        *average = value;
+    }
+    Some(averages)
+}
+
+#[test]
+fn load_average_requires_three_finite_nonnegative_values() {
+    assert_eq!(parse_load_average("0.00 0.25 1.50 1/100 1745"), Some([0.0, 0.25, 1.5]));
+    for invalid in ["", "0 1", "1 -1 2", "1 NaN 2", "1 inf 2"] {
+        assert_eq!(parse_load_average(invalid), None);
+    }
+}
+
 fn cpu_clock_mhz()->u64{
  for path in ["/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq","/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_cur_freq"]{
   let khz=num(&read(path));if khz>0{return khz/1000;}
@@ -568,7 +660,7 @@ fn service_actions_enabled()->bool{
     std::env::var("CUDY_MONITOR_SERVICE_ACTIONS").ok().as_deref()==Some("1")
         || read("/opt/etc/cudy-monitor/service-actions").trim()=="1"
 }
-fn data(s:&Arc<Mutex<State>>)->String{let (cpu,network,core_load,pid_load)={let state=s.lock().unwrap_or_else(|e|e.into_inner());(state.current_cpu,state.current_network.clone(),state.current_cores.clone(),state.pid_usage.clone())};let (mt,mu,mc,htop_used,available)=mem_detail();let htop_json=htop_used.map(|v|v.to_string()).unwrap_or_else(||"null".into());let available_json=available.map(|v|v.to_string()).unwrap_or_else(||"null".into());let (dt,du,dm)=disk();let (wan_iface,wan_route_status)=default_wan();let wan_json=wan_iface.as_deref().map(quoted).unwrap_or_else(||"null".into());let (connections,connections_max)=connections();let cpu_mhz=cpu_clock_mhz();let service_actions=service_actions_enabled();let up=read("/proc/uptime").split_whitespace().next().and_then(|x|x.parse::<f64>().ok()).unwrap_or(0.)as u64;let mut o=format!("{{\"model\":{},\"platform\":{},\"cpu\":{cpu:.1},\"mem_total\":{mt},\"mem_used\":{mu},\"mem_cached\":{mc},\"mem_htop_used\":{htop_json},\"mem_available\":{available_json},\"disk_total\":{dt},\"disk_used\":{du},\"disk_mount\":{},\"uptime\":{up},\"wan_iface\":{wan_json},\"wan_route_status\":{},\"temps\":[",quoted(&device_model()),quoted(platform()),quoted(&dm),quoted(wan_route_status));for (i,(n,c))in temps().iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"c\":{c:.1}}}",quoted(n)))}o.push_str("],\"network\":[");for(i,(n,rx,tx))in network.iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"rx\":{rx:.0},\"tx\":{tx:.0}}}",quoted(n)))}o.push_str("],\"cores\":[");for(i,(idx,percent))in core_load.iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"id\":{},\"usage\":{:.1}}}",idx,percent))}o.push_str("],\"processes\":[");for(i,(n,pid,rss))in procs().iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"pid\":{pid},\"mem\":{rss},\"cpu\":{:.1}}}",quoted(n),pid_load.get(pid).copied().unwrap_or(0.0)))}o.push_str("],\"services\":[");for(i,n)in["D2K","DoQ","KeenKit"].iter().enumerate(){if i>0{o.push(',')}let pids=service_pids(n);let found=!pids.is_empty();let installed=match *n {"KeenKit"=>std::path::Path::new("/opt/bin/keenkit").exists(),"D2K"=>std::path::Path::new("/opt/etc/init.d/S99d2k").exists(),"DoQ"=>std::path::Path::new("/opt/etc/init.d/S56doqd").exists(),_=>false};let (rss,cpu,age)=service_metrics(&pids,&pid_load,read("/proc/uptime").split_whitespace().next().and_then(|t|t.parse::<f64>().ok()).unwrap_or(0.0));let age_json=age.map(|v|v.to_string()).unwrap_or_else(||"null".into());let pid_json=pids.first().map(|v|v.to_string()).unwrap_or_else(||"null".into());o.push_str(&format!("{{\"name\":{},\"detected\":{found},\"installed\":{installed},\"pid\":{pid_json},\"processes\":{},\"ram_mb\":{rss:.1},\"cpu_pct\":{cpu:.1},\"uptime_sec\":{age_json}}}",quoted(n),pids.len()))}o.push_str(&format!("],\"connections\":{},\"connections_max\":{},\"cpu_mhz\":{},\"service_actions_enabled\":{},\"update_mode\":{},\"auth_enabled\":{},\"monitor_rss_mb\":{:.2},\"version\":{}}}",connections,connections_max,cpu_mhz,service_actions,quoted(if std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1"){"native_apk"}else{"entware"}),!auth_token().is_empty(),own_rss_mb(),quoted(env!("CARGO_PKG_VERSION"))));o}
+fn data(s:&Arc<Mutex<State>>)->String{let (cpu,network,core_load,pid_load)={let state=s.lock().unwrap_or_else(|e|e.into_inner());(state.current_cpu,state.current_network.clone(),state.current_cores.clone(),state.pid_usage.clone())};let (mt,mu,mc,htop_used,available)=mem_detail();let htop_json=htop_used.map(|v|v.to_string()).unwrap_or_else(||"null".into());let available_json=available.map(|v|v.to_string()).unwrap_or_else(||"null".into());let (dt,du,dm)=disk();let (wan_iface,wan_route_status)=default_wan();let wan_json=wan_iface.as_deref().map(quoted).unwrap_or_else(||"null".into());let (connections,connections_max)=connections();let cpu_mhz=cpu_clock_mhz();let load_average=serde_json::json!(parse_load_average(&read("/proc/loadavg")));let service_actions=service_actions_enabled();let up=read("/proc/uptime").split_whitespace().next().and_then(|x|x.parse::<f64>().ok()).unwrap_or(0.)as u64;let mut o=format!("{{\"model\":{},\"platform\":{},\"cpu\":{cpu:.1},\"mem_total\":{mt},\"mem_used\":{mu},\"mem_cached\":{mc},\"mem_htop_used\":{htop_json},\"mem_available\":{available_json},\"disk_total\":{dt},\"disk_used\":{du},\"disk_mount\":{},\"uptime\":{up},\"wan_iface\":{wan_json},\"wan_route_status\":{},\"temps\":[",quoted(&device_model()),quoted(platform()),quoted(&dm),quoted(wan_route_status));for (i,(n,c))in temps().iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"c\":{c:.1}}}",quoted(n)))}o.push_str("],\"network\":[");for(i,(n,rx,tx))in network.iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"rx\":{rx:.0},\"tx\":{tx:.0}}}",quoted(n)))}o.push_str("],\"cores\":[");for(i,(idx,percent))in core_load.iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"id\":{},\"usage\":{:.1}}}",idx,percent))}o.push_str("],\"processes\":[");for(i,(n,pid,rss))in procs().iter().enumerate(){if i>0{o.push(',')}o.push_str(&format!("{{\"name\":{},\"pid\":{pid},\"mem\":{rss},\"cpu\":{:.1}}}",quoted(n),pid_load.get(pid).copied().unwrap_or(0.0)))}o.push_str("],\"services\":[");for(i,n)in["D2K","DoQ","KeenKit"].iter().enumerate(){if i>0{o.push(',')}let pids=service_pids(n);let found=!pids.is_empty();let installed=match *n {"KeenKit"=>std::path::Path::new("/opt/bin/keenkit").exists(),"D2K"=>std::path::Path::new("/opt/etc/init.d/S99d2k").exists(),"DoQ"=>std::path::Path::new("/opt/etc/init.d/S56doqd").exists(),_=>false};let (rss,cpu,age)=service_metrics(&pids,&pid_load,read("/proc/uptime").split_whitespace().next().and_then(|t|t.parse::<f64>().ok()).unwrap_or(0.0));let age_json=age.map(|v|v.to_string()).unwrap_or_else(||"null".into());let pid_json=pids.first().map(|v|v.to_string()).unwrap_or_else(||"null".into());o.push_str(&format!("{{\"name\":{},\"detected\":{found},\"installed\":{installed},\"pid\":{pid_json},\"processes\":{},\"ram_mb\":{rss:.1},\"cpu_pct\":{cpu:.1},\"uptime_sec\":{age_json}}}",quoted(n),pids.len()))}o.push_str(&format!("],\"connections\":{},\"connections_max\":{},\"cpu_mhz\":{},\"load_average\":{load_average},\"service_actions_enabled\":{},\"update_mode\":{},\"auth_enabled\":{},\"monitor_rss_mb\":{:.2},\"version\":{}}}",connections,connections_max,cpu_mhz,service_actions,quoted(if std::env::var("CUDY_MONITOR_NATIVE_APK").ok().as_deref()==Some("1"){"native_apk"}else{"entware"}),!auth_token().is_empty(),own_rss_mb(),quoted(env!("CARGO_PKG_VERSION"))));o}
 fn respond(s:&mut TcpStream,status:&str,typ:&str,body:&[u8]){let header=format!("HTTP/1.1 {status}\r\nContent-Type: {typ}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nConnection: close\r\n\r\n",body.len());let _=s.write_all(header.as_bytes());let _=s.write_all(body);}
 fn constant_time_match(a:&[u8],b:&[u8])->bool{let mut diff=a.len()^b.len();for i in 0..a.len().max(b.len()){diff|=usize::from(a.get(i).copied().unwrap_or(0)^b.get(i).copied().unwrap_or(0));}diff==0}
 fn update_command(mode:&str)->Result<String,String>{
@@ -990,7 +1082,7 @@ fn main()->std::io::Result<()>{
         return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied,"Monitor must bind to a specific LAN or loopback address"));
     }
     let start=Instant::now();
-    let state=Arc::new(Mutex::new(State{service_action:None,cpu:cpu(),core_ticks:core_ticks(),current_cores:Vec::new(),events:VecDeque::from([(0,String::from("Монитор запущен; история находится в RAM"))]),high_cpu:false,high_ram:false,pid_ticks:HashMap::new(),pid_usage:HashMap::new(),nets:nets(),last:start,history_at:start,boot:start,history:VecDeque::with_capacity(HISTORY_POINTS),net_histories:HashMap::new(),current_cpu:0.,current_network:Vec::new()}));
+    let state=Arc::new(Mutex::new(State{temperature_sources:TemperatureSources::default(),service_action:None,cpu:cpu(),core_ticks:core_ticks(),current_cores:Vec::new(),events:VecDeque::from([(0,String::from("Монитор запущен; история находится в RAM"))]),high_cpu:false,high_ram:false,pid_ticks:HashMap::new(),pid_usage:HashMap::new(),nets:nets(),last:start,history_at:start,boot:start,history:VecDeque::with_capacity(HISTORY_POINTS),net_histories:HashMap::new(),current_cpu:0.,current_network:Vec::new()}));
     let sampler=Arc::clone(&state);
     thread::spawn(move || loop {thread::sleep(Duration::from_secs(2));sample(&sampler);});
     let listener=TcpListener::bind(&addr)?;

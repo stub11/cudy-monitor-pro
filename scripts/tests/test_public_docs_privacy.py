@@ -3,6 +3,7 @@
 import pathlib
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -23,11 +24,11 @@ class PublicDocsPrivacyTests(unittest.TestCase):
                            stdout=subprocess.DEVNULL)
             subprocess.run(["git", "-C", str(root), "add", "."], check=True,
                            stdout=subprocess.DEVNULL)
-            result = subprocess.run(["python3", str(root / "scripts" /
+            result = subprocess.run([sys.executable, str(root / "scripts" /
                                       "public_release_guard.py")],
                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                     text=True, check=False)
-            self.assertEqual(result.returncode == 0, expect_success,
+            self.assertEqual(result.returncode, 0 if expect_success else 1,
                              f"Unexpected privacy result; stderr: {result.stderr[:250]}")
             # A privacy-check failure must never echo the matched guide contents.
             if not expect_success:
