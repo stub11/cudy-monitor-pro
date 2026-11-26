@@ -70,11 +70,11 @@ jobs:
           node tests/browser/unknown-wan-selection.js
           export CUDY_SCREENSHOT_OUTPUT="$RUNNER_TEMP/cudy-ui-screenshots"
           node tests/browser/capture-ui-screenshots.js
-      - name: Upload synthetic UI screenshot evidence
-        if: always()
+      - name: Upload synthetic UI screenshot evidence outside pull requests
+        if: always() && github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: cudy-ui-screenshots
           path: ${{ runner.temp }}/cudy-ui-screenshots/
           if-no-files-found: warn
-          retention-days: 30
+          retention-days: 7
