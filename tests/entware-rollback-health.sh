@@ -4,7 +4,7 @@ set -eu
 SOURCE=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)/cudy-monitor/scripts/update.sh
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
-sed -n '/^restore_previous() {/,/^}/p' "$SOURCE" > "$WORK/function.sh"
+sed -n '/^replace_installed_binary() {/,/^}/p; /^restore_previous() {/,/^}/p' "$SOURCE" > "$WORK/function.sh"
 [ -s "$WORK/function.sh" ]
 BIN="$WORK/monitor"
 INIT="$WORK/init"
@@ -49,3 +49,31 @@ if (restore_previous) >"$WORK/out" 2>"$WORK/err"; then
 fi
 grep -q 'ROLLBACK FAILED: restored binary version not confirmed' "$WORK/err"
 echo 'PASS: Entware rollback requires restored disk version and healthy HTTP endpoint'
+
+# A healthy endpoint may still belong to the old process after a file swap.
+sed -n '/^running_binary_matches() {/,/^}/p' "$SOURCE" > "$WORK/running.sh"
+[ -s "$WORK/running.sh" ]
+. "$WORK/running.sh"
+ROOT="$WORK/runtime"
+mkdir -p "$ROOT/var/run"
+BIN="$ROOT/sleep"
+cp -L "$(command -v sleep)" "$BIN"
+chmod +x "$BIN"
+"$BIN" 30 &
+fixture_pid=$!
+trap 'kill "$fixture_pid" 2>/dev/null || :; rm -rf "$WORK"' EXIT HUP INT TERM
+pidfile="$ROOT/var/run/cudy-monitor-pro.pid"
+printf '%s\n' "$fixture_pid" > "$pidfile"
+attempt=0
+until running_binary_matches; do
+    attempt=$((attempt+1))
+    [ "$attempt" -lt 3 ] || fail "Matching executable was rejected"
+    sleep 1
+done
+printf 'replacement\n' > "$ROOT/other"
+replace_installed_binary "$ROOT/other"
+grep -qx replacement "$BIN"
+if running_binary_matches; then fail "Old process matched replaced binary"; fi
+printf 'invalid\n' > "$pidfile"
+if running_binary_matches; then fail "Invalid PID was accepted"; fi
+echo 'PASS: Entware verifies the running executable matches its installed binary'
