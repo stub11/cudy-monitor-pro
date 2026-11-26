@@ -9,7 +9,7 @@ const NETWORK_POINTS:usize=150; // last five minutes at two-second intervals
 const HISTORY_POINTS:usize=1080; // 3 hours at one sample per 10 seconds
 #[derive(Clone)]
 struct ServiceAction {id:u64,name:String,verb:String,state:String,detail:String}
-struct State {service_action:Option<ServiceAction>,cpu:Cpu,core_ticks:Vec<(usize,Cpu)>,current_cores:Vec<(usize,f64)>,events:VecDeque<(u64,String)>,high_cpu:bool,high_ram:bool,pid_ticks:HashMap<u64,u64>,pid_usage:HashMap<u64,f64>,nets:HashMap<String,Net>,last:Instant,history_at:Instant,boot:Instant,history:VecDeque<Sample>,net_histories:HashMap<String,VecDeque<NetSample>>,current_cpu:f64,current_network:Vec<(String,f64,f64)>}
+struct State {temperature_sources:TemperatureSources,service_action:Option<ServiceAction>,cpu:Cpu,core_ticks:Vec<(usize,Cpu)>,current_cores:Vec<(usize,f64)>,events:VecDeque<(u64,String)>,high_cpu:bool,high_ram:bool,pid_ticks:HashMap<u64,u64>,pid_usage:HashMap<u64,f64>,nets:HashMap<String,Net>,last:Instant,history_at:Instant,boot:Instant,history:VecDeque<Sample>,net_histories:HashMap<String,VecDeque<NetSample>>,current_cpu:f64,current_network:Vec<(String,f64,f64)>}
 fn read(p:&str)->String {fs::read_to_string(p).unwrap_or_default()}
 fn platform()->&'static str {
     if std::path::Path::new("/etc/openwrt_release").exists() || read("/etc/os-release").contains("OpenWrt") {"OpenWrt"}
@@ -125,7 +125,20 @@ fn keenetic_radio_fixture(){
  assert!(rci_radio_temps(b"invalid").is_empty());
  assert!(rci_radio_temps(br#"{"WifiMaster0":{"temperature":null}}"#).is_empty());
 }
-fn temps()->Vec<(String,f64)>{
+struct TemperatureReading {
+    name: String,
+    celsius: f64,
+    source: std::path::PathBuf,
+}
+
+impl TemperatureReading {
+    fn sysfs(name: String, celsius: f64, path: std::path::PathBuf) -> Self {
+        let source = fs::canonicalize(&path).unwrap_or(path);
+        Self { name, celsius, source }
+    }
+}
+
+fn read_temperatures()->Vec<TemperatureReading>{
  let mut out=Vec::new();
  // Thermal zones and hwmon both expose millidegrees Celsius on Linux.
  for (root,prefix,kind) in [("/sys/class/thermal","thermal_zone","thermal"),("/sys/class/hwmon","hwmon","hwmon")] {
@@ -139,7 +152,7 @@ fn temps()->Vec<(String,f64)>{
       if let Ok(v)=raw.trim().parse::<i64>() {
        if valid_millidegrees(v) {
         let name=fs::read_to_string(p.join("type")).unwrap_or_default();
-        out.push((format!("thermal:{}",name.trim()),v as f64/1000.));
+        out.push(TemperatureReading::sysfs(format!("thermal:{}",name.trim()),v as f64/1000.,p.join("temp")));
        }
       }
      }
@@ -156,7 +169,7 @@ fn temps()->Vec<(String,f64)>{
         let key=&fname[..fname.len()-6];
         let label=fs::read_to_string(p.join(format!("{key}_label"))).unwrap_or_default();
         let title=if label.trim().is_empty(){format!("hwmon:{}:{}",name.trim(),key)}else{format!("hwmon:{}:{}",name.trim(),label.trim())};
-        out.push((title,v as f64/1000.));
+        out.push(TemperatureReading::sysfs(title,v as f64/1000.,file.path()));
        }
       }
      }
@@ -167,9 +180,68 @@ fn temps()->Vec<(String,f64)>{
  // Preserve distinct source identities; equal readings do not prove duplication.
  let radio=keenetic_radio_temps();
  out.truncate(32usize.saturating_sub(radio.len()));
- out.extend(radio);
+ out.extend(radio.into_iter().map(|(name,celsius)| TemperatureReading {
+     source: name.clone().into(),
+     name,
+     celsius,
+ }));
  out.truncate(32);out
 }
+fn temps()->Vec<(String,f64)>{
+    read_temperatures().into_iter().map(|reading| (reading.name, reading.celsius)).collect()
+}
+
+#[derive(Default)]
+struct TemperatureSources {
+    primary: Option<std::path::PathBuf>,
+    cpu: Option<std::path::PathBuf>,
+    wifi: Option<std::path::PathBuf>,
+}
+
+fn temperature_for_source(
+    source: &mut Option<std::path::PathBuf>,
+    readings: &[TemperatureReading],
+    accepts: impl Fn(&TemperatureReading) -> bool,
+) -> Option<f64> {
+    let reading = readings.iter().filter(|reading| accepts(reading)).find(|reading| {
+        source.as_ref().map_or(true, |selected| selected == &reading.source)
+    })?;
+    if source.is_none() {
+        *source = Some(reading.source.clone());
+    }
+    Some(reading.celsius)
+}
+
+impl TemperatureSources {
+    fn sample(&mut self, readings: &[TemperatureReading]) -> (Option<f64>, Option<f64>, Option<f64>) {
+        let primary = temperature_for_source(&mut self.primary, readings, |_| true);
+        let cpu = temperature_for_source(&mut self.cpu, readings, |r| sensor_role(&r.name) == Some("cpu"));
+        let wifi = temperature_for_source(&mut self.wifi, readings, |r| sensor_role(&r.name) == Some("wifi"));
+        (primary, cpu, wifi)
+    }
+}
+
+#[test]
+fn temperature_history_keeps_each_source_through_gaps_and_reordering() {
+    let reading = |name: &str, source: &str, celsius| TemperatureReading {
+        name: name.into(), source: source.into(), celsius,
+    };
+    let mut history = TemperatureSources::default();
+    assert_eq!(history.sample(&[]), (None, None, None));
+    assert_eq!(history.sample(&[
+        reading("thermal:cpu", "/cpu", 66.0),
+        reading("hwmon:wifi:radio", "/radio0", 58.0),
+    ]), (Some(66.0), Some(66.0), Some(58.0)));
+    assert_eq!(history.sample(&[
+        reading("hwmon:wifi:radio", "/radio1", 47.0),
+    ]), (None, None, None));
+    assert_eq!(history.sample(&[
+        reading("hwmon:wifi:radio", "/radio1", 47.0),
+        reading("hwmon:wifi:radio", "/radio0", 59.0),
+        reading("thermal:cpu", "/cpu", 67.0),
+    ]), (Some(67.0), Some(67.0), Some(59.0)));
+}
+
 fn sensor_role(name:&str)->Option<&'static str>{
  let n=name.to_ascii_lowercase();
  // Do not infer Wi-Fi from generic MediaTek SoC names or a numeric hwmon index.
@@ -234,9 +306,7 @@ fn sample(state:&Arc<Mutex<State>>){
         now.duration_since(s.history_at)>=Duration::from_secs(10)
     };
     let (mem_total,mem_used,_)=mem();
-    let history_readings:Vec<(String,f64)>=if need_temp {temps().into_iter().collect()}else{Vec::new()};
-    let history_temp=history_readings.first().map(|(_,v)|*v);
-    let (cpu_temp,wifi_temp)=sensor_roles(&history_readings);
+    let history_readings=if need_temp {read_temperatures()}else{Vec::new()};
     let (route_wan,_)=default_wan();
     let mut s=state.lock().unwrap_or_else(|e|e.into_inner());
     let dt=nc.total.saturating_sub(s.cpu.total);
@@ -264,6 +334,7 @@ fn sample(state:&Arc<Mutex<State>>){
     if now.duration_since(s.history_at)>=Duration::from_secs(10) {
         // Reuse metrics collected outside the mutex; no USB writes.
         let ram=if mem_total>0 {100.0*mem_used as f64/mem_total as f64}else{0.0};
+        let (history_temp,cpu_temp,wifi_temp)=s.temperature_sources.sample(&history_readings);
         let point=Sample{sec:now.duration_since(s.boot).as_secs(),cpu:s.current_cpu,ram,temp:history_temp,cpu_temp,wifi_temp};
         if s.history.len()==HISTORY_POINTS{s.history.pop_front();}
         s.history.push_back(point);
@@ -990,7 +1061,7 @@ fn main()->std::io::Result<()>{
         return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied,"Monitor must bind to a specific LAN or loopback address"));
     }
     let start=Instant::now();
-    let state=Arc::new(Mutex::new(State{service_action:None,cpu:cpu(),core_ticks:core_ticks(),current_cores:Vec::new(),events:VecDeque::from([(0,String::from("Монитор запущен; история находится в RAM"))]),high_cpu:false,high_ram:false,pid_ticks:HashMap::new(),pid_usage:HashMap::new(),nets:nets(),last:start,history_at:start,boot:start,history:VecDeque::with_capacity(HISTORY_POINTS),net_histories:HashMap::new(),current_cpu:0.,current_network:Vec::new()}));
+    let state=Arc::new(Mutex::new(State{temperature_sources:TemperatureSources::default(),service_action:None,cpu:cpu(),core_ticks:core_ticks(),current_cores:Vec::new(),events:VecDeque::from([(0,String::from("Монитор запущен; история находится в RAM"))]),high_cpu:false,high_ram:false,pid_ticks:HashMap::new(),pid_usage:HashMap::new(),nets:nets(),last:start,history_at:start,boot:start,history:VecDeque::with_capacity(HISTORY_POINTS),net_histories:HashMap::new(),current_cpu:0.,current_network:Vec::new()}));
     let sampler=Arc::clone(&state);
     thread::spawn(move || loop {thread::sleep(Duration::from_secs(2));sample(&sampler);});
     let listener=TcpListener::bind(&addr)?;
