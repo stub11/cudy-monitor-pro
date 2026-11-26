@@ -31,7 +31,7 @@ jobs:
           sampler=source.split('fn sample(state:&Arc<Mutex<State>>){',1)[1].split('\nfn history_json(',1)[0]
           acquired=sampler.index('let mut s=state.lock()')
           before, locked=sampler[:acquired],sampler[acquired:]
-          for operation in ('mem();','temps().','default_wan();'):
+          for operation in ('mem();','read_temperatures()','default_wan();'):
               assert operation in before, f"{operation} missing from pre-lock sample"
               assert operation not in locked, f"{operation} runs while holding state mutex"
           assert before.count('mem();') == 1, 'duplicate memory reads in sampling pass'
